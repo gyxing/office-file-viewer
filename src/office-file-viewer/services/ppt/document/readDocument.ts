@@ -133,7 +133,8 @@ export async function readPptBinaryDocument(
       context,
     );
     if (slide) {
-      slide.background = masters.get(slide.masterId ?? Number.NaN)
+      // 幻灯片局部背景优先于母版；两者都未声明时才使用主题背景。
+      slide.background ??= masters.get(slide.masterId ?? Number.NaN)
         ?.background ?? {
         fill: theme.colorScheme.lt1 ?? '#ffffff',
       };

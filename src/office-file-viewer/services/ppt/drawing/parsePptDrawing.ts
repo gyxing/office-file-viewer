@@ -7,6 +7,7 @@ import type {
   ChartElement,
   ImageElement,
   ShapeElement,
+  SlideBackground,
   SlideElement,
   TextElement,
   ThemeModel,
@@ -33,6 +34,27 @@ const SHAPE_NAMES: Record<number, string> = {
   34: 'curvedConnector2',
 };
 
+/** OfficeArt 形状记录中表示对象已删除的标记位。 */
+const PPT_SHAPE_FLAG_DELETED = 0x0008;
+/** OfficeArt 形状记录中表示对象承担幻灯片背景的标记位。 */
+const PPT_SHAPE_FLAG_BACKGROUND = 0x0400;
+/** OfficeArt 背景图片填充引用使用的属性编号。 */
+const PPT_FILL_BLIP_PROPERTY_ID = 0x0186;
+/** OfficeArt 背景纯色填充使用的属性编号。 */
+const PPT_FILL_COLOR_PROPERTY_ID = 0x0181;
+/** OfficeArt 背景填充透明度使用的 16.16 定点属性编号。 */
+const PPT_FILL_OPACITY_PROPERTY_ID = 0x0182;
+/** OfficeArt 是否启用填充的布尔属性编号。 */
+const PPT_FILL_FLAGS_PROPERTY_ID = 0x01bf;
+
+/** 描述一页 PPT 绘图解析后的背景和普通元素。 */
+export type PptDrawingModel = {
+  /** 当前绘图记录声明的幻灯片背景；未声明时交由母版或主题补全。 */
+  background?: SlideBackground;
+  /** 排除背景记录后可直接交给公共幻灯片渲染器的元素。 */
+  elements: SlideElement[];
+};
+
 /** 读取 `readColor` 所需的源数据，供PPT 二进制解析使用。 */
 function readColor(value: number) {
   const rgb = [value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff];
@@ -48,6 +70,55 @@ function findChild(record: OfficeArtRecord, type: number) {
 function isBooleanPropertyEnabled(value: number, bit: number) {
   const useMask = bit << 16;
   return value & useMask ? Boolean(value & bit) : undefined;
+}
+
+/** 将 OfficeArt 16.16 定点透明度转换为标准模型使用的 0 到 1 比例。 */
+function readFixedPointOpacity(value: number | undefined) {
+  if (value === undefined) return undefined;
+  return Math.min(1, Math.max(0, value / 65536));
+}
+
+/** 从无普通锚点的 OfficeArt 背景形状中恢复图片或纯色背景。 */
+function parseBackgroundShape(
+  record: OfficeArtRecord,
+  context: PptParseContext,
+): SlideBackground | undefined {
+  const fsp = findChild(record, OFFICE_ART_RECORD.FSP);
+  if (!fsp || fsp.data.length < 8) return undefined;
+  const fspView = new DataView(
+    fsp.data.buffer,
+    fsp.data.byteOffset,
+    fsp.data.byteLength,
+  );
+  const flags = fspView.getUint32(4, true);
+  if (flags & PPT_SHAPE_FLAG_DELETED || !(flags & PPT_SHAPE_FLAG_BACKGROUND)) {
+    return undefined;
+  }
+
+  const properties = readPptOfficeArtProperties(
+    findChild(record, OFFICE_ART_RECORD.FOPT),
+  );
+  const fillFlags = properties.get(PPT_FILL_FLAGS_PROPERTY_ID)?.value;
+  if (
+    fillFlags !== undefined &&
+    isBooleanPropertyEnabled(fillFlags, 0x0010) === false
+  ) {
+    return undefined;
+  }
+
+  const blipIndex = properties.get(PPT_FILL_BLIP_PROPERTY_ID)?.value;
+  const imageRef =
+    blipIndex === undefined ? undefined : context.blipUrls.get(blipIndex);
+  if (imageRef) return { imageRef };
+
+  const fillColor = properties.get(PPT_FILL_COLOR_PROPERTY_ID)?.value;
+  if (fillColor === undefined) return undefined;
+  return {
+    fill: readColor(fillColor),
+    fillOpacity: readFixedPointOpacity(
+      properties.get(PPT_FILL_OPACITY_PROPERTY_ID)?.value,
+    ),
+  };
 }
 
 /** 解析 `parseShape` 接收的数据，并返回PPT 二进制解析结果。 */
@@ -77,7 +148,9 @@ function parseShape(
   );
   const shapeId = fspView.getUint32(0, true);
   const flags = fspView.getUint32(4, true);
-  if (flags & 0x0008 || flags & 0x0400) return undefined;
+  if (flags & PPT_SHAPE_FLAG_DELETED || flags & PPT_SHAPE_FLAG_BACKGROUND) {
+    return undefined;
+  }
 
   const properties = readPptOfficeArtProperties(
     findChild(record, OFFICE_ART_RECORD.FOPT),
@@ -265,18 +338,24 @@ export function parsePptDrawing(
   bytes: Uint8Array,
   theme: ThemeModel,
   context: PptParseContext,
-) {
+): PptDrawingModel {
   try {
     const records = parseOfficeArtRecords(bytes, context.warnings);
-    return collectShapeContainers(records)
-      .map((record, index) => parseShape(record, index, theme, context))
-      .filter((element): element is SlideElement => Boolean(element));
+    const shapeContainers = collectShapeContainers(records);
+    return {
+      background: shapeContainers
+        .map((record) => parseBackgroundShape(record, context))
+        .find((background) => Boolean(background)),
+      elements: shapeContainers
+        .map((record, index) => parseShape(record, index, theme, context))
+        .filter((element): element is SlideElement => Boolean(element)),
+    };
   } catch (error) {
     context.warnings.push({
       code: 'PPT_DRAWING_CORRUPT',
       message:
         error instanceof Error ? error.message : 'OfficeArt 绘图记录无法读取',
     });
-    return [];
+    return { elements: [] };
   }
 }

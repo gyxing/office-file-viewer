@@ -63,6 +63,9 @@ export function readPptSlide(
     if (child.type === PPT_RECORD.PP_DRAWING) drawing = child.data;
   }
 
+  const parsedDrawing = drawing
+    ? parsePptDrawing(drawing, theme, context)
+    : undefined;
   return {
     id: `ppt-slide-${descriptor.persistId}`,
     persistId: descriptor.persistId,
@@ -72,7 +75,8 @@ export function readPptSlide(
     height,
     masterId,
     hidden: descriptor.hidden,
-    elements: drawing ? parsePptDrawing(drawing, theme, context) : [],
+    background: parsedDrawing?.background,
+    elements: parsedDrawing?.elements ?? [],
     sourceOffset: offset,
   };
 }

@@ -77,10 +77,15 @@ export function readPptMaster(
     if (child.type === PPT_RECORD.PP_DRAWING) drawing = child.data;
   }
 
+  const parsedDrawing = drawing
+    ? parsePptDrawing(drawing, theme, context)
+    : undefined;
   return {
     id: descriptor.masterId,
     persistId: descriptor.persistId,
-    background: { fill: theme.colorScheme.lt1 ?? '#ffffff' },
-    elements: drawing ? parsePptDrawing(drawing, theme, context) : [],
+    background: parsedDrawing?.background ?? {
+      fill: theme.colorScheme.lt1 ?? '#ffffff',
+    },
+    elements: parsedDrawing?.elements ?? [],
   };
 }
