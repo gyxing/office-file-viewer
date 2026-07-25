@@ -1,0 +1,116 @@
+// OfficePreviewStage 根据当前文件格式切换到对应预览组件，并统一处理加载和错误态。
+import React, { lazy, memo, Suspense } from 'react';
+import type { DocDocument } from '../services/doc/types';
+import type { DocxDocument } from '../services/docx/types';
+import type { PresentationDocument } from '../services/presentation/types';
+import {
+  isSpreadsheetPreviewKind,
+  type PreviewKind,
+} from '../services/preview';
+import type { SpreadsheetWorkbook } from '../services/spreadsheet/types';
+import { OfficeError } from './Error';
+import { OfficeLoading } from './Loading';
+
+const LazyPptxViewer = lazy(() =>
+  import('../formats/pptx/PptxViewer').then((module) => ({
+    default: module.PptxViewer,
+  })),
+);
+const LazyXlsxViewer = lazy(() =>
+  import('../formats/xlsx/XlsxViewer').then((module) => ({
+    default: module.XlsxViewer,
+  })),
+);
+const LazyDocxViewer = lazy(() =>
+  import('../formats/docx/DocxViewer').then((module) => ({
+    default: module.DocxViewer,
+  })),
+);
+const LazyDocViewer = lazy(() =>
+  import('../formats/doc/DocViewer').then((module) => ({
+    default: module.DocViewer,
+  })),
+);
+
+/** 定义 OfficePreviewStage 组件可接收的属性。 */
+type OfficePreviewStageProps = {
+  /** 文件当前是否仍在加载或解析。 */
+  loading: boolean;
+  /** OfficePreviewStageProps 的 loadingTip 文本值。 */
+  loadingTip?: string;
+  /** 当前是否已有可交付渲染器显示的内容。 */
+  hasRenderableContent: boolean;
+  /** OfficePreviewStageProps 携带的结构化解析错误。 */
+  error?: string;
+  /** 当前文件识别出的预览格式。 */
+  previewKind: PreviewKind;
+  /** 已标准化的 PPTX 演示文稿模型；未提供时使用来源格式或渲染器的默认行为。 */
+  pptxDocument?: PresentationDocument;
+  /** 已标准化的 XLS/XLSX 工作簿模型；未提供时使用来源格式或渲染器的默认行为。 */
+  spreadsheetWorkbook?: SpreadsheetWorkbook;
+  /** 已标准化的 DOCX 文档模型；未提供时使用来源格式或渲染器的默认行为。 */
+  docxDocument?: DocxDocument;
+  /** 已标准化的 DOC/WPS 文档模型；未提供时使用来源格式或渲染器的默认行为。 */
+  docDocument?: DocDocument;
+  /** 当前选中项在所属集合中的索引。 */
+  activeIndex: number;
+  /** OfficePreviewStageProps 的 activeSheetId 文本值。 */
+  activeSheetId?: string;
+  /** 当前预览缩放比例。 */
+  zoom: number;
+  /** 在 SelectSlide 事件发生时调用的回调函数。 */
+  onSelectSlide: (index: number) => void;
+  /** 在 SelectSheet 事件发生时调用的回调函数。 */
+  onSelectSheet: (sheetId: string) => void;
+};
+
+/** 渲染 OfficePreviewStageComponent 组件。 */
+function OfficePreviewStageComponent({
+  loading,
+  loadingTip,
+  hasRenderableContent,
+  error,
+  previewKind,
+  pptxDocument,
+  spreadsheetWorkbook,
+  docxDocument,
+  docDocument,
+  activeIndex,
+  activeSheetId,
+  zoom,
+  onSelectSlide,
+  onSelectSheet,
+}: OfficePreviewStageProps) {
+  if (error) return <OfficeError message={error} />;
+  if (loading && !hasRenderableContent) {
+    return <OfficeLoading tip={loadingTip} />;
+  }
+
+  // 格式 viewer 是真正的重渲染模块，按文件类型懒加载，避免首屏一次性拉取所有预览实现。
+  return (
+    <Suspense fallback={<OfficeLoading />}>
+      {isSpreadsheetPreviewKind(previewKind) ? (
+        <LazyXlsxViewer
+          workbook={spreadsheetWorkbook}
+          kind={previewKind}
+          activeSheetId={activeSheetId}
+          zoom={zoom}
+          onSelectSheet={onSelectSheet}
+        />
+      ) : previewKind === 'docx' ? (
+        <LazyDocxViewer document={docxDocument} zoom={zoom} />
+      ) : previewKind === 'doc' ? (
+        <LazyDocViewer document={docDocument} zoom={zoom} />
+      ) : (
+        <LazyPptxViewer
+          document={pptxDocument}
+          activeIndex={activeIndex}
+          zoom={zoom}
+          onSelectSlide={onSelectSlide}
+        />
+      )}
+    </Suspense>
+  );
+}
+
+export const OfficePreviewStage = memo(OfficePreviewStageComponent);

@@ -1,0 +1,144 @@
+.office-file-doc-viewer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background: #eef1f6;
+}
+
+.office-file-doc-viewer__notice {
+  flex: 0 0 auto;
+  padding: 6px 16px;
+  color: var(--office-file-notice-warning-color);
+  font-size: 13px;
+  line-height: 1.5;
+  background: #fff;
+  border-bottom: 1px solid #dde3ec;
+}
+
+.office-file-doc-viewer__scroller {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 24px;
+  overflow: auto;
+  scrollbar-gutter: stable both-edges;
+}
+
+.office-file-doc-page-frame {
+  margin: 0 auto;
+}
+
+.office-file-doc-page-frame + .office-file-doc-page-frame {
+  margin-top: 24px;
+}
+
+.office-file-doc-page-frame__article {
+  box-sizing: border-box;
+  background: #fff;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 14%);
+  font-family: 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', Arial,
+    sans-serif;
+  letter-spacing: 0;
+  transform-origin: top left;
+}
+
+.office-file-doc-paragraph {
+  margin: 0;
+  color: #111827;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.office-file-doc-inline-image {
+  display: inline-block;
+  max-width: 100%;
+  margin: 6px 0;
+}
+
+.office-file-doc-inline-image__img,
+.office-file-doc-image-layout__img,
+.office-file-doc-image-gallery__img {
+  display: block;
+  max-width: 100%;
+  max-height: none;
+  object-fit: contain;
+}
+
+.office-file-doc-table {
+  margin: 0 0 16px;
+  overflow-x: auto;
+}
+
+.office-file-doc-table__table {
+  table-layout: fixed;
+  color: #111827;
+  font-size: 13px;
+  line-height: 1.65;
+  border-collapse: collapse;
+}
+
+.office-file-doc-table__cell {
+  padding: 5px 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  vertical-align: top;
+}
+
+.office-file-doc-list {
+  margin: 0 0 16px 20px;
+  padding: 0;
+  color: #111827;
+}
+
+.office-file-doc-list__item {
+  margin-bottom: 8px;
+  line-height: 1.7;
+  word-break: break-word;
+}
+
+.office-file-doc-image-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 6px 0 16px;
+}
+
+.office-file-doc-image-layout__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 6px;
+}
+
+.office-file-doc-image-layout__figure {
+  flex: 0 1 auto;
+  margin: 0;
+}
+
+.office-file-doc-image-gallery {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.office-file-doc-image-gallery__title {
+  display: block;
+  margin-bottom: 12px;
+}
+
+.office-file-doc-image-gallery__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.office-file-doc-image-gallery__figure {
+  margin: 0;
+  padding: 8px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+}
+
+.office-file-doc-image-gallery__img {
+  margin: 0 auto;
+}

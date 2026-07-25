@@ -1,0 +1,213 @@
+import { XlsParseError } from '../errors';
+
+/** 表示XLS/BIFF8 解析读取到的一条记录。 */
+export type Biff8Record = {
+  /** Biff8Record 在所属文档或任务中的唯一标识。 */
+  id: number;
+  /** Biff8Record 在源二进制流中的字节偏移。 */
+  offset: number;
+  /** Biff8Record 在对应二进制流中的字节偏移。 */
+  dataOffset: number;
+  /** Biff8Record 对应二进制记录或数据块的字节长度。 */
+  size: number;
+  /** Biff8Record 当前步骤需要处理的原始或标准化数据。 */
+  data: Uint8Array;
+};
+
+/** 对指定 BIFF 字节区间提供统一边界检查的读取器。 */
+export class Biff8Reader {
+  private readonly bytes: Uint8Array;
+  private readonly start: number;
+  private readonly end: number;
+  private cursor: number;
+
+  constructor(bytes: Uint8Array, start = 0, end = bytes.length) {
+    if (start < 0 || end < start || end > bytes.length) {
+      throw new XlsParseError('INVALID_RECORD_DATA', 'BIFF 读取区间无效');
+    }
+    this.bytes = bytes;
+    this.start = start;
+    this.end = end;
+    this.cursor = start;
+  }
+
+  get position() {
+    return this.cursor;
+  }
+
+  get remaining() {
+    return this.end - this.cursor;
+  }
+
+  private ensureAvailable(length: number) {
+    if (
+      !Number.isInteger(length) ||
+      length < 0 ||
+      this.cursor + length > this.end
+    ) {
+      throw new XlsParseError('TRUNCATED_RECORD', 'BIFF 记录数据被截断', {
+        offset: this.cursor,
+      });
+    }
+  }
+
+  readUint8() {
+    this.ensureAvailable(1);
+    return this.bytes[this.cursor++];
+  }
+
+  readUint16() {
+    this.ensureAvailable(2);
+    const value = this.bytes[this.cursor] | (this.bytes[this.cursor + 1] << 8);
+    this.cursor += 2;
+    return value;
+  }
+
+  readInt16() {
+    const value = this.readUint16();
+    return value & 0x8000 ? value - 0x10000 : value;
+  }
+
+  readUint32() {
+    this.ensureAvailable(4);
+    const view = new DataView(
+      this.bytes.buffer,
+      this.bytes.byteOffset + this.cursor,
+      4,
+    );
+    this.cursor += 4;
+    return view.getUint32(0, true);
+  }
+
+  readInt32() {
+    this.ensureAvailable(4);
+    const view = new DataView(
+      this.bytes.buffer,
+      this.bytes.byteOffset + this.cursor,
+      4,
+    );
+    this.cursor += 4;
+    return view.getInt32(0, true);
+  }
+
+  readFloat64() {
+    this.ensureAvailable(8);
+    const view = new DataView(
+      this.bytes.buffer,
+      this.bytes.byteOffset + this.cursor,
+      8,
+    );
+    this.cursor += 8;
+    return view.getFloat64(0, true);
+  }
+
+  readBytes(length: number) {
+    this.ensureAvailable(length);
+    const result = this.bytes.subarray(this.cursor, this.cursor + length);
+    this.cursor += length;
+    return result;
+  }
+
+  seek(position: number) {
+    if (
+      !Number.isInteger(position) ||
+      position < this.start ||
+      position > this.end
+    ) {
+      throw new XlsParseError('INVALID_RECORD_DATA', 'BIFF seek 位置无效', {
+        offset: position,
+      });
+    }
+    this.cursor = position;
+  }
+}
+
+/** 顺序遍历 BIFF 记录，peek 不改变当前位置。 */
+export class Biff8RecordCursor {
+  private readonly stream: Uint8Array;
+  private readonly end: number;
+  private cursor: number;
+
+  constructor(stream: Uint8Array, start = 0, end = stream.length) {
+    if (start < 0 || end < start || end > stream.length) {
+      throw new XlsParseError('INVALID_RECORD_DATA', 'BIFF 子流范围无效');
+    }
+    this.stream = stream;
+    this.cursor = start;
+    this.end = end;
+  }
+
+  get position() {
+    return this.cursor;
+  }
+
+  peek(): Biff8Record | undefined {
+    if (this.cursor === this.end) return undefined;
+    if (this.cursor + 4 > this.end) {
+      throw new XlsParseError('TRUNCATED_RECORD', 'BIFF 记录头被截断', {
+        offset: this.cursor,
+      });
+    }
+    const reader = new Biff8Reader(this.stream, this.cursor, this.end);
+    const id = reader.readUint16();
+    const size = reader.readUint16();
+    const dataOffset = this.cursor + 4;
+    if (dataOffset + size > this.end) {
+      throw new XlsParseError('TRUNCATED_RECORD', 'BIFF 记录负载被截断', {
+        offset: this.cursor,
+        recordId: id,
+      });
+    }
+    return {
+      id,
+      offset: this.cursor,
+      dataOffset,
+      size,
+      data: this.stream.subarray(dataOffset, dataOffset + size),
+    };
+  }
+
+  next() {
+    const record = this.peek();
+    if (record) this.cursor = record.dataOffset + record.size;
+    return record;
+  }
+}
+
+/** 枚举XLS/BIFF8 解析可能处于的状态。 */
+export type ParseYieldState = {
+  /** ParseYieldState 用于控制主线程让步时机的毫秒值。 */
+  lastYieldAt: number;
+  /** ParseYieldState 用于控制主线程让步时机的毫秒值。 */
+  budgetMs: number;
+  /** ParseYieldState 执行 checkpoint 操作时调用的函数。 */
+  checkpoint?: () => Promise<void>;
+};
+
+/** 执行 `currentTime` 封装的XLS/BIFF8 解析处理步骤。 */
+function currentTime() {
+  return typeof performance !== 'undefined' ? performance.now() : Date.now();
+}
+
+/** 创建主线程解析的协作式时间片状态。 */
+export function createParseYieldState(
+  budgetMs = 8,
+  checkpoint?: () => Promise<void>,
+): ParseYieldState {
+  return {
+    lastYieldAt: currentTime(),
+    budgetMs: Math.max(1, budgetMs),
+    checkpoint,
+  };
+}
+
+/** 时间片耗尽时让出一次浏览器事件循环，不改变记录处理顺序。 */
+export async function yieldToBrowserIfNeeded(state: ParseYieldState) {
+  const now = currentTime();
+  if (now - state.lastYieldAt < state.budgetMs) return;
+  await state.checkpoint?.();
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, 0);
+  });
+  state.lastYieldAt = currentTime();
+}

@@ -1,0 +1,13 @@
+// XLSX 对外类型别名，复用统一电子表格模型并保留格式语义名称。
+export type {
+  SpreadsheetAnchorPoint as XlsxAnchorPoint,
+  SpreadsheetCell as XlsxCell,
+  SpreadsheetCellStyle as XlsxCellStyle,
+  SpreadsheetChart as XlsxChart,
+  SpreadsheetColumn as XlsxColumn,
+  SpreadsheetImage as XlsxImage,
+  SpreadsheetMerge as XlsxMerge,
+  SpreadsheetRow as XlsxRow,
+  SpreadsheetSheet as XlsxSheet,
+  SpreadsheetWorkbook as XlsxWorkbook,
+} from '../spreadsheet/types';

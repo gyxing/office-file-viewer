@@ -1,1 +1,0 @@
-export { readPptEmbeddedCharts } from './readEmbeddedCharts';

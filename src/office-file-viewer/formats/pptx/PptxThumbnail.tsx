@@ -1,0 +1,70 @@
+// PptxThumbnail 复用单页幻灯片渲染能力，生成缩略图预览。
+import type { CSSProperties } from 'react';
+import React, { memo, useMemo } from 'react';
+import type { SlideModel } from '../../services/pptx/types';
+import { PptxSlide } from './PptxSlide';
+import { colorWithOpacity } from './renderers/paint';
+
+/** 定义 PptxThumbnail 组件可接收的属性。 */
+type PptxThumbnailProps = {
+  /** PptxThumbnailProps 当前关联的幻灯片。 */
+  slide: SlideModel;
+  /** 当前项目是否处于选中状态。 */
+  active: boolean;
+};
+
+/** 渲染 PptxThumbnailComponent 组件。 */
+function PptxThumbnailComponent({ slide, active }: PptxThumbnailProps) {
+  const canvasStyle = useMemo<CSSProperties>(
+    () => ({
+      aspectRatio: `${slide.width / slide.height}`,
+      background: colorWithOpacity(
+        slide.background?.fill ?? '#f8fafc',
+        slide.background?.fillOpacity,
+      ),
+    }),
+    [
+      slide.background?.fill,
+      slide.background?.fillOpacity,
+      slide.height,
+      slide.width,
+    ],
+  );
+  const backgroundStyle = useMemo<CSSProperties>(
+    () => ({
+      backgroundImage: slide.background?.imageRef
+        ? `url(${slide.background.imageRef})`
+        : undefined,
+    }),
+    [slide.background?.imageRef],
+  );
+
+  return (
+    <div
+      className={[
+        'office-file-pptx-thumbnail',
+        active ? 'office-file-pptx-thumbnail--active' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+    >
+      <div className="office-file-pptx-thumbnail__canvas" style={canvasStyle}>
+        {slide.background?.imageRef ? (
+          <div
+            className="office-file-pptx-thumbnail__background"
+            style={backgroundStyle}
+          />
+        ) : null}
+        <div className="office-file-pptx-thumbnail__content">
+          {/* 缩略图复用完整 Slide 渲染，保证背景、图形、表格和图表与主画布一致。 */}
+          <PptxSlide slide={slide} zoom={100} renderKey={`thumb-${slide.id}`} />
+        </div>
+      </div>
+      <div className="office-file-pptx-thumbnail__label">
+        第 {slide.index} 页
+      </div>
+    </div>
+  );
+}
+
+export const PptxThumbnail = memo(PptxThumbnailComponent);

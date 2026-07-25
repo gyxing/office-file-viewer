@@ -3,9 +3,9 @@ import { defineConfig } from 'dumi';
 export default defineConfig({
   outputPath: 'docs-dist',
   themeConfig: {
-    name: 'office-x-viewer',
+    name: 'Office File Viewer',
   },
   resolve: {
-    docDirs: ['./docs-2'],
+    docDirs: ['./docs/dev'],
   },
 });

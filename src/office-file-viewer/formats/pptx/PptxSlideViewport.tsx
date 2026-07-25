@@ -1,0 +1,43 @@
+// PptxSlideViewport 渲染当前幻灯片的滚动视口，并在翻页或缩放时复位滚动位置。
+import React, { memo, useEffect, useRef } from 'react';
+import type { SlideModel } from '../../services/pptx/types';
+import { PptxSlide } from './PptxSlide';
+
+/** 定义 PptxSlideViewport 组件可接收的属性。 */
+type PptxSlideViewportProps = {
+  /** PptxSlideViewportProps 当前关联的幻灯片。 */
+  slide?: SlideModel;
+  /** 当前选中项在所属集合中的索引。 */
+  activeIndex: number;
+  /** 当前预览缩放比例。 */
+  zoom: number;
+};
+
+/** 渲染 PptxSlideViewportComponent 组件。 */
+function PptxSlideViewportComponent({
+  slide,
+  activeIndex,
+  zoom,
+}: PptxSlideViewportProps) {
+  const viewportRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    viewportRef.current?.scrollTo({ left: 0, top: 0 });
+  }, [activeIndex, zoom]);
+
+  return (
+    <section ref={viewportRef} className="office-file-pptx-viewer__viewport">
+      <div className="office-file-pptx-viewer__slide-wrap">
+        {slide ? (
+          <PptxSlide
+            slide={slide}
+            zoom={zoom}
+            renderKey={`slide-${slide.id}`}
+          />
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+export const PptxSlideViewport = memo(PptxSlideViewportComponent);
