@@ -989,6 +989,8 @@ function readSheet(
 
   return {
     ...sheetInfo,
+    defaultColumnWidth: metrics.defaultColumnWidth,
+    defaultRowHeight: metrics.defaultRowHeight,
     range,
     rowCount: maxRow,
     columnCount: maxColumn,

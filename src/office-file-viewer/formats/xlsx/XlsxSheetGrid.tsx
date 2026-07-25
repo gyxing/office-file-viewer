@@ -1,10 +1,12 @@
 // XlsxSheetGrid 负责工作表滚动画布，统一承载表格、浮动图片和浮动图表。
 import type { CSSProperties } from 'react';
-import React, { memo, useMemo } from 'react';
+import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { XlsxSheet } from '../../services/xlsx/types';
 import { getXlsxSheetMetrics } from './sheetRenderUtils';
+import { useXlsxSheetTableLayout } from './useXlsxSheetTableLayout';
 import { XlsxFloatingCharts } from './XlsxFloatingCharts';
 import { XlsxFloatingImages } from './XlsxFloatingImages';
+import { XlsxSheetFiller } from './XlsxSheetFiller';
 import { XlsxSheetTable } from './XlsxSheetTable';
 
 /** 定义 XlsxSheetGrid 组件可接收的属性。 */
@@ -15,10 +17,99 @@ type XlsxSheetGridProps = {
   zoom: number;
 };
 
+/** 描述工作表滚动内容区当前可用的 CSS 像素尺寸。 */
+type XlsxSheetViewportSize = {
+  /** 滚动内容区不含内边距的宽度。 */
+  width: number;
+  /** 滚动内容区不含内边距的高度。 */
+  height: number;
+};
+
+const EMPTY_VIEWPORT_SIZE: XlsxSheetViewportSize = { width: 0, height: 0 };
+
+/** 将 CSS 尺寸文本转换为可参与边框盒计算的像素值。 */
+function readCssPixelValue(value: string) {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/** 从滚动容器客户区中扣除内边距，得到不包含滚动槽的工作表可用视口。 */
+function readGridViewportSize(grid: HTMLDivElement): XlsxSheetViewportSize {
+  const style = window.getComputedStyle(grid);
+  const horizontalInset =
+    readCssPixelValue(style.paddingLeft) +
+    readCssPixelValue(style.paddingRight);
+  const verticalInset =
+    readCssPixelValue(style.paddingTop) +
+    readCssPixelValue(style.paddingBottom);
+  return {
+    width: Math.max(
+      0,
+      Math.round((grid.clientWidth - horizontalInset) * 100) / 100,
+    ),
+    height: Math.max(
+      0,
+      Math.round((grid.clientHeight - verticalInset) * 100) / 100,
+    ),
+  };
+}
+
 /** 渲染 XlsxSheetGridComponent 组件。 */
 function XlsxSheetGridComponent({ sheet, zoom }: XlsxSheetGridProps) {
   const scale = zoom / 100;
-  const metrics = useMemo(() => getXlsxSheetMetrics(sheet), [sheet]);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
+  const measuredTableLayout = useXlsxSheetTableLayout(tableRef, sheet);
+  const [viewportSize, setViewportSize] =
+    useState<XlsxSheetViewportSize>(EMPTY_VIEWPORT_SIZE);
+
+  // 补位表格脱离文档流后，边框盒只会随外部布局变化，不再被补位行列反向撑大。
+  useEffect(() => {
+    const grid = gridRef.current;
+    if (!grid) return undefined;
+    const updateViewportSize = () => {
+      const nextSize = readGridViewportSize(grid);
+      setViewportSize((currentSize) =>
+        currentSize.width === nextSize.width &&
+        currentSize.height === nextSize.height
+          ? currentSize
+          : nextSize,
+      );
+    };
+    updateViewportSize();
+
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', updateViewportSize);
+      return () => window.removeEventListener('resize', updateViewportSize);
+    }
+
+    const observer = new ResizeObserver(updateViewportSize);
+    try {
+      observer.observe(grid, { box: 'border-box' });
+    } catch {
+      // 较旧实现可能支持 ResizeObserver 但不接受 box 参数，此时退回默认内容盒监听。
+      observer.observe(grid);
+    }
+    return () => observer.disconnect();
+  }, []);
+
+  const metrics = useMemo(
+    () =>
+      getXlsxSheetMetrics(
+        sheet,
+        viewportSize.width,
+        viewportSize.height,
+        scale,
+        measuredTableLayout,
+      ),
+    [
+      measuredTableLayout,
+      scale,
+      sheet,
+      viewportSize.height,
+      viewportSize.width,
+    ],
+  );
   // 这里使用 zoom 是为了让表格、图片和图表保持同一个坐标系缩放。
   const canvasStyle = useMemo<CSSProperties>(
     () => ({
@@ -31,9 +122,16 @@ function XlsxSheetGridComponent({ sheet, zoom }: XlsxSheetGridProps) {
   );
 
   return (
-    <div className="office-file-xlsx-sheet-grid">
+    <div ref={gridRef} className="office-file-xlsx-sheet-grid">
       <div className="office-file-xlsx-sheet-grid__canvas" style={canvasStyle}>
-        <XlsxSheetTable sheet={sheet} tableWidth={metrics.tableWidth} />
+        <XlsxSheetFiller sheet={sheet} metrics={metrics} />
+        <XlsxSheetTable
+          sheet={sheet}
+          tableWidth={metrics.tableWidth}
+          visibleColumnWidths={metrics.visibleColumnWidths}
+          visibleRowHeights={metrics.visibleRowHeights}
+          tableRef={tableRef}
+        />
         <XlsxFloatingImages images={sheet.images} />
         <XlsxFloatingCharts charts={sheet.charts} />
       </div>

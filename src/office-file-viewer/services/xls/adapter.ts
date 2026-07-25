@@ -298,6 +298,10 @@ function adaptWorksheet(
     name: sheet.descriptor.name,
     path: `/Workbook/${sheet.descriptor.name}`,
     kind: 'worksheet',
+    defaultColumnWidth: columnWidthToPixels(sheet.defaultColumnWidth),
+    defaultRowHeight: sheet.defaultRowHeightTwips
+      ? twipsToPixels(sheet.defaultRowHeightTwips)
+      : DEFAULT_ROW_PIXELS,
     range: endRef === 'A1' ? 'A1' : `A1:${endRef}`,
     rowCount: maxRow + 1,
     columnCount: maxColumn + 1,
@@ -318,6 +322,8 @@ function createChartSheetPlaceholder(
     name: descriptor.name,
     path: `/Workbook/${descriptor.name}`,
     kind: 'chart',
+    defaultColumnWidth: DEFAULT_COLUMN_PIXELS,
+    defaultRowHeight: DEFAULT_ROW_PIXELS,
     range: 'A1',
     rowCount: 1,
     columnCount: 1,
@@ -395,8 +401,10 @@ function pointGeometry(
   const row = sheet.rows[point.row];
   const columnWidth = column?.hidden
     ? 0
-    : column?.width ?? DEFAULT_COLUMN_PIXELS;
-  const rowHeight = row?.hidden ? 0 : row?.height ?? DEFAULT_ROW_PIXELS;
+    : column?.width ?? sheet.defaultColumnWidth ?? DEFAULT_COLUMN_PIXELS;
+  const rowHeight = row?.hidden
+    ? 0
+    : row?.height ?? sheet.defaultRowHeight ?? DEFAULT_ROW_PIXELS;
   return {
     x: x + columnWidth * point.columnFraction,
     y: y + rowHeight * point.rowFraction,
@@ -411,12 +419,14 @@ function ensureSheetBounds(
   requiredRows: number,
   requiredColumns: number,
 ) {
+  const defaultColumnWidth = sheet.defaultColumnWidth ?? DEFAULT_COLUMN_PIXELS;
+  const defaultRowHeight = sheet.defaultRowHeight ?? DEFAULT_ROW_PIXELS;
   while (sheet.columns.length < requiredColumns) {
     const index = sheet.columns.length + 1;
     sheet.columns.push({
       index,
       label: columnLabel(index),
-      width: DEFAULT_COLUMN_PIXELS,
+      width: defaultColumnWidth,
     });
     sheet.rows.forEach((row) => {
       row.cells.push({
@@ -431,7 +441,7 @@ function ensureSheetBounds(
     const index = sheet.rows.length + 1;
     sheet.rows.push({
       index,
-      height: DEFAULT_ROW_PIXELS,
+      height: defaultRowHeight,
       cells: sheet.columns.map((column) => ({
         ref: `${column.label}${index}`,
         rowIndex: index,

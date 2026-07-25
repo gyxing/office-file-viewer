@@ -52,6 +52,10 @@ export type SpreadsheetSheet = {
   path: string;
   /** 标识 SpreadsheetSheet 对应的 Office 文件或数据种类。 */
   kind?: 'worksheet' | 'chart';
+  /** 工作表未单独设置列宽时使用的默认宽度，单位为标准化渲染像素。 */
+  defaultColumnWidth?: number;
+  /** 工作表未单独设置行高时使用的默认高度，单位为标准化渲染像素。 */
+  defaultRowHeight?: number;
   /** 工作表有效内容范围，例如 A1:D20。 */
   range?: string;
   /** 工作表标准化后的总行数或总列数，具体含义由属性名确定。 */
