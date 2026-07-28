@@ -105,6 +105,7 @@ function parseFormulaCell(
     column: header.column,
     definedNames: globals.definedNames,
     sheets: globals.sheets,
+    externalSheets: globals.externalSheets,
   });
 
   let value: Biff8Cell['value'];
@@ -286,9 +287,10 @@ export async function parseBiff8Worksheet(
         const heightTwips = reader.readUint16();
         reader.readBytes(4);
         const flags = reader.readUint32();
+        // fUnsynced 表示该行保存了显式高度，不能退回工作表默认行高。
         rows.set(index, {
           index,
-          heightTwips: flags & 0x0040 ? undefined : heightTwips,
+          heightTwips: flags & 0x0040 ? heightTwips : undefined,
           hidden: Boolean(flags & 0x0020),
           outlineLevel: flags & 0x0007,
         });

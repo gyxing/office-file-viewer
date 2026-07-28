@@ -10,6 +10,7 @@ import {
   paragraphsFromDocBlocks,
 } from './chunkDocBlocks';
 import { DocBlockStreamBuilder } from './DocBlockStreamBuilder';
+import { extractDocDrawingCanvases } from './parseDocDrawingCanvas';
 import type {
   DocBlock,
   DocDocument,
@@ -253,6 +254,14 @@ function parseFib(wordDocument: Uint8Array) {
   return {
     tableStreamName: flags & 0x0200 ? '1Table' : '0Table',
     ccpText: readFibField(wordDocument, 76),
+    ccpFtn: readFibField(wordDocument, 80),
+    ccpHdr: readFibField(wordDocument, 84),
+    ccpMcr: readFibField(wordDocument, 88),
+    ccpAtn: readFibField(wordDocument, 92),
+    ccpEdn: readFibField(wordDocument, 96),
+    ccpTxbx: readFibField(wordDocument, 100),
+    fcPlcfSed: readFibField(wordDocument, 202),
+    lcbPlcfSed: readFibField(wordDocument, 206),
     fcPlcfBteChpx: readFibField(wordDocument, 250),
     lcbPlcfBteChpx: readFibField(wordDocument, 254),
     fcPlcfBtePapx: readFibField(wordDocument, 258),
@@ -261,7 +270,56 @@ function parseFib(wordDocument: Uint8Array) {
     lcbSttbfFfn: readFibField(wordDocument, 278),
     fcClx: readFibField(wordDocument, 418),
     lcbClx: readFibField(wordDocument, 422),
+    fcPlcSpaMom: readFibField(wordDocument, 474),
+    lcbPlcSpaMom: readFibField(wordDocument, 478),
+    fcDggInfo: readFibField(wordDocument, 554),
+    lcbDggInfo: readFibField(wordDocument, 558),
   };
+}
+
+/** 从首个节属性中识别 Word 页面边框，供每个估算页面重复绘制。 */
+function hasDocPageBorder(
+  wordDocument: Uint8Array,
+  tableStream: Uint8Array,
+  fib: DocFib,
+) {
+  if (!fib.fcPlcfSed || fib.lcbPlcfSed < 20) return false;
+  const plc = tableStream.slice(fib.fcPlcfSed, fib.fcPlcfSed + fib.lcbPlcfSed);
+  const count = Math.floor((plc.length - 4) / 16);
+  if (count <= 0) return false;
+  const plcView = new DataView(plc.buffer, plc.byteOffset, plc.byteLength);
+  const sedOffset = (count + 1) * 4;
+  const fcSepx = plcView.getInt32(sedOffset + 2, true);
+  if (fcSepx < 0 || fcSepx + 2 > wordDocument.length) return false;
+  const wordView = new DataView(
+    wordDocument.buffer,
+    wordDocument.byteOffset,
+    wordDocument.byteLength,
+  );
+  const byteCount = readUint16(wordView, fcSepx);
+  const grpprl = wordDocument.slice(
+    fcSepx + 2,
+    Math.min(wordDocument.length, fcSepx + 2 + byteCount),
+  );
+  const fixedOperandSizes = [1, 1, 2, 4, 2, 2, 0, 3];
+  let offset = 0;
+
+  while (offset + 2 <= grpprl.length) {
+    const sprm = grpprl[offset] | (grpprl[offset + 1] << 8);
+    const spra = sprm >>> 13;
+    const operandSize =
+      spra === 6 ? 1 + (grpprl[offset + 2] ?? 0) : fixedOperandSizes[spra];
+    if (
+      sprm >= 0xd234 &&
+      sprm <= 0xd237 &&
+      operandSize >= 9 &&
+      grpprl[offset + 8] !== 0
+    ) {
+      return true;
+    }
+    offset += 2 + operandSize;
+  }
+  return false;
 }
 
 /** 查找 `findPieceTable` 对应的目标数据。 */
@@ -318,6 +376,30 @@ function parsePieces(tableStream: Uint8Array, fib: DocFib) {
   }
 
   return pieces;
+}
+
+/** 按文档字符区间裁剪 piece table，并同步修正底层流偏移。 */
+function slicePiecesByCharacterRange(
+  pieces: DocPiece[],
+  rangeStart: number,
+  rangeEnd: number,
+) {
+  if (rangeEnd <= rangeStart) return [];
+  return pieces.flatMap((piece) => {
+    const charStart = Math.max(piece.charStart, rangeStart);
+    const charEnd = Math.min(piece.charEnd, rangeEnd);
+    if (charEnd <= charStart) return [];
+    const localStart = charStart - piece.charStart;
+    return [
+      {
+        ...piece,
+        charStart,
+        charEnd,
+        fileOffset:
+          piece.fileOffset + (piece.compressed ? localStart : localStart * 2),
+      },
+    ];
+  });
 }
 
 /** 执行 `quoteFontFamily` 封装的DOC 二进制解析处理步骤。 */
@@ -939,18 +1021,24 @@ function normalizeDocText(text: string) {
     .replace(
       /\u0013([^\u0014\u0015]*)(?:\u0014([^\u0015]*))?/g,
       (_match, instruction = '', result = '') =>
-        `${instruction}${result}`.includes('\u0001') ? '\u0001' : '',
+        Array.from(`${instruction}${result}`)
+          .filter(
+            (character) => character === '\u0001' || character === '\u0008',
+          )
+          .join(''),
     )
     .replace(/\u0015/g, '')
-    .replace(/[\u0002-\u0006\u0008\u000e-\u001f]/g, '');
+    .replace(/[\u0002-\u0006\u000e-\u001f]/g, '');
 }
 
 /** 将输入标准化为 `normalizeDocTextSegments` 返回的结构。 */
 function normalizeDocTextSegments(
   segments: DocTextSegment[],
   images: DocImage[] = [],
+  drawingImages: DocImage[] = [],
 ) {
   let imageIndex = 0;
+  let drawingImageIndex = 0;
 
   return segments.flatMap((segment) => {
     const anchorCount = Array.from(segment.text).filter(
@@ -964,17 +1052,26 @@ function normalizeDocTextSegments(
         : normalizeDocText(segment.text);
 
     return normalizedText
-      .split(/(\n|\u0001)/)
+      .split(/(\n|\u0001|\u0008)/)
       .map((text): DocImageSegment => {
         if (text === '\u0001') {
           const image = images[imageIndex];
           if (image) imageIndex += 1;
           return { text, style: segment.style, image };
         }
+        if (text === '\u0008') {
+          const image = drawingImages[drawingImageIndex];
+          if (image) drawingImageIndex += 1;
+          return { text, style: segment.style, image };
+        }
         return { text, style: segment.style };
       })
       .filter(
-        (item) => item.image || (item.text.length && item.text !== '\u0001'),
+        (item) =>
+          item.image ||
+          (item.text.length &&
+            item.text !== '\u0001' &&
+            item.text !== '\u0008'),
       );
   });
 }
@@ -1186,11 +1283,14 @@ function inferParagraphStyle(
       color: '#111827',
       textAlign: 'left',
       fontFamily: DOC_FONT_FAMILY,
+      spacingBefore: 30,
+      spacingAfter: 55,
       paddingBottom: 4,
     };
   }
 
   if (role === 'heading') {
+    const isContentPanel = text.includes('\u5185\u5bb9\u5757');
     return {
       fontSize: 16,
       fontWeight: 700,
@@ -1198,11 +1298,15 @@ function inferParagraphStyle(
       color: '#1f2937',
       textAlign: 'left',
       fontFamily: DOC_FONT_FAMILY,
-      paddingTop: 2,
-      paddingBottom: 2,
-      backgroundColor: text.includes('\u5185\u5bb9\u5757')
-        ? '#f8fafc'
-        : undefined,
+      spacingAfter: isContentPanel ? 20 : 16,
+      paddingTop: isContentPanel ? 10 : 4,
+      paddingRight: isContentPanel ? 18 : undefined,
+      paddingBottom: isContentPanel ? 10 : 4,
+      paddingLeft: isContentPanel ? 24 : undefined,
+      backgroundColor: isContentPanel ? '#fffaf7' : undefined,
+      borderColor: isContentPanel ? '#f4a261' : undefined,
+      borderWidth: isContentPanel ? 1 : undefined,
+      borderStyle: isContentPanel ? 'solid' : undefined,
     };
   }
 
@@ -1213,6 +1317,7 @@ function inferParagraphStyle(
     color: '#111827',
     textAlign: 'left',
     fontFamily: DOC_FONT_FAMILY,
+    spacingAfter: 18,
   };
 }
 
@@ -1322,7 +1427,7 @@ function createTableBlock(
               : tableStyle.stripedRowBackgroundColor,
           fontSize: rowIndex === 0 ? 13 : 13,
           fontWeight: rowIndex === 0 ? 700 : 400,
-          lineHeight: 1.65,
+          lineHeight: 1.25,
           fontFamily: DOC_FONT_FAMILY,
           paddingTop: 5,
           paddingRight: 8,
@@ -1366,10 +1471,15 @@ async function blocksFromSegments(
   segments: DocTextSegment[],
   images: DocImage[] = [],
   options: DocBlockBuildOptions,
+  drawingImages: DocImage[] = [],
 ): Promise<DocBlock[]> {
   const pendingTableRows: PendingTableCell[][] = [];
   const pendingListItems: ParsedListLine[] = [];
-  const normalizedSegments = normalizeDocTextSegments(segments, images);
+  const normalizedSegments = normalizeDocTextSegments(
+    segments,
+    images,
+    drawingImages,
+  );
   const builder = new DocBlockStreamBuilder({
     onBatch: options.onBatch
       ? ({ startIndex, blocks }) => options.onBatch!(startIndex, blocks)
@@ -1900,6 +2010,7 @@ export async function parseDocCore(
       `DOC \u6587\u4ef6\u7f3a\u5c11 ${fib.tableStreamName} \u6570\u636e\u6d41`,
     );
   }
+  const hasPageBorder = hasDocPageBorder(wordDocument, tableStream, fib);
 
   await context.checkpoint({
     stage: 'structure',
@@ -1927,13 +2038,44 @@ export async function parseDocCore(
     message: '正在解析 DOC 图片资源',
   });
   const images = extractDocImages(cfb, resources);
+  const textBoxStart =
+    fib.ccpText +
+    fib.ccpFtn +
+    fib.ccpHdr +
+    fib.ccpMcr +
+    fib.ccpAtn +
+    fib.ccpEdn;
+  const textBoxPieces = slicePiecesByCharacterRange(
+    pieces,
+    textBoxStart,
+    textBoxStart + fib.ccpTxbx,
+  );
+  const textBoxSegments = textSegmentsFromPieces(
+    wordDocument,
+    textBoxPieces,
+    characterRuns,
+    paragraphRuns,
+  );
+  const textBoxBlocks = await blocksFromSegments(textBoxSegments, [], {
+    checkpoint: context.checkpoint,
+  });
+  const textBoxes = textBoxBlocks.filter(
+    (block): block is DocParagraphBlock => block.type === 'paragraph',
+  );
+  const drawingImages = extractDocDrawingCanvases(
+    tableStream,
+    fib,
+    textBoxes,
+    resources,
+  );
   await flushDocResources(resources, context.output);
   const metadataDocument = buildDocDocument(
     context.fileName,
     [],
     [...warnings],
   );
-  metadataDocument.images = images;
+  metadataDocument.images = [...drawingImages, ...images];
+  metadataDocument.page.hasPageBorder = hasPageBorder;
   await context.output?.documentMetadata(
     documentMetadataFromDoc(metadataDocument),
   );
@@ -1942,18 +2084,25 @@ export async function parseDocCore(
     percent: 0.7,
     message: '正在解析 DOC 正文内容',
   });
+  const mainPieces = slicePiecesByCharacterRange(pieces, 0, fib.ccpText);
   const segments = textSegmentsFromPieces(
     wordDocument,
-    pieces,
+    mainPieces,
     characterRuns,
     paragraphRuns,
   );
-  const blocks = await blocksFromSegments(segments, images, {
-    checkpoint: context.checkpoint,
-    onBatch: context.output
-      ? (startIndex, batch) => context.output!.documentBlocks(startIndex, batch)
-      : undefined,
-  });
+  const blocks = await blocksFromSegments(
+    segments,
+    images,
+    {
+      checkpoint: context.checkpoint,
+      onBatch: context.output
+        ? (startIndex, batch) =>
+            context.output!.documentBlocks(startIndex, batch)
+        : undefined,
+    },
+    drawingImages,
+  );
 
   if (!blocks.length) {
     throw new Error(
@@ -1962,7 +2111,9 @@ export async function parseDocCore(
   }
 
   warnings.push(
-    images.length
+    drawingImages.length
+      ? '已恢复 DOC/WPS 主文档中的 OfficeArt 绘图画布；分页仍由前端按源页面尺寸估算。'
+      : images.length
       ? '当前为纯前端 DOC/WPS 降级预览，已提取到文档内图片，并按前端估算分页；暂未恢复精确锚点和复杂样式。'
       : '当前为纯前端 DOC/WPS 降级预览，已按前端估算分页；暂不还原复杂样式和图片锚点。',
   );
@@ -1972,7 +2123,8 @@ export async function parseDocCore(
     message: '正在组装 DOC 文档',
   });
   const document = buildDocDocument(context.fileName, blocks, warnings);
-  document.images = images;
+  document.images = [...drawingImages, ...images];
+  document.page.hasPageBorder = hasPageBorder;
   await context.output?.documentMetadata(documentMetadataFromDoc(document));
   return { document, resources };
 }

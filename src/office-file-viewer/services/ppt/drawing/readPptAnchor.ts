@@ -1,7 +1,8 @@
 import type { OfficeArtRecord } from '../../../shared/officeart';
 import type { PptShapeAnchor } from './types';
 
-const MASTER_UNIT_TO_PX = 1 / 8;
+/** PowerPoint 主坐标固定为 576 dpi，统一换算到浏览器的 96 dpi。 */
+const MASTER_UNIT_TO_PX = 96 / 576;
 
 /** 将 PPT ClientAnchor 的“上、左、右、下”主单位转换为像素。 */
 export function readPptAnchor(

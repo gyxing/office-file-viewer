@@ -73,13 +73,17 @@ function XlsxSheetTableComponent({
         </tr>
       </thead>
       <tbody>
-        {tableModel.rows.map(({ row, height, cells }) => (
+        {tableModel.rows.map(({ row, height, cells }, rowOffset) => (
           <tr key={row.index} style={{ height }}>
             <th className="office-file-xlsx-sheet-table__row-header">
               {row.index}
             </th>
             {cells.map(({ cell, colSpan, rowSpan }) => {
               const style = cell.style ?? {};
+              // 合并单元格按其跨越行的总高度裁切，避免文本反向撑大源文件行高。
+              const contentHeight = tableModel.rows
+                .slice(rowOffset, rowOffset + (rowSpan ?? 1))
+                .reduce((sum, item) => sum + item.height, 0);
               const fallbackBorder = style.border
                 ? `${style.borderWidth ?? 1}px solid ${
                     style.borderColor ?? '#b9c2d0'
@@ -102,7 +106,16 @@ function XlsxSheetTableComponent({
                     borderLeft: style.borderLeft ?? fallbackBorder,
                   }}
                 >
-                  {cell.value}
+                  <div
+                    className={`office-file-xlsx-sheet-table__cell-content${
+                      style.wrapText || colSpan || rowSpan
+                        ? ' office-file-xlsx-sheet-table__cell-content--clipped'
+                        : ''
+                    }`}
+                    style={{ maxHeight: contentHeight }}
+                  >
+                    {cell.value}
+                  </div>
                 </td>
               );
             })}

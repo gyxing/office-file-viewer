@@ -1,6 +1,7 @@
 // sheetRenderUtils 提供 XLSX 工作表渲染所需的样式转换和画布尺寸计算。
 import type { CSSProperties } from 'react';
 import type {
+  XlsxAnchorPoint,
   XlsxCell,
   XlsxCellStyle,
   XlsxSheet,
@@ -102,6 +103,105 @@ export function getSpreadsheetColumnLabel(columnIndex: number) {
 /** 保证来源文件中的尺寸异常时仍能得到可渲染的正数。 */
 function normalizeSheetDimension(value: number | undefined, fallback: number) {
   return Number.isFinite(value) && Number(value) > 0 ? Number(value) : fallback;
+}
+
+/** 描述可按浏览器实测尺寸重新定位的工作表浮动对象锚点。 */
+type XlsxFloatingAnchor = {
+  /** 浮动对象的起始锚点。 */
+  from: XlsxAnchorPoint;
+  /** 浮动对象的结束锚点。 */
+  to: XlsxAnchorPoint;
+};
+
+/** 描述浮动对象在工作表数据区中的实测矩形。 */
+export type XlsxMeasuredAnchorRect = {
+  /** 相对工作表数据区左侧的横坐标。 */
+  x: number;
+  /** 相对工作表数据区顶部的纵坐标。 */
+  y: number;
+  /** 按实测行列尺寸换算后的宽度。 */
+  width: number;
+  /** 按实测行列尺寸换算后的高度。 */
+  height: number;
+};
+
+/** 按可见行列的实测尺寸换算单个锚点轴坐标。 */
+function resolveMeasuredAnchorAxis(
+  items: Array<{ index: number; size: number; hidden?: boolean }>,
+  measuredSizes: number[],
+  targetIndex: number,
+  sourceOffset: number,
+  fallbackSize: number,
+) {
+  let position = 0;
+  let visibleIndex = 0;
+  for (const item of items) {
+    if (item.hidden) continue;
+    const sourceSize = normalizeSheetDimension(item.size, fallbackSize);
+    const measuredSize = normalizeSheetDimension(
+      measuredSizes[visibleIndex],
+      sourceSize,
+    );
+    if (item.index === targetIndex) {
+      return position + measuredSize * (sourceOffset / sourceSize);
+    }
+    if (item.index > targetIndex) return position;
+    position += measuredSize;
+    visibleIndex += 1;
+  }
+  return position;
+}
+
+/** 按浏览器最终表格行高重算浮动图片或图表的锚点矩形。 */
+export function getXlsxMeasuredAnchorRect(
+  sheet: XlsxSheet,
+  metrics: XlsxSheetMetrics,
+  anchor: XlsxFloatingAnchor,
+): XlsxMeasuredAnchorRect {
+  const columns = sheet.columns.map((column) => ({
+    index: column.index,
+    size: column.width,
+    hidden: column.hidden,
+  }));
+  const rows = sheet.rows.map((row) => ({
+    index: row.index,
+    size: row.height,
+    hidden: row.hidden,
+  }));
+  const fromX = resolveMeasuredAnchorAxis(
+    columns,
+    metrics.visibleColumnWidths,
+    anchor.from.column,
+    anchor.from.columnOffset,
+    metrics.defaultColumnWidth,
+  );
+  const toX = resolveMeasuredAnchorAxis(
+    columns,
+    metrics.visibleColumnWidths,
+    anchor.to.column,
+    anchor.to.columnOffset,
+    metrics.defaultColumnWidth,
+  );
+  const fromY = resolveMeasuredAnchorAxis(
+    rows,
+    metrics.visibleRowHeights,
+    anchor.from.row,
+    anchor.from.rowOffset,
+    metrics.defaultRowHeight,
+  );
+  const toY = resolveMeasuredAnchorAxis(
+    rows,
+    metrics.visibleRowHeights,
+    anchor.to.row,
+    anchor.to.rowOffset,
+    metrics.defaultRowHeight,
+  );
+  return {
+    x: fromX,
+    y: fromY,
+    width: Math.max(1, toX - fromX),
+    height: Math.max(1, toY - fromY),
+  };
 }
 
 /** 判断工作表最后一个可见行是否包含会实际显示的内容或格式。 */

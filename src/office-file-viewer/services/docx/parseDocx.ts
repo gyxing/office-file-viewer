@@ -1044,6 +1044,47 @@ function readDrawingImageTransform(
   };
 }
 
+/** 应用 DrawingML 颜色变换，避免浅色主题填充退化为高饱和度基色。 */
+function applyDrawingColorTransforms(
+  color: string | undefined,
+  colorNode: Element | null | undefined,
+) {
+  if (!color || !colorNode) return color;
+  const normalized = color.replace('#', '');
+  if (!/^[0-9a-f]{6}$/i.test(normalized)) return color;
+
+  const rgb = Number.parseInt(normalized, 16);
+  let red = (rgb >> 16) & 255;
+  let green = (rgb >> 8) & 255;
+  let blue = rgb & 255;
+  Array.from(colorNode.children).forEach((transform) => {
+    const value = Number(attr(transform, 'val'));
+    if (!Number.isFinite(value)) return;
+    const ratio = Math.max(0, Math.min(1, value / 100000));
+    if (matchesLocalName(transform, 'tint')) {
+      red += (255 - red) * ratio;
+      green += (255 - green) * ratio;
+      blue += (255 - blue) * ratio;
+    } else if (matchesLocalName(transform, 'shade')) {
+      red *= ratio;
+      green *= ratio;
+      blue *= ratio;
+    } else if (matchesLocalName(transform, 'lumMod')) {
+      red *= ratio;
+      green *= ratio;
+      blue *= ratio;
+    } else if (matchesLocalName(transform, 'lumOff')) {
+      red += 255 * ratio;
+      green += 255 * ratio;
+      blue += 255 * ratio;
+    }
+  });
+
+  return `#${[red, green, blue]
+    .map((channel) => clamp255(channel).toString(16).padStart(2, '0'))
+    .join('')}`;
+}
+
 /** 读取 `readDrawingColor` 所需的源数据，供 DOCX 解析使用。 */
 function readDrawingColor(
   node: Element | null | undefined,
@@ -1060,13 +1101,21 @@ function readDrawingColor(
   const isTransparent = (colorNode: Element | null | undefined) =>
     attr(childByLocalName(colorNode, 'alpha'), 'val') === '0';
   return (
-    (isTransparent(srgb) ? undefined : parseHexColor(attr(srgb, 'val'))) ??
+    (isTransparent(srgb)
+      ? undefined
+      : applyDrawingColorTransforms(parseHexColor(attr(srgb, 'val')), srgb)) ??
     (isTransparent(scheme)
       ? undefined
-      : resolveOfficeThemeColor(attr(scheme, 'val'), theme)) ??
+      : applyDrawingColorTransforms(
+          resolveOfficeThemeColor(attr(scheme, 'val'), theme),
+          scheme,
+        )) ??
     (isTransparent(sys)
       ? undefined
-      : parseHexColor(attr(sys, 'lastClr') ?? attr(sys, 'val')))
+      : applyDrawingColorTransforms(
+          parseHexColor(attr(sys, 'lastClr') ?? attr(sys, 'val')),
+          sys,
+        ))
   );
 }
 
@@ -1196,7 +1245,13 @@ function readDrawingShapeKind(
   const preset = attr(geometry, 'prst');
   if (preset === 'line') return 'line';
   if (preset === 'ellipse') return 'ellipse';
-  if (preset === 'star5' || preset === 'moon') return 'path';
+  if (
+    preset === 'star5' ||
+    preset === 'moon' ||
+    preset === 'cloud' ||
+    preset === 'horizontalScroll'
+  )
+    return 'path';
   if (childByLocalName(spPr, 'custGeom')) return 'path';
   return 'rect';
 }
@@ -1342,6 +1397,38 @@ function convertDrawingPresetGeometry(
       `A ${formatPathNumber(width * 0.42)} ${formatPathNumber(
         height * 0.43,
       )} 0 1 1 ${formatPathNumber(startX)} 0`,
+      'Z',
+    ].join(' ');
+  }
+
+  const point = (x: number, y: number) =>
+    `${formatPathNumber(width * x)} ${formatPathNumber(height * y)}`;
+  if (preset === 'cloud') {
+    return [
+      `M ${point(0.18, 0.78)}`,
+      `C ${point(0.06, 0.78)} ${point(0.01, 0.67)} ${point(0.07, 0.56)}`,
+      `C ${point(0.02, 0.42)} ${point(0.14, 0.29)} ${point(0.29, 0.31)}`,
+      `C ${point(0.34, 0.12)} ${point(0.56, 0.09)} ${point(0.67, 0.25)}`,
+      `C ${point(0.82, 0.21)} ${point(0.96, 0.33)} ${point(0.93, 0.49)}`,
+      `C ${point(1.02, 0.58)} ${point(0.96, 0.73)} ${point(0.84, 0.77)}`,
+      `C ${point(0.72, 0.9)} ${point(0.54, 0.88)} ${point(0.47, 0.8)}`,
+      `C ${point(0.37, 0.91)} ${point(0.23, 0.88)} ${point(0.18, 0.78)}`,
+      'Z',
+    ].join(' ');
+  }
+  if (preset === 'horizontalScroll') {
+    return [
+      `M ${point(0.12, 0.08)}`,
+      `L ${point(0.88, 0.08)}`,
+      `C ${point(0.96, 0.08)} ${point(1, 0.14)} ${point(1, 0.22)}`,
+      `L ${point(0.93, 0.3)}`,
+      `L ${point(0.93, 0.78)}`,
+      `C ${point(0.93, 0.87)} ${point(0.87, 0.92)} ${point(0.79, 0.92)}`,
+      `L ${point(0.12, 0.92)}`,
+      `C ${point(0.04, 0.92)} ${point(0, 0.86)} ${point(0, 0.78)}`,
+      `L ${point(0.08, 0.7)}`,
+      `L ${point(0.08, 0.22)}`,
+      `C ${point(0.08, 0.14)} ${point(0.13, 0.08)} ${point(0.2, 0.08)}`,
       'Z',
     ].join(' ');
   }

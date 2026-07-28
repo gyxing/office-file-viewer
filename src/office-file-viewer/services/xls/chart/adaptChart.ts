@@ -70,6 +70,7 @@ export function adaptBiff8Chart(source: Biff8ChartModel): AdaptedBiff8Chart {
         color: series.color,
         marker: series.marker,
         lineWidth: series.lineWidth,
+        dataLabels: series.dataLabels,
       })),
       showLegend: source.showLegend,
       legendPosition: source.legendPosition,

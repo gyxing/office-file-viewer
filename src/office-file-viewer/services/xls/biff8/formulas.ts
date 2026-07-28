@@ -12,6 +12,8 @@ export type FormulaDecodeContext = {
   definedNames: Biff8DefinedName[];
   /** FormulaDecodeContext 包含的 sheets 有序集合。 */
   sheets: Biff8SheetDescriptor[];
+  /** BIFF8 ExternSheet 表到当前工作簿工作表索引的映射。 */
+  externalSheets?: Array<{ firstSheetIndex?: number }>;
 };
 
 /** 描述 DecodedFormula 在 XLS/BIFF8 解析中的数据结构。 */
@@ -391,7 +393,10 @@ export function decodeBiff8Formula(
           stack.push(`_ExternalName${reader.readUint32()}`);
           break;
         case 0x3a: {
-          const sheetIndex = reader.readUint16();
+          const externalSheetIndex = reader.readUint16();
+          const sheetIndex =
+            context.externalSheets?.[externalSheetIndex]?.firstSheetIndex ??
+            externalSheetIndex;
           const reference = readCellReference(reader, context);
           const sheet =
             context.sheets[sheetIndex]?.name ?? `Sheet${sheetIndex + 1}`;
@@ -399,7 +404,10 @@ export function decodeBiff8Formula(
           break;
         }
         case 0x3b: {
-          const sheetIndex = reader.readUint16();
+          const externalSheetIndex = reader.readUint16();
+          const sheetIndex =
+            context.externalSheets?.[externalSheetIndex]?.firstSheetIndex ??
+            externalSheetIndex;
           const reference = readAreaReference(reader, context);
           const sheet =
             context.sheets[sheetIndex]?.name ?? `Sheet${sheetIndex + 1}`;

@@ -48,6 +48,8 @@ export type DocPage = {
   marginBottom: number;
   /** DocPage 的对应间距，单位为标准化渲染像素。 */
   marginLeft: number;
+  /** 文档节是否声明了需要在每页重复绘制的页面边框。 */
+  hasPageBorder?: boolean;
 };
 
 /** 描述 DocParagraph 在 DOC 二进制解析中的数据结构。 */
@@ -180,6 +182,12 @@ export type DocTextStyle = {
   color?: string;
   /** DocTextStyle 的背景颜色，使用 CSS 颜色值；未提供时沿用来源格式或渲染器的默认规则。 */
   backgroundColor?: string;
+  /** 段落边框颜色；未提供时不绘制边框。 */
+  borderColor?: string;
+  /** 段落边框宽度，单位为标准化渲染像素。 */
+  borderWidth?: number;
+  /** 段落边框线型。 */
+  borderStyle?: 'solid' | 'dashed' | 'dotted';
   /** DocTextStyle 的字号，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
   fontSize?: number;
   /** DocTextStyle 的字体粗细值；未提供时沿用来源格式或渲染器的默认规则。 */

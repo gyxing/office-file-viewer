@@ -93,6 +93,13 @@ export type Biff8DefinedName = {
 export type Biff8WorkbookGlobals = {
   /** Biff8WorkbookGlobals 包含的 sheets 有序集合。 */
   sheets: Biff8SheetDescriptor[];
+  /** BIFF8 ExternSheet 中可解析为当前工作簿的工作表引用。 */
+  externalSheets: Array<{
+    /** 外部引用表指向的首个工作表索引。 */
+    firstSheetIndex?: number;
+    /** 外部引用表指向的末个工作表索引。 */
+    lastSheetIndex?: number;
+  }>;
   /** Biff8WorkbookGlobals 包含的 sharedStrings 有序集合。 */
   sharedStrings: string[];
   /** Biff8WorkbookGlobals 包含的 fonts 有序集合。 */

@@ -73,7 +73,7 @@ function TextRendererComponent({ element, renderKey }: TextRendererProps) {
         color: colorWithOpacity(style.color ?? '#172033', style.opacity),
         fontFamily: style.fontFamily,
         fontSize: style.fontSize,
-        fontWeight: style.bold ? 600 : 400,
+        fontWeight: style.bold ? 400 : 300,
         fontStyle: style.italic ? 'italic' : 'normal',
         textDecoration: textDecoration(style),
         textTransform: style.allCaps ? 'uppercase' : undefined,
@@ -107,8 +107,9 @@ function TextRendererComponent({ element, renderKey }: TextRendererProps) {
         paddingTop: style.marginTop ?? 0,
         paddingBottom: style.marginBottom ?? 0,
         letterSpacing: 0,
-        wordBreak: 'break-word',
-        overflowWrap: 'anywhere',
+        // PowerPoint 不会在连续数字或英文单词中间强制断行，窄文本框应保留原词并裁切。
+        wordBreak: 'normal',
+        overflowWrap: 'normal',
       }}
     >
       {isVectorShape ? (
@@ -215,6 +216,8 @@ function TextRendererComponent({ element, renderKey }: TextRendererProps) {
           ) : null}
           {paragraph.runs.map((run, runIndex) => {
             const runStyle = run.style ?? {};
+            const underline = runStyle.underline ?? style.underline;
+            const strike = runStyle.strike ?? style.strike;
             return (
               <span
                 key={runIndex}
@@ -225,22 +228,20 @@ function TextRendererComponent({ element, renderKey }: TextRendererProps) {
                   ),
                   fontFamily: runStyle.fontFamily ?? style.fontFamily,
                   fontSize: runStyle.fontSize ?? style.fontSize,
-                  fontWeight: runStyle.bold || style.bold ? 600 : 400,
+                  fontWeight: runStyle.bold ?? style.bold ? 400 : 300,
                   fontStyle:
-                    runStyle.italic || style.italic ? 'italic' : 'normal',
+                    runStyle.italic ?? style.italic ? 'italic' : 'normal',
                   textDecoration:
                     [
-                      runStyle.underline || style.underline ? 'underline' : '',
-                      runStyle.strike && runStyle.strike !== 'none'
-                        ? 'line-through'
-                        : '',
+                      underline ? 'underline' : '',
+                      strike && strike !== 'none' ? 'line-through' : '',
                     ]
                       .filter(Boolean)
                       .join(' ') || 'none',
                   textTransform:
-                    runStyle.allCaps || style.allCaps ? 'uppercase' : undefined,
+                    runStyle.allCaps ?? style.allCaps ? 'uppercase' : undefined,
                   fontVariant:
-                    runStyle.smallCaps || style.smallCaps
+                    runStyle.smallCaps ?? style.smallCaps
                       ? 'small-caps'
                       : undefined,
                   verticalAlign:

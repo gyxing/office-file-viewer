@@ -920,18 +920,28 @@ function parseShadowNode(
   theme: ThemeModel,
 ): ShadowStyle | undefined {
   if (!node) return undefined;
+  // 阴影参数位于 effectLst/effectDag 内的具体阴影节点，不能从效果容器读取。
+  const shadowNode =
+    (matchesLocalName(node, 'outerShdw') || matchesLocalName(node, 'innerShdw')
+      ? node
+      : childByLocalName(node, 'outerShdw') ??
+        childByLocalName(node, 'innerShdw') ??
+        descendantByLocalName(node, 'outerShdw') ??
+        descendantByLocalName(node, 'innerShdw')) ?? undefined;
+  if (!shadowNode) return undefined;
   const colorNode =
-    childByLocalName(node, 'srgbClr') ?? childByLocalName(node, 'schemeClr');
+    childByLocalName(shadowNode, 'srgbClr') ??
+    childByLocalName(shadowNode, 'schemeClr');
   const color = parseColorNode(colorNode, theme);
   const opacity = parseRatioNode(colorNode);
-  const blur = attr(node, 'blurRad')
-    ? Number(attr(node, 'blurRad')) / 12700
+  const blur = attr(shadowNode, 'blurRad')
+    ? Number(attr(shadowNode, 'blurRad')) / 12700
     : undefined;
-  const dist = attr(node, 'dist')
-    ? Number(attr(node, 'dist')) / 12700
+  const dist = attr(shadowNode, 'dist')
+    ? Number(attr(shadowNode, 'dist')) / 12700
     : undefined;
-  const dir = attr(node, 'dir')
-    ? (Number(attr(node, 'dir')) / 60000) * (Math.PI / 180)
+  const dir = attr(shadowNode, 'dir')
+    ? (Number(attr(shadowNode, 'dir')) / 60000) * (Math.PI / 180)
     : undefined;
   return {
     color,

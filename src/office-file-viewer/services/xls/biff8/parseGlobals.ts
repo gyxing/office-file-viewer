@@ -242,6 +242,8 @@ export async function parseBiff8Globals(
 ): Promise<Biff8WorkbookGlobals> {
   const cursor = validateGlobalsBof(workbookStream);
   const sheets: Biff8SheetDescriptor[] = [];
+  const externalSheets: Biff8WorkbookGlobals['externalSheets'] = [];
+  const internalSupportingBooks: boolean[] = [];
   const sharedStrings: string[] = [];
   const fonts: Biff8Font[] = [];
   const formats = new Map<number, string>(
@@ -279,6 +281,33 @@ export async function parseBiff8Globals(
       case BIFF8_RECORD.BOUNDSHEET8:
         sheets.push(parseBoundSheet(record));
         break;
+      case BIFF8_RECORD.SUPBOOK: {
+        const reader = new Biff8Reader(record.data);
+        reader.readUint16();
+        internalSupportingBooks.push(
+          reader.remaining >= 2 && reader.readUint16() === 0x0401,
+        );
+        break;
+      }
+      case BIFF8_RECORD.EXTERNSHEET: {
+        const reader = new Biff8Reader(record.data);
+        const count = reader.readUint16();
+        for (
+          let index = 0;
+          index < count && reader.remaining >= 6;
+          index += 1
+        ) {
+          const supportingBook = reader.readUint16();
+          const firstSheetIndex = reader.readInt16();
+          const lastSheetIndex = reader.readInt16();
+          externalSheets.push(
+            internalSupportingBooks[supportingBook] && firstSheetIndex >= 0
+              ? { firstSheetIndex, lastSheetIndex }
+              : {},
+          );
+        }
+        break;
+      }
       case BIFF8_RECORD.FONT:
         fonts.push(parseFont(record.data));
         break;
@@ -360,6 +389,7 @@ export async function parseBiff8Globals(
 
   return {
     sheets,
+    externalSheets,
     sharedStrings,
     fonts,
     formats,

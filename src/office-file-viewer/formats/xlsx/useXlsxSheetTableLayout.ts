@@ -1,4 +1,4 @@
-// useXlsxSheetTableLayout 读取浏览器实际表格布局，供空白补位层保持行高对齐。
+// useXlsxSheetTableLayout 读取浏览器实际表格布局，统一校准补位层和浮动对象锚点。
 import type { RefObject } from 'react';
 import { useEffect, useState } from 'react';
 import type { XlsxSheet } from '../../services/xlsx/types';
@@ -20,16 +20,32 @@ function areRowHeightsEqual(current: number[], next: number[]) {
   );
 }
 
+/** 将浏览器亚像素测量值归一化，避免 ResizeObserver 因浮点抖动重复更新。 */
+function normalizeMeasuredSize(value: number) {
+  return Math.round(value * 1000) / 1000;
+}
+
 /** 从真实 table、表头和数据行节点读取未受 CSS zoom 影响的布局尺寸。 */
 function readTableLayout(table: HTMLTableElement): XlsxMeasuredTableLayout {
-  const headerRow = table.tHead?.rows.item(0);
+  const tableRect = table.getBoundingClientRect();
+  const renderedScale =
+    table.offsetWidth > 0 ? tableRect.width / table.offsetWidth : 1;
+  const logicalScale =
+    Number.isFinite(renderedScale) && renderedScale > 0 ? renderedScale : 1;
+  const readLogicalHeight = (element: HTMLElement | undefined) =>
+    element
+      ? normalizeMeasuredSize(
+          element.getBoundingClientRect().height / logicalScale,
+        )
+      : 0;
+  const headerRow = table.tHead?.rows.item(0) ?? undefined;
   const body = table.tBodies.item(0);
   const visibleRowHeights = body
-    ? Array.from(body.rows, (row) => row.offsetHeight)
+    ? Array.from(body.rows, (row) => readLogicalHeight(row))
     : [];
   return {
-    tableHeight: table.offsetHeight,
-    columnHeaderHeight: headerRow?.offsetHeight ?? 0,
+    tableHeight: normalizeMeasuredSize(tableRect.height / logicalScale),
+    columnHeaderHeight: readLogicalHeight(headerRow),
     visibleRowHeights,
   };
 }
@@ -37,8 +53,8 @@ function readTableLayout(table: HTMLTableElement): XlsxMeasuredTableLayout {
 /**
  * 持续读取当前工作表真实表格的布局结果。
  *
- * 表格中的换行文本和合并单元格可能把行高撑到源文件记录值以上，因此补位层必须
- * 使用浏览器最终布局，而不能只依赖解析模型。
+ * 表格中的换行文本和合并单元格可能把行高撑到源文件记录值以上，因此补位层与
+ * 浮动对象都必须使用浏览器最终布局，不能只依赖解析模型。
  */
 export function useXlsxSheetTableLayout(
   tableRef: RefObject<HTMLTableElement>,

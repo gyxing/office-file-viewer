@@ -17,6 +17,7 @@ export function readPptSlide(
   width: number,
   height: number,
   theme: ThemeModel,
+  fonts: Map<number, string>,
   context: PptParseContext,
 ): PptSlideModel | undefined {
   const offset = editChain.persistOffsets.get(descriptor.persistId);
@@ -64,7 +65,7 @@ export function readPptSlide(
   }
 
   const parsedDrawing = drawing
-    ? parsePptDrawing(drawing, theme, context)
+    ? parsePptDrawing(drawing, theme, fonts, context)
     : undefined;
   return {
     id: `ppt-slide-${descriptor.persistId}`,

@@ -144,6 +144,7 @@ function parseAiFormulas(
         column: 0,
         definedNames: context.workbook.globals.definedNames,
         sheets: context.workbook.globals.sheets,
+        externalSheets: context.workbook.globals.externalSheets,
       }).formula,
     );
   }
@@ -166,6 +167,26 @@ function parseSeriesName(node: Biff8ChartRecordNode) {
   return Array.from({ length }, (_, index) =>
     String.fromCharCode(view.getUint16(index * 2, true)),
   ).join('');
+}
+
+/** 读取系列级数据标签显示标志。 */
+function parseSeriesDataLabels(
+  node: Biff8ChartRecordNode,
+): Biff8ChartSeries['dataLabels'] | undefined {
+  const attached = collectChartNodes(
+    node.children,
+    BIFF8_RECORD.ATTACHEDLABEL,
+  )[0];
+  if (!attached || attached.data.length < 2) return undefined;
+  const flags = new Biff8Reader(attached.data).readUint16();
+  const showLabelAndPercent = Boolean(flags & 0x0004);
+  return {
+    showVal: Boolean(flags & 0x0001),
+    showPercent: Boolean(flags & 0x0002) || showLabelAndPercent,
+    showCatName: Boolean(flags & 0x0010) || showLabelAndPercent,
+    showBubbleSize: Boolean(flags & 0x0020),
+    showSerName: Boolean(flags & 0x0040),
+  };
 }
 
 /** 解析 Series、AI 引用和三类图表缓存。 */
@@ -191,26 +212,37 @@ export function parseBiff8ChartSeries(
     );
     const cacheValues = cacheColumn(cache, CHART_CACHE_KIND.VALUES, index);
     const cacheBubbles = cacheColumn(cache, CHART_CACHE_KIND.BUBBLES, index);
-    const referenceName = resolveCells(formulas.get(0), context)[0]?.value;
+    const referencedName = resolveCells(formulas.get(0), context)[0]?.value;
+    const referencedCategories = resolveCells(formulas.get(2), context).map(
+      (cell) => cell.value,
+    );
+    const referencedValues = resolveCells(formulas.get(1), context).map(
+      (cell) => cell.value,
+    );
+    const referencedBubbles = resolveCells(formulas.get(3), context).map(
+      (cell) => cell.value,
+    );
+    const inlineName = parseSeriesName(node)?.trim();
     return {
       name:
-        parseSeriesName(node) ??
-        (referenceName == null ? `系列 ${index + 1}` : String(referenceName)),
+        inlineName ||
+        (referencedName == null ? `系列 ${index + 1}` : String(referencedName)),
       groupIndex,
-      categories: (cacheCategories.length
-        ? cacheCategories
-        : resolveCells(formulas.get(2), context).map((cell) => cell.value)
+      // BIFF8 图表缓存仅在源引用不可用时兜底，正常情况下工作表值才是权威数据。
+      categories: (referencedCategories.length
+        ? referencedCategories
+        : cacheCategories
       ).map((value) =>
         typeof value === 'boolean' ? (value ? 'TRUE' : 'FALSE') : value,
       ),
-      values: (cacheValues.length
-        ? cacheValues
-        : resolveCells(formulas.get(1), context).map((cell) => cell.value)
+      values: (referencedValues.length ? referencedValues : cacheValues).map(
+        (value) => (typeof value === 'number' ? value : null),
+      ),
+      bubbleSizes: (referencedBubbles.length
+        ? referencedBubbles
+        : cacheBubbles
       ).map((value) => (typeof value === 'number' ? value : null)),
-      bubbleSizes: (cacheBubbles.length
-        ? cacheBubbles
-        : resolveCells(formulas.get(3), context).map((cell) => cell.value)
-      ).map((value) => (typeof value === 'number' ? value : null)),
+      dataLabels: parseSeriesDataLabels(node),
     };
   });
 }

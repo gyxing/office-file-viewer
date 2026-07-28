@@ -1,6 +1,6 @@
 // PptxThumbnail 复用单页幻灯片渲染能力，生成缩略图预览。
 import type { CSSProperties } from 'react';
-import React, { memo, useMemo } from 'react';
+import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { SlideModel } from '../../services/pptx/types';
 import { PptxSlide } from './PptxSlide';
 import { colorWithOpacity } from './renderers/paint';
@@ -15,6 +15,32 @@ type PptxThumbnailProps = {
 
 /** 渲染 PptxThumbnailComponent 组件。 */
 function PptxThumbnailComponent({ slide, active }: PptxThumbnailProps) {
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const [thumbnailScale, setThumbnailScale] = useState(0.18);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      return undefined;
+    }
+
+    const updateScale = () => {
+      const nextScale = canvas.clientWidth / slide.width;
+      setThumbnailScale((currentScale) =>
+        Math.abs(currentScale - nextScale) < 0.0001 ? currentScale : nextScale,
+      );
+    };
+
+    updateScale();
+    if (typeof ResizeObserver === 'undefined') {
+      return undefined;
+    }
+
+    const observer = new ResizeObserver(updateScale);
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, [slide.width]);
+
   const canvasStyle = useMemo<CSSProperties>(
     () => ({
       aspectRatio: `${slide.width / slide.height}`,
@@ -38,6 +64,14 @@ function PptxThumbnailComponent({ slide, active }: PptxThumbnailProps) {
     }),
     [slide.background?.imageRef],
   );
+  const contentStyle = useMemo<CSSProperties>(
+    () => ({
+      width: slide.width,
+      height: slide.height,
+      transform: `scale(${thumbnailScale})`,
+    }),
+    [slide.height, slide.width, thumbnailScale],
+  );
 
   return (
     <div
@@ -48,14 +82,21 @@ function PptxThumbnailComponent({ slide, active }: PptxThumbnailProps) {
         .filter(Boolean)
         .join(' ')}
     >
-      <div className="office-file-pptx-thumbnail__canvas" style={canvasStyle}>
+      <div
+        ref={canvasRef}
+        className="office-file-pptx-thumbnail__canvas"
+        style={canvasStyle}
+      >
         {slide.background?.imageRef ? (
           <div
             className="office-file-pptx-thumbnail__background"
             style={backgroundStyle}
           />
         ) : null}
-        <div className="office-file-pptx-thumbnail__content">
+        <div
+          className="office-file-pptx-thumbnail__content"
+          style={contentStyle}
+        >
           {/* 缩略图复用完整 Slide 渲染，保证背景、图形、表格和图表与主画布一致。 */}
           <PptxSlide slide={slide} zoom={100} renderKey={`thumb-${slide.id}`} />
         </div>

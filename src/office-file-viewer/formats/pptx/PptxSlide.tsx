@@ -22,7 +22,6 @@ type PptxSlideProps = {
 
 const ChartFrame = memo(function ChartFrame({
   element,
-  zoom,
 }: {
   /** 当前局部结构 当前负责渲染的演示文稿元素模型。 */
   element: Extract<
@@ -31,8 +30,6 @@ const ChartFrame = memo(function ChartFrame({
       /** 用于区分 当前结构 不同结构分支的类型标识。 */ type: 'chart';
     }
   >;
-  /** 当前预览缩放比例。 */
-  zoom: number;
 }) {
   const frameStyle = useMemo<CSSProperties>(
     () => ({
@@ -50,7 +47,6 @@ const ChartFrame = memo(function ChartFrame({
         chart={element.chart}
         width={element.width}
         height={element.height}
-        zoom={zoom}
       />
     </div>
   );
@@ -73,7 +69,8 @@ function PptxSlideComponent({ slide, zoom, renderKey }: PptxSlideProps) {
   );
   const backgroundStyle = useMemo<CSSProperties>(
     () => ({
-      background: colorWithOpacity(
+      // 避免 background 简写重置样式表中的 cover，图片背景必须按整页尺寸铺满。
+      backgroundColor: colorWithOpacity(
         slide.background?.fill ?? '#fff',
         slide.background?.fillOpacity,
       ),
@@ -118,9 +115,7 @@ function PptxSlideComponent({ slide, zoom, renderKey }: PptxSlideProps) {
             case 'table':
               return <TableRenderer key={element.id} element={element} />;
             case 'chart':
-              return (
-                <ChartFrame key={element.id} element={element} zoom={zoom} />
-              );
+              return <ChartFrame key={element.id} element={element} />;
             case 'unsupported':
               return <UnsupportedRenderer key={element.id} element={element} />;
             default:

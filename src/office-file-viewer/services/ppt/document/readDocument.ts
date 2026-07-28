@@ -8,13 +8,15 @@ import type {
   PptParseContext,
   PptSlideModel,
 } from '../types';
+import { readPptFonts } from './readFonts';
 import { readPptMaster } from './readMaster';
 import { readPptSlide } from './readSlide';
 import { readPptSlideLists } from './readSlideLists';
 
 const DEFAULT_SLIDE_WIDTH = 960;
 const DEFAULT_SLIDE_HEIGHT = 540;
-const MASTER_UNIT_TO_PX = 1 / 8;
+/** PowerPoint 主坐标固定为 576 dpi，统一换算到浏览器的 96 dpi。 */
+const MASTER_UNIT_TO_PX = 96 / 576;
 
 /** 描述 PptDocumentStructure 在 PPT 二进制解析中的数据结构。 */
 export type PptDocumentStructure = Pick<
@@ -83,6 +85,8 @@ export async function readPptBinaryDocument(
   }
 
   const { width, height } = readDocumentSize(documentStream, documentOffset);
+  const fonts = readPptFonts(documentStream, documentRecord);
+  const defaultFont = fonts.get(0) ?? fonts.values().next().value;
   const theme: ThemeModel = {
     colorScheme: {
       lt1: '#ffffff',
@@ -90,7 +94,7 @@ export async function readPptBinaryDocument(
       accent1: '#4472c4',
       accent2: '#ed7d31',
     },
-    fontScheme: {},
+    fontScheme: { minorLatin: defaultFont },
     colorMap: {
       bg1: 'lt1',
       tx1: 'dk1',
@@ -111,6 +115,7 @@ export async function readPptBinaryDocument(
           editChain,
           descriptor,
           theme,
+          fonts,
           context,
         );
         return master ? ([master.id, master] as const) : undefined;
@@ -130,6 +135,7 @@ export async function readPptBinaryDocument(
       width,
       height,
       theme,
+      fonts,
       context,
     );
     if (slide) {

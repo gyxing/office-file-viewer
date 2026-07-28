@@ -1,29 +1,44 @@
 // XlsxFloatingCharts 渲染锚定在工作表画布上的浮动图表。
 import type { CSSProperties } from 'react';
 import React, { memo, useMemo } from 'react';
-import type { XlsxChart } from '../../services/xlsx/types';
+import type { XlsxChart, XlsxSheet } from '../../services/xlsx/types';
 import { OfficeChartView } from '../../shared/chart/OfficeChartView';
+import {
+  getXlsxMeasuredAnchorRect,
+  XLSX_ROW_HEADER_WIDTH,
+  type XlsxMeasuredAnchorRect,
+  type XlsxSheetMetrics,
+} from './sheetRenderUtils';
 
 /** 定义 XlsxFloatingCharts 组件可接收的属性。 */
 type XlsxFloatingChartsProps = {
-  /** XlsxFloatingChartsProps 包含的 charts 有序集合。 */
-  charts: XlsxChart[];
+  /** 当前关联的工作表模型。 */
+  sheet: XlsxSheet;
+  /** 浏览器最终表格布局对应的工作表指标。 */
+  metrics: XlsxSheetMetrics;
 };
 
 /** 渲染 XlsxFloatingChart 组件。 */
 function XlsxFloatingChart({
   chart,
+  rect,
+  columnHeaderHeight,
 }: {
-  /** 当前结构 当前关联的图表模型。 */ chart: XlsxChart;
+  /** 当前关联的图表模型。 */
+  chart: XlsxChart;
+  /** 按浏览器最终表格布局重算的锚点矩形。 */
+  rect: XlsxMeasuredAnchorRect;
+  /** 浏览器最终计算出的列标题行高度。 */
+  columnHeaderHeight: number;
 }) {
   const chartStyle = useMemo<CSSProperties>(
     () => ({
-      left: 48 + chart.x,
-      top: 28 + chart.y,
-      width: chart.width,
-      height: chart.height,
+      left: XLSX_ROW_HEADER_WIDTH + rect.x,
+      top: columnHeaderHeight + rect.y,
+      width: rect.width,
+      height: rect.height,
     }),
-    [chart.height, chart.width, chart.x, chart.y],
+    [columnHeaderHeight, rect.height, rect.width, rect.x, rect.y],
   );
 
   return (
@@ -33,8 +48,8 @@ function XlsxFloatingChart({
     >
       <OfficeChartView
         chart={chart.chart}
-        width={chart.width}
-        height={chart.height}
+        width={rect.width}
+        height={rect.height}
         zoom={100}
       />
     </div>
@@ -44,11 +59,28 @@ function XlsxFloatingChart({
 const MemoXlsxFloatingChart = memo(XlsxFloatingChart);
 
 /** 渲染 XlsxFloatingChartsComponent 组件。 */
-function XlsxFloatingChartsComponent({ charts }: XlsxFloatingChartsProps) {
+function XlsxFloatingChartsComponent({
+  sheet,
+  metrics,
+}: XlsxFloatingChartsProps) {
+  const positionedCharts = useMemo(
+    () =>
+      sheet.charts.map((chart) => ({
+        chart,
+        rect: getXlsxMeasuredAnchorRect(sheet, metrics, chart),
+      })),
+    [metrics, sheet],
+  );
+
   return (
     <>
-      {charts.map((chart) => (
-        <MemoXlsxFloatingChart key={chart.id} chart={chart} />
+      {positionedCharts.map(({ chart, rect }) => (
+        <MemoXlsxFloatingChart
+          key={chart.id}
+          chart={chart}
+          rect={rect}
+          columnHeaderHeight={metrics.columnHeaderHeight}
+        />
       ))}
     </>
   );

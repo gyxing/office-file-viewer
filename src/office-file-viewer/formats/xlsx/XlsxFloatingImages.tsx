@@ -1,28 +1,43 @@
 // XlsxFloatingImages 渲染锚定在工作表画布上的浮动图片。
 import type { CSSProperties } from 'react';
 import React, { memo, useMemo } from 'react';
-import type { XlsxImage } from '../../services/xlsx/types';
+import type { XlsxImage, XlsxSheet } from '../../services/xlsx/types';
+import {
+  getXlsxMeasuredAnchorRect,
+  XLSX_ROW_HEADER_WIDTH,
+  type XlsxMeasuredAnchorRect,
+  type XlsxSheetMetrics,
+} from './sheetRenderUtils';
 
 /** 定义 XlsxFloatingImages 组件可接收的属性。 */
 type XlsxFloatingImagesProps = {
-  /** XlsxFloatingImagesProps 包含的 images 有序集合。 */
-  images: XlsxImage[];
+  /** 当前关联的工作表模型。 */
+  sheet: XlsxSheet;
+  /** 浏览器最终表格布局对应的工作表指标。 */
+  metrics: XlsxSheetMetrics;
 };
 
 /** 渲染 XlsxFloatingImage 组件。 */
 function XlsxFloatingImage({
   image,
+  rect,
+  columnHeaderHeight,
 }: {
-  /** 当前结构 当前关联的图片资源或图片模型。 */ image: XlsxImage;
+  /** 当前关联的图片资源或图片模型。 */
+  image: XlsxImage;
+  /** 按浏览器最终表格布局重算的锚点矩形。 */
+  rect: XlsxMeasuredAnchorRect;
+  /** 浏览器最终计算出的列标题行高度。 */
+  columnHeaderHeight: number;
 }) {
   const imageStyle = useMemo<CSSProperties>(
     () => ({
-      left: 48 + image.x,
-      top: 28 + image.y,
-      width: image.width,
-      height: image.height,
+      left: XLSX_ROW_HEADER_WIDTH + rect.x,
+      top: columnHeaderHeight + rect.y,
+      width: rect.width,
+      height: rect.height,
     }),
-    [image.height, image.width, image.x, image.y],
+    [columnHeaderHeight, rect.height, rect.width, rect.x, rect.y],
   );
 
   return (
@@ -46,11 +61,28 @@ function XlsxFloatingImage({
 const MemoXlsxFloatingImage = memo(XlsxFloatingImage);
 
 /** 渲染 XlsxFloatingImagesComponent 组件。 */
-function XlsxFloatingImagesComponent({ images }: XlsxFloatingImagesProps) {
+function XlsxFloatingImagesComponent({
+  sheet,
+  metrics,
+}: XlsxFloatingImagesProps) {
+  const positionedImages = useMemo(
+    () =>
+      sheet.images.map((image) => ({
+        image,
+        rect: getXlsxMeasuredAnchorRect(sheet, metrics, image),
+      })),
+    [metrics, sheet],
+  );
+
   return (
     <>
-      {images.map((image) => (
-        <MemoXlsxFloatingImage key={image.id} image={image} />
+      {positionedImages.map(({ image, rect }) => (
+        <MemoXlsxFloatingImage
+          key={image.id}
+          image={image}
+          rect={rect}
+          columnHeaderHeight={metrics.columnHeaderHeight}
+        />
       ))}
     </>
   );

@@ -37,6 +37,7 @@ export function readPptMaster(
   editChain: PptEditChain,
   descriptor: PptMasterDescriptor,
   theme: ThemeModel,
+  fonts: Map<number, string>,
   context: PptParseContext,
 ): PptMasterModel | undefined {
   const offset = editChain.persistOffsets.get(descriptor.persistId);
@@ -78,7 +79,7 @@ export function readPptMaster(
   }
 
   const parsedDrawing = drawing
-    ? parsePptDrawing(drawing, theme, context)
+    ? parsePptDrawing(drawing, theme, fonts, context)
     : undefined;
   return {
     id: descriptor.masterId,

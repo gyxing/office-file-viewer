@@ -90,12 +90,54 @@ function applySeriesColors(
   }
 }
 
+/** 将 BIFF8 数据标签位置代码转换为共享图表模型枚举。 */
+function dataLabelPosition(value: number) {
+  return value === 1
+    ? 'outEnd'
+    : value === 2
+    ? 'inEnd'
+    : value === 3
+    ? 'ctr'
+    : value === 4
+    ? 'inBase'
+    : undefined;
+}
+
+/** 根据 Text/ObjectLink 把系列级数据标签位置写回目标系列。 */
+function applySeriesDataLabelPositions(
+  nodes: Biff8ChartRecordNode[],
+  series: Biff8ChartSeries[],
+) {
+  for (const text of collectChartNodes(nodes, BIFF8_RECORD.TEXT)) {
+    const link = collectChartNodes(text.children, BIFF8_RECORD.OBJECTLINK)[0];
+    if (!link || link.data.length < 6 || text.data.length < 30) continue;
+    const linkReader = new Biff8Reader(link.data);
+    const linkType = linkReader.readUint16();
+    const seriesIndex = linkReader.readUint16();
+    const pointIndex = linkReader.readUint16();
+    if (linkType !== 4 || pointIndex !== 0xffff || !series[seriesIndex]) {
+      continue;
+    }
+    const rawPosition =
+      new DataView(
+        text.data.buffer,
+        text.data.byteOffset,
+        text.data.byteLength,
+      ).getUint16(28, true) & 0x000f;
+    series[seriesIndex].dataLabels = {
+      ...series[seriesIndex].dataLabels,
+      position: dataLabelPosition(rawPosition),
+    };
+  }
+}
+
 /** 提取标题、图例和系列的基础颜色/线型。 */
 export function parseChartFormatting(
   nodes: Biff8ChartRecordNode[],
   series: Biff8ChartSeries[],
 ): ParsedChartFormatting {
   applySeriesColors(nodes, series);
+  applySeriesDataLabelPositions(nodes, series);
   const legend = collectChartNodes(nodes, BIFF8_RECORD.LEGEND)[0];
   let legendPosition: ParsedChartFormatting['legendPosition'];
   if (legend?.data.length && legend.data.length >= 17) {

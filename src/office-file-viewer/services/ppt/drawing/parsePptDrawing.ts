@@ -46,6 +46,20 @@ const PPT_FILL_COLOR_PROPERTY_ID = 0x0181;
 const PPT_FILL_OPACITY_PROPERTY_ID = 0x0182;
 /** OfficeArt 是否启用填充的布尔属性编号。 */
 const PPT_FILL_FLAGS_PROPERTY_ID = 0x01bf;
+/** OfficeArt 预设形状的首个几何调节值属性编号。 */
+const PPT_GEOMETRY_ADJUST_PROPERTY_ID = 0x0147;
+/** OfficeArt 预设形状调节值使用的几何坐标基准。 */
+const PPT_GEOMETRY_COORDINATE_SIZE = 21600;
+/** OfficeArt 阴影颜色属性编号。 */
+const PPT_SHADOW_COLOR_PROPERTY_ID = 0x0201;
+/** OfficeArt 阴影透明度使用的 16.16 定点属性编号。 */
+const PPT_SHADOW_OPACITY_PROPERTY_ID = 0x0204;
+/** OfficeArt 阴影水平偏移属性编号。 */
+const PPT_SHADOW_OFFSET_X_PROPERTY_ID = 0x0205;
+/** OfficeArt 阴影垂直偏移属性编号。 */
+const PPT_SHADOW_OFFSET_Y_PROPERTY_ID = 0x0206;
+/** OfficeArt 阴影启用标志属性编号。 */
+const PPT_SHADOW_FLAGS_PROPERTY_ID = 0x023f;
 
 /** 描述一页 PPT 绘图解析后的背景和普通元素。 */
 export type PptDrawingModel = {
@@ -76,6 +90,43 @@ function isBooleanPropertyEnabled(value: number, bit: number) {
 function readFixedPointOpacity(value: number | undefined) {
   if (value === undefined) return undefined;
   return Math.min(1, Math.max(0, value / 65536));
+}
+
+/** 将无符号 OfficeArt 属性还原为有符号 32 位值。 */
+function readSignedOfficeArtValue(value: number) {
+  return value > 0x7fffffff ? value - 0x100000000 : value;
+}
+
+/** 从旧版 PPT 的 OfficeArt 属性恢复卡片等形状的投影效果。 */
+function readPptShadow(
+  properties: ReturnType<typeof readPptOfficeArtProperties>,
+) {
+  const flags = properties.get(PPT_SHADOW_FLAGS_PROPERTY_ID)?.value;
+  if (flags !== undefined && isBooleanPropertyEnabled(flags, 0x0002) === false)
+    return undefined;
+  const offsetXValue = properties.get(PPT_SHADOW_OFFSET_X_PROPERTY_ID)?.value;
+  const offsetYValue = properties.get(PPT_SHADOW_OFFSET_Y_PROPERTY_ID)?.value;
+  const colorValue = properties.get(PPT_SHADOW_COLOR_PROPERTY_ID)?.value;
+  const opacityValue = properties.get(PPT_SHADOW_OPACITY_PROPERTY_ID)?.value;
+  if (
+    offsetXValue === undefined &&
+    offsetYValue === undefined &&
+    colorValue === undefined &&
+    opacityValue === undefined
+  )
+    return undefined;
+
+  const offsetX = readSignedOfficeArtValue(offsetXValue ?? 0) / 12700;
+  const offsetY = readSignedOfficeArtValue(offsetYValue ?? 0) / 12700;
+  const distance = Math.hypot(offsetX, offsetY);
+  return {
+    color: colorValue === undefined ? '#000000' : readColor(colorValue),
+    opacity: readFixedPointOpacity(opacityValue),
+    offsetX,
+    offsetY,
+    // 二进制格式未保留柔化半径，按 PowerPoint 对同一偏移投影的默认柔化比例恢复。
+    blur: distance * (7 / 3),
+  };
 }
 
 /** 从无普通锚点的 OfficeArt 背景形状中恢复图片或纯色背景。 */
@@ -121,11 +172,19 @@ function parseBackgroundShape(
   };
 }
 
+/** 将 OfficeArt 文本锚点转换为公共文本框的垂直对齐方式。 */
+function readTextVerticalAlign(value: number | undefined) {
+  if (value === 1 || value === 4) return 'middle' as const;
+  if ([2, 5, 7, 9].includes(value ?? -1)) return 'bottom' as const;
+  return 'top' as const;
+}
+
 /** 解析 `parseShape` 接收的数据，并返回PPT 二进制解析结果。 */
 function parseShape(
   record: OfficeArtRecord,
   index: number,
   theme: ThemeModel,
+  fonts: Map<number, string>,
   context: PptParseContext,
 ): SlideElement | undefined {
   const fsp = findChild(record, OFFICE_ART_RECORD.FSP);
@@ -171,6 +230,7 @@ function parseShape(
   const lineColor = properties.get(0x01c0)?.value;
   const lineWidth = properties.get(0x01cb)?.value;
   const rotation = properties.get(0x0004)?.value;
+  const adjustValue = properties.get(PPT_GEOMETRY_ADJUST_PROPERTY_ID)?.value;
   const common = {
     id: `ppt-shape-${shapeId}`,
     x: anchor.x,
@@ -182,17 +242,30 @@ function parseShape(
     flipV: Boolean(flags & 0x0080),
     zIndex: index,
     shape,
+    shadow: readPptShadow(properties),
+    // 二进制 PPT 的圆角调节值以 21600 为基准；0 必须保留，避免误用渲染默认值。
+    borderRadius:
+      shape === 'roundRect' && adjustValue !== undefined
+        ? Math.min(0.5, Math.max(0, adjustValue / PPT_GEOMETRY_COORDINATE_SIZE))
+        : undefined,
     fill:
       filled === false
         ? null
         : fillColor === undefined
         ? null
         : readColor(fillColor),
+    // 普通形状也必须应用 OfficeArt 透明度，否则半透明遮罩会变成不透明色块。
+    fillOpacity:
+      filled === false
+        ? undefined
+        : readFixedPointOpacity(
+            properties.get(PPT_FILL_OPACITY_PROPERTY_ID)?.value,
+          ),
     stroke:
       lined === false
         ? null
         : lineColor === undefined
-        ? null
+        ? undefined
         : readColor(lineColor),
     strokeWidth: lineWidth === undefined ? undefined : lineWidth / 12700,
   };
@@ -286,6 +359,7 @@ function parseShape(
           fontSize: 18,
           color: theme.colorScheme.dk1 ?? '#000000',
         },
+        fonts,
       },
       context,
     );
@@ -306,6 +380,9 @@ function parseShape(
             : textType === 1 || textType === 5
             ? 'body'
             : undefined,
+        boxStyle: {
+          verticalAlign: readTextVerticalAlign(properties.get(0x0087)?.value),
+        },
       };
       return element;
     }
@@ -314,8 +391,9 @@ function parseShape(
   const element: ShapeElement = {
     ...common,
     type: 'shape',
-    fill: common.fill ?? '#ffffff',
-    stroke: common.stroke ?? '#000000',
+    // null 表示源文件明确禁用填充或线条，只有属性缺省时才使用 Office 默认值。
+    fill: common.fill === undefined ? '#ffffff' : common.fill,
+    stroke: common.stroke === undefined ? '#000000' : common.stroke,
   };
   return element;
 }
@@ -337,6 +415,7 @@ function collectShapeContainers(records: OfficeArtRecord[]) {
 export function parsePptDrawing(
   bytes: Uint8Array,
   theme: ThemeModel,
+  fonts: Map<number, string>,
   context: PptParseContext,
 ): PptDrawingModel {
   try {
@@ -347,7 +426,9 @@ export function parsePptDrawing(
         .map((record) => parseBackgroundShape(record, context))
         .find((background) => Boolean(background)),
       elements: shapeContainers
-        .map((record, index) => parseShape(record, index, theme, context))
+        .map((record, index) =>
+          parseShape(record, index, theme, fonts, context),
+        )
         .filter((element): element is SlideElement => Boolean(element)),
     };
   } catch (error) {

@@ -59,7 +59,6 @@ function XlsxSheetGridComponent({ sheet, zoom }: XlsxSheetGridProps) {
   const scale = zoom / 100;
   const gridRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLTableElement>(null);
-  const measuredTableLayout = useXlsxSheetTableLayout(tableRef, sheet);
   const [viewportSize, setViewportSize] =
     useState<XlsxSheetViewportSize>(EMPTY_VIEWPORT_SIZE);
 
@@ -93,6 +92,17 @@ function XlsxSheetGridComponent({ sheet, zoom }: XlsxSheetGridProps) {
     return () => observer.disconnect();
   }, []);
 
+  const sourceMetrics = useMemo(
+    () =>
+      getXlsxSheetMetrics(
+        sheet,
+        viewportSize.width,
+        viewportSize.height,
+        scale,
+      ),
+    [scale, sheet, viewportSize.height, viewportSize.width],
+  );
+  const measuredLayout = useXlsxSheetTableLayout(tableRef, sheet);
   const metrics = useMemo(
     () =>
       getXlsxSheetMetrics(
@@ -100,15 +110,9 @@ function XlsxSheetGridComponent({ sheet, zoom }: XlsxSheetGridProps) {
         viewportSize.width,
         viewportSize.height,
         scale,
-        measuredTableLayout,
+        measuredLayout,
       ),
-    [
-      measuredTableLayout,
-      scale,
-      sheet,
-      viewportSize.height,
-      viewportSize.width,
-    ],
+    [measuredLayout, scale, sheet, viewportSize.height, viewportSize.width],
   );
   // 这里使用 zoom 是为了让表格、图片和图表保持同一个坐标系缩放。
   const canvasStyle = useMemo<CSSProperties>(
@@ -127,13 +131,13 @@ function XlsxSheetGridComponent({ sheet, zoom }: XlsxSheetGridProps) {
         <XlsxSheetFiller sheet={sheet} metrics={metrics} />
         <XlsxSheetTable
           sheet={sheet}
-          tableWidth={metrics.tableWidth}
-          visibleColumnWidths={metrics.visibleColumnWidths}
-          visibleRowHeights={metrics.visibleRowHeights}
+          tableWidth={sourceMetrics.tableWidth}
+          visibleColumnWidths={sourceMetrics.visibleColumnWidths}
+          visibleRowHeights={sourceMetrics.visibleRowHeights}
           tableRef={tableRef}
         />
-        <XlsxFloatingImages images={sheet.images} />
-        <XlsxFloatingCharts charts={sheet.charts} />
+        <XlsxFloatingImages sheet={sheet} metrics={metrics} />
+        <XlsxFloatingCharts sheet={sheet} metrics={metrics} />
       </div>
     </div>
   );

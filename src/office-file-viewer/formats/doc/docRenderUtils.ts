@@ -11,7 +11,8 @@ import type {
 
 export const DOC_IMAGE_ROW_GAP = 6;
 
-const DOC_PAGE_HEIGHT_BUFFER = 24;
+// 页面可用高度已扣除上下页边距；不再重复预留缓冲，避免把本应同页的图片组拆页。
+const DOC_PAGE_HEIGHT_BUFFER = 0;
 const DOC_IMAGE_LAYOUT_ROW_GAP = 12;
 const DOC_IMAGE_LAYOUT_VERTICAL_MARGIN = 22;
 
@@ -29,9 +30,12 @@ export type PaginatedDocPage = {
 export function docTextStyleToCss(style?: DocTextStyle): CSSProperties {
   if (!style) return {};
 
-  return {
+  const css: CSSProperties = {
     color: style.color,
     background: style.backgroundColor,
+    borderColor: style.borderColor,
+    borderWidth: style.borderWidth,
+    borderStyle: style.borderStyle,
     fontSize: style.fontSize,
     fontWeight: style.fontWeight,
     fontStyle: style.fontStyle,
@@ -49,6 +53,9 @@ export function docTextStyleToCss(style?: DocTextStyle): CSSProperties {
     paddingBottom: style.paddingBottom,
     paddingLeft: style.paddingLeft,
   };
+  return Object.fromEntries(
+    Object.entries(css).filter(([, value]) => value !== undefined),
+  ) as CSSProperties;
 }
 
 /** 执行 `inlineStyleToCss` 封装的DOC 渲染处理步骤。 */

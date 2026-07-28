@@ -1342,6 +1342,9 @@ function buildPieDataLabelConfig(
       ),
     position,
     formatter,
+    color: position === 'inside' ? '#ffffff' : '#334155',
+    fontSize: 9,
+    fontFamily: OFFICE_FONT_FAMILY,
   };
 }
 

@@ -76,8 +76,8 @@ function readLineHeight(value: number) {
 
 /** 读取 `readParagraphSpacing` 所需的源数据，供PPT 二进制解析使用。 */
 function readParagraphSpacing(value: number) {
-  // 正值按默认 18px 行高折算，负值按 8 主单位 = 1px 折算。
-  return value >= 0 ? (value / 100) * 18 : Math.abs(value) / 8;
+  // 正值按默认 18px 行高折算，负值按 576 dpi 主单位折算到 96 dpi。
+  return value >= 0 ? (value / 100) * 18 : Math.abs(value) / 6;
 }
 
 /** 读取 `readParagraphException` 所需的源数据，供PPT 二进制解析使用。 */
@@ -106,8 +106,8 @@ function readParagraphException(reader: StyleReader) {
   if (masks & (1 << 14)) {
     style.spaceAfter = readParagraphSpacing(reader.i16());
   }
-  if (masks & (1 << 8)) style.marginLeft = reader.i16() / 8;
-  if (masks & (1 << 10)) style.textIndent = reader.i16() / 8;
+  if (masks & (1 << 8)) style.marginLeft = reader.i16() / 6;
+  if (masks & (1 << 10)) style.textIndent = reader.i16() / 6;
   if (masks & (1 << 15)) reader.u16();
   if (masks & (1 << 20)) {
     const tabCount = reader.u16();

@@ -1,6 +1,7 @@
 import type {
   OfficeChartModel,
   OfficeChartType,
+  OfficeDataLabels,
 } from '../../../shared/ooxml/charts';
 import type { SpreadsheetWarning } from '../../spreadsheet/types';
 import type { Biff8Record } from '../biff8/Biff8Reader';
@@ -38,6 +39,8 @@ export type Biff8ChartSeries = {
   values: Array<number | null>;
   /** Biff8ChartSeries 包含的 bubbleSizes 有序集合。 */
   bubbleSizes: Array<number | null>;
+  /** Biff8ChartSeries 的图表数据标签显示配置。 */
+  dataLabels?: OfficeDataLabels;
   /** Biff8ChartSeries 关联的 stacking 结构；字段形状由 'stacked' | 'percentStacked' 定义；未提供时使用来源格式或渲染器的默认行为。 */
   stacking?: 'stacked' | 'percentStacked';
   /** Biff8ChartSeries 的前景或文本颜色，使用标准化 CSS 颜色值；未提供时沿用来源格式或渲染器的默认规则。 */
