@@ -48,8 +48,6 @@ export type DocPage = {
   marginBottom: number;
   /** DocPage 的对应间距，单位为标准化渲染像素。 */
   marginLeft: number;
-  /** 文档节是否声明了需要在每页重复绘制的页面边框。 */
-  hasPageBorder?: boolean;
 };
 
 /** 描述 DocParagraph 在 DOC 二进制解析中的数据结构。 */

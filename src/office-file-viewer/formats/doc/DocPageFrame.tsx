@@ -30,7 +30,6 @@ function DocPageFrameComponent({ page, zoom, children }: DocPageFrameProps) {
       minHeight: page.minHeight,
       padding: `${page.marginTop}px ${page.marginRight}px ${page.marginBottom}px ${page.marginLeft}px`,
       transform: `scale(${scale})`,
-      position: 'relative',
     }),
     [
       page.marginBottom,
@@ -49,18 +48,6 @@ function DocPageFrameComponent({ page, zoom, children }: DocPageFrameProps) {
         className="office-file-doc-page-frame__article"
         style={articleStyle}
       >
-        {page.hasPageBorder ? (
-          <span
-            aria-hidden="true"
-            className="office-file-doc-page-frame__content-border"
-            style={{
-              top: page.marginTop - 2,
-              right: page.marginRight - 5,
-              bottom: page.marginBottom - 1,
-              left: page.marginLeft - 7,
-            }}
-          />
-        ) : null}
         {children}
       </article>
     </div>

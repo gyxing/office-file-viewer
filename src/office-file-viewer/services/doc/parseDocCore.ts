@@ -260,8 +260,7 @@ function parseFib(wordDocument: Uint8Array) {
     ccpAtn: readFibField(wordDocument, 92),
     ccpEdn: readFibField(wordDocument, 96),
     ccpTxbx: readFibField(wordDocument, 100),
-    fcPlcfSed: readFibField(wordDocument, 202),
-    lcbPlcfSed: readFibField(wordDocument, 206),
+
     fcPlcfBteChpx: readFibField(wordDocument, 250),
     lcbPlcfBteChpx: readFibField(wordDocument, 254),
     fcPlcfBtePapx: readFibField(wordDocument, 258),
@@ -275,51 +274,6 @@ function parseFib(wordDocument: Uint8Array) {
     fcDggInfo: readFibField(wordDocument, 554),
     lcbDggInfo: readFibField(wordDocument, 558),
   };
-}
-
-/** 从首个节属性中识别 Word 页面边框，供每个估算页面重复绘制。 */
-function hasDocPageBorder(
-  wordDocument: Uint8Array,
-  tableStream: Uint8Array,
-  fib: DocFib,
-) {
-  if (!fib.fcPlcfSed || fib.lcbPlcfSed < 20) return false;
-  const plc = tableStream.slice(fib.fcPlcfSed, fib.fcPlcfSed + fib.lcbPlcfSed);
-  const count = Math.floor((plc.length - 4) / 16);
-  if (count <= 0) return false;
-  const plcView = new DataView(plc.buffer, plc.byteOffset, plc.byteLength);
-  const sedOffset = (count + 1) * 4;
-  const fcSepx = plcView.getInt32(sedOffset + 2, true);
-  if (fcSepx < 0 || fcSepx + 2 > wordDocument.length) return false;
-  const wordView = new DataView(
-    wordDocument.buffer,
-    wordDocument.byteOffset,
-    wordDocument.byteLength,
-  );
-  const byteCount = readUint16(wordView, fcSepx);
-  const grpprl = wordDocument.slice(
-    fcSepx + 2,
-    Math.min(wordDocument.length, fcSepx + 2 + byteCount),
-  );
-  const fixedOperandSizes = [1, 1, 2, 4, 2, 2, 0, 3];
-  let offset = 0;
-
-  while (offset + 2 <= grpprl.length) {
-    const sprm = grpprl[offset] | (grpprl[offset + 1] << 8);
-    const spra = sprm >>> 13;
-    const operandSize =
-      spra === 6 ? 1 + (grpprl[offset + 2] ?? 0) : fixedOperandSizes[spra];
-    if (
-      sprm >= 0xd234 &&
-      sprm <= 0xd237 &&
-      operandSize >= 9 &&
-      grpprl[offset + 8] !== 0
-    ) {
-      return true;
-    }
-    offset += 2 + operandSize;
-  }
-  return false;
 }
 
 /** 查找 `findPieceTable` 对应的目标数据。 */
@@ -632,6 +586,12 @@ function applySprmOperand(
 
   if ((sprm === 0x2a42 || sprm === 0x2a24) && first !== undefined) {
     style.color = WORD_ICO_COLORS[first];
+    return;
+  }
+
+  if (sprm === 0x2a0c && first !== undefined) {
+    // sprmCHighlight 使用 Word 的 ico 调色板，0 表示清除字符高亮。
+    style.backgroundColor = first === 0 ? undefined : WORD_ICO_COLORS[first];
     return;
   }
 
@@ -1460,10 +1420,12 @@ function createListBlock(items: ParsedListLine[], index: number): DocListBlock {
 
 /** 执行 `dominantStyle` 封装的DOC 二进制解析处理步骤。 */
 function dominantStyle(segments: DocTextSegment[]) {
-  return segments.reduce<DocTextStyle | undefined>(
-    (style, segment) => mergeTextStyle(style, segment.style),
-    undefined,
-  );
+  return segments.reduce<DocTextStyle | undefined>((style, segment) => {
+    // 字符高亮只能作用于对应 inline，不能扩散成整段背景。
+    const { backgroundColor: _backgroundColor, ...paragraphStyle } =
+      segment.style ?? {};
+    return mergeTextStyle(style, paragraphStyle);
+  }, undefined);
 }
 
 /** 执行 `blocksFromSegments` 封装的DOC 二进制解析处理步骤。 */
@@ -2010,7 +1972,6 @@ export async function parseDocCore(
       `DOC \u6587\u4ef6\u7f3a\u5c11 ${fib.tableStreamName} \u6570\u636e\u6d41`,
     );
   }
-  const hasPageBorder = hasDocPageBorder(wordDocument, tableStream, fib);
 
   await context.checkpoint({
     stage: 'structure',
@@ -2075,7 +2036,6 @@ export async function parseDocCore(
     [...warnings],
   );
   metadataDocument.images = [...drawingImages, ...images];
-  metadataDocument.page.hasPageBorder = hasPageBorder;
   await context.output?.documentMetadata(
     documentMetadataFromDoc(metadataDocument),
   );
@@ -2124,7 +2084,6 @@ export async function parseDocCore(
   });
   const document = buildDocDocument(context.fileName, blocks, warnings);
   document.images = [...drawingImages, ...images];
-  document.page.hasPageBorder = hasPageBorder;
   await context.output?.documentMetadata(documentMetadataFromDoc(document));
   return { document, resources };
 }
