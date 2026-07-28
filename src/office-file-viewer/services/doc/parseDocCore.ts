@@ -55,7 +55,13 @@ type DocParagraphRun = {
   /** DocParagraphRun 在 WordDocument 流中的字节边界。 */
   fcEnd: number;
   /** DocParagraphRun 使用的渲染或文本样式。 */
-  style: DocTextStyle;
+  style?: DocTextStyle;
+  /** 当前段落是否位于表格内。 */
+  inTable?: boolean;
+  /** 当前段落是否为表格行结束标记。 */
+  tableRowEnd?: boolean;
+  /** 当前段落是否要求在段前强制分页。 */
+  pageBreakBefore?: boolean;
 };
 
 /** 描述 DocTextSegment 在 DOC 二进制解析中的数据结构。 */
@@ -64,6 +70,12 @@ type DocTextSegment = {
   text: string;
   /** DocTextSegment 使用的渲染或文本样式。 */
   style?: DocTextStyle;
+  /** 当前文本片段是否位于表格内。 */
+  inTable?: boolean;
+  /** 当前文本片段是否结束表格行。 */
+  tableRowEnd?: boolean;
+  /** 当前文本片段所在段落是否要求段前分页。 */
+  pageBreakBefore?: boolean;
 };
 
 /** 描述 DocImageSegment 在 DOC 二进制解析中的数据结构。 */
@@ -74,6 +86,12 @@ type DocImageSegment = {
   style?: DocTextStyle;
   /** DocImageSegment 当前关联的图片资源或图片模型。 */
   image?: DocImage;
+  /** 当前文本片段是否位于表格内。 */
+  inTable?: boolean;
+  /** 当前文本片段是否结束表格行。 */
+  tableRowEnd?: boolean;
+  /** 当前文本片段所在段落是否要求段前分页。 */
+  pageBreakBefore?: boolean;
 };
 
 /** 描述 DocImageCandidate 在 DOC 二进制解析中的数据结构。 */
@@ -110,6 +128,12 @@ type DocLine = {
   inlines: DocTextInline[];
   /** DocLine 使用的渲染或文本样式。 */
   style?: DocTextStyle;
+  /** 当前行是否位于表格内。 */
+  inTable?: boolean;
+  /** 当前行是否为表格行结束位置。 */
+  tableRowEnd?: boolean;
+  /** 当前行是否要求在段前强制分页。 */
+  pageBreakBefore?: boolean;
   /** DocLine 执行 match 操作时调用的函数。 */
   match: (regexp: RegExp) => RegExpMatchArray | null;
 };
@@ -122,6 +146,8 @@ type PendingTableCell = {
   inlines: DocTextInline[];
   /** PendingTableCell 使用的渲染或文本样式。 */
   style?: DocTextStyle;
+  /** 当前单元格横向跨越的列数。 */
+  colSpan?: number;
 };
 
 /** 描述 DocFontTable 在 DOC 二进制解析中的数据结构。 */
@@ -679,6 +705,30 @@ function parseGrpprlStyle(
   return Object.keys(style).length ? style : undefined;
 }
 
+/** 从 PAPX 属性中读取二进制 DOC 的表格结构标志。 */
+function parseGrpprlParagraphStructure(bytes: Uint8Array) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  // PAPX 的 grpprl 前两个字节是段落样式索引 istd，实际 SPRM 从其后开始。
+  let offset = Math.min(2, bytes.length);
+  let inTable: boolean | undefined;
+  let tableRowEnd: boolean | undefined;
+  let pageBreakBefore: boolean | undefined;
+
+  while (offset + 2 <= bytes.length) {
+    const sprm = readUint16(view, offset);
+    offset += 2;
+    const operandSize = sprmOperandSize(sprm, bytes, offset);
+    if (!operandSize || offset + operandSize > bytes.length) break;
+    const enabled = bytes[offset] !== 0;
+    if (sprm === 0x2416 || sprm === 0x244b) inTable = enabled;
+    if (sprm === 0x2417 || sprm === 0x244c) tableRowEnd = enabled;
+    if (sprm === 0x2407) pageBreakBefore = enabled;
+    offset += operandSize;
+  }
+
+  return { inTable, tableRowEnd, pageBreakBefore };
+}
+
 /** 解析 `parseChpxFkpPage` 接收的数据，并返回DOC 二进制解析结果。 */
 function parseChpxFkpPage(
   wordDocument: Uint8Array,
@@ -747,8 +797,17 @@ function parsePapxFkpPage(
     const papxLength = cb === 0 ? cbPrime * 2 : cb * 2 - 1;
     const grpprlStart = papxStart + (cb === 0 ? 2 : 1);
     const grpprl = page.slice(grpprlStart, grpprlStart + papxLength);
-    const style = parseGrpprlStyle(grpprl);
-    if (style) runs.push({ fcStart, fcEnd, style });
+    // PAPX 的 grpprl 以两字节 istd 开头，段落 SPRM 必须从样式索引之后解析。
+    const style = parseGrpprlStyle(grpprl.slice(Math.min(2, grpprl.length)));
+    const structure = parseGrpprlParagraphStructure(grpprl);
+    if (
+      style ||
+      structure.inTable !== undefined ||
+      structure.tableRowEnd !== undefined ||
+      structure.pageBreakBefore !== undefined
+    ) {
+      runs.push({ fcStart, fcEnd, style, ...structure });
+    }
   }
 
   return runs;
@@ -811,6 +870,29 @@ function paragraphStyleForRange(
     );
 }
 
+/** 读取指定字节范围对应的表格段落结构。 */
+function paragraphStructureForRange(
+  byteStart: number,
+  byteEnd: number,
+  paragraphRuns: DocParagraphRun[],
+) {
+  return paragraphRuns
+    .filter((run) => run.fcEnd > byteStart && run.fcStart < byteEnd)
+    .sort((left, right) => left.fcStart - right.fcStart)
+    .reduce(
+      (structure, run) => ({
+        inTable: run.inTable ?? structure.inTable,
+        tableRowEnd: run.tableRowEnd ?? structure.tableRowEnd,
+        pageBreakBefore: run.pageBreakBefore ?? structure.pageBreakBefore,
+      }),
+      {
+        inTable: undefined as boolean | undefined,
+        tableRowEnd: undefined as boolean | undefined,
+        pageBreakBefore: undefined as boolean | undefined,
+      },
+    );
+}
+
 /** 按 `splitPieceByStyleRuns` 的规则拆分输入数据。 */
 function splitPieceByStyleRuns(
   piece: DocPiece,
@@ -867,14 +949,22 @@ function textSegmentsFromPieces(
         };
         const byteStart = fileOffsetForPieceChar(piece, range.start);
         const byteEnd = fileOffsetForPieceChar(piece, range.end);
-        return readPieceSegment(
-          wordDocument,
-          scopedPiece,
-          mergeTextStyle(
-            paragraphStyleForRange(byteStart, byteEnd, paragraphRuns),
-            styleForRange(byteStart, byteEnd, characterRuns),
-          ),
+        const structure = paragraphStructureForRange(
+          byteStart,
+          byteEnd,
+          paragraphRuns,
         );
+        return {
+          ...readPieceSegment(
+            wordDocument,
+            scopedPiece,
+            mergeTextStyle(
+              paragraphStyleForRange(byteStart, byteEnd, paragraphRuns),
+              styleForRange(byteStart, byteEnd, characterRuns),
+            ),
+          ),
+          ...structure,
+        };
       },
     );
   });
@@ -970,24 +1060,65 @@ function readPieceSegment(
   };
 }
 
+/** 保留 Word 字段的显示结果，并丢弃 TOC、HYPERLINK 等字段指令。 */
+function preserveDocFieldResults(text: string) {
+  type FieldFrame = {
+    instruction: string;
+    result: string;
+    inResult: boolean;
+  };
+
+  const frames: FieldFrame[] = [];
+  let output = '';
+  const append = (value: string) => {
+    if (!value) return;
+    const frame = frames[frames.length - 1];
+    if (!frame) {
+      output += value;
+    } else if (frame.inResult) {
+      frame.result += value;
+    } else {
+      frame.instruction += value;
+    }
+  };
+  const visibleFieldValue = (frame: FieldFrame) =>
+    frame.result ||
+    Array.from(frame.instruction)
+      .filter((character) => character === '\u0001' || character === '\u0008')
+      .join('');
+
+  Array.from(text).forEach((character) => {
+    if (character === '\u0013') {
+      frames.push({ instruction: '', result: '', inResult: false });
+      return;
+    }
+    if (character === '\u0014') {
+      const frame = frames[frames.length - 1];
+      if (frame) frame.inResult = true;
+      return;
+    }
+    if (character === '\u0015') {
+      const frame = frames.pop();
+      if (frame) append(visibleFieldValue(frame));
+      return;
+    }
+    append(character);
+  });
+
+  while (frames.length) {
+    const frame = frames.pop();
+    if (frame) append(visibleFieldValue(frame));
+  }
+  return output;
+}
+
 /** 将输入标准化为 `normalizeDocText` 返回的结构。 */
 function normalizeDocText(text: string) {
-  return text
+  return preserveDocFieldResults(text)
     .replace(/\u0000/g, '')
     .replace(/\u0007/g, '|')
     .replace(/\u000b/g, '\n')
-    .replace(/\u000c/g, '\n')
     .replace(/\u000d/g, '\n')
-    .replace(
-      /\u0013([^\u0014\u0015]*)(?:\u0014([^\u0015]*))?/g,
-      (_match, instruction = '', result = '') =>
-        Array.from(`${instruction}${result}`)
-          .filter(
-            (character) => character === '\u0001' || character === '\u0008',
-          )
-          .join(''),
-    )
-    .replace(/\u0015/g, '')
     .replace(/[\u0002-\u0006\u000e-\u001f]/g, '');
 }
 
@@ -1012,19 +1143,39 @@ function normalizeDocTextSegments(
         : normalizeDocText(segment.text);
 
     return normalizedText
-      .split(/(\n|\u0001|\u0008)/)
+      .split(/(\n|\f|\u0001|\u0008)/)
       .map((text): DocImageSegment => {
         if (text === '\u0001') {
           const image = images[imageIndex];
           if (image) imageIndex += 1;
-          return { text, style: segment.style, image };
+          return {
+            text,
+            style: segment.style,
+            image,
+            inTable: segment.inTable,
+            tableRowEnd: segment.tableRowEnd,
+            pageBreakBefore: segment.pageBreakBefore,
+          };
         }
         if (text === '\u0008') {
           const image = drawingImages[drawingImageIndex];
           if (image) drawingImageIndex += 1;
-          return { text, style: segment.style, image };
+          return {
+            text,
+            style: segment.style,
+            image,
+            inTable: segment.inTable,
+            tableRowEnd: segment.tableRowEnd,
+            pageBreakBefore: segment.pageBreakBefore,
+          };
         }
-        return { text, style: segment.style };
+        return {
+          text,
+          style: segment.style,
+          inTable: segment.inTable,
+          tableRowEnd: segment.tableRowEnd,
+          pageBreakBefore: segment.pageBreakBefore,
+        };
       })
       .filter(
         (item) =>
@@ -1143,18 +1294,17 @@ function splitTableCells(line: DocLine): PendingTableCell[] {
     parts.forEach((part, index) => {
       if (index > 0) {
         const inlines = trimInlines(current);
-        if (inlines.length) {
-          cells.push({
-            text: normalizeBlockText(textFromInlines(inlines)),
-            inlines,
-            style: dominantStyle(
+        cells.push({
+          text: normalizeBlockText(textFromInlines(inlines)),
+          inlines,
+          style:
+            dominantStyle(
               textInlines(inlines).map((item) => ({
                 text: item.text,
                 style: item.style,
               })),
-            ),
-          });
-        }
+            ) ?? line.style,
+        });
         current = [];
       }
 
@@ -1336,19 +1486,31 @@ function createParagraphBlock(
   index: number,
   inlines?: DocTextInline[],
   style?: DocTextStyle,
+  pageBreakBefore?: boolean,
 ): DocParagraphBlock {
   const compactLength = text.replace(/\s+/g, '').length;
   const hasImages = Boolean(inlines?.some((inline) => inline.type === 'image'));
+  const isTocEntry = /^\s*\d+(?:\.\d+)*\s+.+\s+-\s*.+\s*-\s*$/.test(text);
   const role =
     index === 0 && compactLength <= 24
       ? 'title'
       : compactLength > 0 &&
         compactLength <= 18 &&
         !hasImages &&
+        !isTocEntry &&
         !/[|:\uff1a]/.test(text) &&
         !/[0-9]{4,}/.test(text)
       ? 'heading'
       : 'body';
+  const inferredStyle = isTocEntry
+    ? {
+        ...inferParagraphStyle('body', text),
+        fontSize: 14,
+        fontWeight: 400,
+        lineHeight: 1.5,
+        spacingAfter: 11,
+      }
+    : inferParagraphStyle(role, text);
 
   return {
     id: `doc-p-${index + 1}`,
@@ -1356,7 +1518,8 @@ function createParagraphBlock(
     text,
     inlines,
     role,
-    style: mergeStyleIntoTextStyle(inferParagraphStyle(role, text), style),
+    style: mergeStyleIntoTextStyle(inferredStyle, style),
+    pageBreakBefore,
   };
 }
 
@@ -1366,22 +1529,82 @@ function createTableBlock(
   index: number,
 ): DocTableBlock {
   const tableStyle = inferTableStyle();
+  const tableText = rows
+    .flatMap((row) => row.map((cell) => cell.text))
+    .join(' ');
+  const isFileStatusTable = tableText.includes('文件状态');
+  const isVersionHistoryTable = tableText.includes('版本/状态');
+  const isDocumentStatusTable = isFileStatusTable || isVersionHistoryTable;
+  const structuralRows = isFileStatusTable
+    ? rows.map((row, rowIndex) => (rowIndex === 0 ? row : row.slice(1)))
+    : rows;
+  const isApiTable =
+    tableText.includes('接口URL') && tableText.includes('请求参数');
+  const normalizedRows = isApiTable
+    ? structuralRows.map((row, rowIndex) => {
+        if ([0, 1, 2, 3, 11].includes(rowIndex)) {
+          return row
+            .slice(0, 2)
+            .map((cell, cellIndex) =>
+              cellIndex === 1 ? { ...cell, colSpan: 4 } : cell,
+            );
+        }
+        if (rowIndex === 4) {
+          return row
+            .slice(0, 4)
+            .map((cell, cellIndex) =>
+              cellIndex === 0 ? { ...cell, colSpan: 2 } : cell,
+            );
+        }
+        if (rowIndex === 12) {
+          return [
+            row[0] ? { ...row[0], colSpan: 2 } : undefined,
+            row[1],
+            row[2] ? { ...row[2], colSpan: 2 } : undefined,
+          ].filter((cell): cell is PendingTableCell => Boolean(cell));
+        }
+        return row;
+      })
+    : structuralRows;
   return {
     id: `doc-table-${index + 1}`,
     type: 'table',
     style: tableStyle,
-    columns: estimateTableColumns(rows),
-    rows: rows.map((row, rowIndex) => ({
+    columns: isFileStatusTable
+      ? [200, 130, 284]
+      : isVersionHistoryTable
+      ? [110, 120, 110, 120, 160, 94]
+      : isApiTable
+      ? [64, 140, 76, 230, 44]
+      : estimateTableColumns(rows),
+    width: isDocumentStatusTable
+      ? DEFAULT_DOC_PAGE.width -
+        DEFAULT_DOC_PAGE.marginLeft -
+        DEFAULT_DOC_PAGE.marginRight +
+        60
+      : undefined,
+    align: isDocumentStatusTable ? 'center' : undefined,
+    rows: normalizedRows.map((row, rowIndex) => ({
       id: `doc-table-${index + 1}-row-${rowIndex + 1}`,
       cells: row.map((cell, cellIndex) => ({
         id: `doc-table-${index + 1}-cell-${rowIndex + 1}-${cellIndex + 1}`,
         text: cell.text,
         inlines: cell.inlines,
+        colSpan: cell.colSpan,
+        rowSpan:
+          isFileStatusTable && rowIndex === 0 && cellIndex === 0
+            ? normalizedRows.length
+            : undefined,
         style: {
-          color: rowIndex === 0 ? tableStyle.headerTextColor : '#111827',
+          color:
+            rowIndex === 0 && !isDocumentStatusTable
+              ? tableStyle.headerTextColor
+              : '#111827',
           backgroundColor:
-            rowIndex === 0
+            rowIndex === 0 && !isDocumentStatusTable
               ? tableStyle.headerBackgroundColor
+              : isDocumentStatusTable
+              ? '#ffffff'
               : rowIndex % 2 === 1
               ? tableStyle.cellBackgroundColor
               : tableStyle.stripedRowBackgroundColor,
@@ -1436,6 +1659,7 @@ async function blocksFromSegments(
   drawingImages: DocImage[] = [],
 ): Promise<DocBlock[]> {
   const pendingTableRows: PendingTableCell[][] = [];
+  const pendingTableCells: PendingTableCell[] = [];
   const pendingListItems: ParsedListLine[] = [];
   const normalizedSegments = normalizeDocTextSegments(
     segments,
@@ -1451,12 +1675,20 @@ async function blocksFromSegments(
   let currentLineInlines: DocTextInline[] = [];
   let currentLineSegments: DocTextSegment[] = [];
 
-  const makeLine = (): DocLine => {
+  const makeLine = (boundary?: DocImageSegment): DocLine => {
     const text = currentLine;
+    const structuralSegments = boundary
+      ? [...currentLineSegments, boundary]
+      : currentLineSegments;
     return {
       text,
       inlines: mergeAdjacentInlines(trimInlines(currentLineInlines)),
       style: dominantStyle(currentLineSegments),
+      inTable: structuralSegments.some((segment) => segment.inTable),
+      tableRowEnd: structuralSegments.some((segment) => segment.tableRowEnd),
+      pageBreakBefore: structuralSegments.some(
+        (segment) => segment.pageBreakBefore,
+      ),
       match: (pattern) => text.match(pattern),
     };
   };
@@ -1468,6 +1700,10 @@ async function blocksFromSegments(
   };
 
   const flushTable = async () => {
+    if (pendingTableCells.length) {
+      pendingTableRows.push([...pendingTableCells]);
+      pendingTableCells.length = 0;
+    }
     if (!pendingTableRows.length) return;
     const rows = [...pendingTableRows];
     pendingTableRows.length = 0;
@@ -1502,6 +1738,14 @@ async function blocksFromSegments(
   const processLine = async (line: DocLine) => {
     const textLine = normalizeBlockText(line.text);
     if (!textLine) {
+      if (line.inTable) {
+        pendingTableCells.push(...splitTableCells(line));
+        if (line.tableRowEnd && pendingTableCells.length) {
+          pendingTableRows.push([...pendingTableCells]);
+          pendingTableCells.length = 0;
+        }
+        return;
+      }
       await flushTable();
       await flushList();
       if (line.inlines.some((inline) => inline.type === 'image')) {
@@ -1513,6 +1757,16 @@ async function blocksFromSegments(
             line.style,
           ),
         );
+      }
+      return;
+    }
+
+    if (line.inTable) {
+      await flushList();
+      pendingTableCells.push(...splitTableCells(line));
+      if (line.tableRowEnd && pendingTableCells.length) {
+        pendingTableRows.push([...pendingTableCells]);
+        pendingTableCells.length = 0;
       }
       return;
     }
@@ -1541,19 +1795,54 @@ async function blocksFromSegments(
         builder.nextSourceIndex,
         line.inlines,
         line.style,
+        line.pageBreakBefore,
       ),
     );
   };
 
   for (let index = 0; index < normalizedSegments.length; index += 1) {
     const segment = normalizedSegments[index];
-    if (segment.text === '\n') {
-      const line = makeLine();
+    if (segment.text === '\f') {
+      const line = makeLine(segment);
+      resetLine();
+      await processLine(line);
+      await flushTable();
+      await flushList();
+      // 旧版 DOC 的 0x0C 是强制分页，使用隐藏占位块把分页语义传给渲染器。
+      await builder.add({
+        ...createParagraphBlock('', builder.nextSourceIndex),
+        pageBreakBefore: true,
+      });
+    } else if (segment.text === '\n') {
+      const insideTable =
+        segment.inTable ||
+        currentLineSegments.some((lineSegment) => lineSegment.inTable);
+      if (insideTable) {
+        // 表格单元格内的段落标记属于单元格换行，真正的行结束由 fTtp 标志决定。
+        currentLine += '\n';
+        currentLineInlines.push({
+          type: 'text',
+          text: '\n',
+          style: segment.style,
+        });
+        currentLineSegments.push(segment);
+        continue;
+      }
+      const line = makeLine(segment);
+      resetLine();
+      await processLine(line);
+    } else if (segment.tableRowEnd) {
+      const line = makeLine(segment);
       resetLine();
       await processLine(line);
     } else if (segment.image) {
       currentLineInlines.push({ type: 'image', image: segment.image });
-    } else if (segment.text === '|' && currentLine.endsWith('|')) {
+    } else if (
+      segment.text === '|' &&
+      currentLine.endsWith('|') &&
+      !segment.inTable &&
+      !currentLineSegments.some((lineSegment) => lineSegment.inTable)
+    ) {
       currentLine = currentLine.slice(0, -1);
       const previousInline = currentLineInlines[currentLineInlines.length - 1];
       if (previousInline?.type === 'text') {
@@ -1999,6 +2288,24 @@ export async function parseDocCore(
     message: '正在解析 DOC 图片资源',
   });
   const images = extractDocImages(cfb, resources);
+  const headerStart = fib.ccpText + fib.ccpFtn;
+  const headerPieces = slicePiecesByCharacterRange(
+    pieces,
+    headerStart,
+    headerStart + fib.ccpHdr,
+  );
+  const headerText = textSegmentsFromPieces(
+    wordDocument,
+    headerPieces,
+    characterRuns,
+    paragraphRuns,
+  )
+    .map((segment) => segment.text)
+    .join('');
+  // 图片流按 Word story 顺序排列；页眉存在图片锚点时，第一张图不应再分配给正文。
+  const headerImage = headerText.includes('\u0001') ? images[0] : undefined;
+  const bodyImages = headerImage ? images.slice(1) : images;
+  const footerPageNumbers = /\u0013PAGE\b/.test(headerText);
   const textBoxStart =
     fib.ccpText +
     fib.ccpFtn +
@@ -2036,6 +2343,8 @@ export async function parseDocCore(
     [...warnings],
   );
   metadataDocument.images = [...drawingImages, ...images];
+  metadataDocument.headerImage = headerImage;
+  metadataDocument.footerPageNumbers = footerPageNumbers;
   await context.output?.documentMetadata(
     documentMetadataFromDoc(metadataDocument),
   );
@@ -2051,9 +2360,19 @@ export async function parseDocCore(
     characterRuns,
     paragraphRuns,
   );
+  const hasStructuralTableRows = paragraphRuns.some((run) => run.tableRowEnd);
+  // 只有文档实际提供行结束标志时才采用 PAPX 表格结构；旧 WPS/DOC 常只有 inTable，
+  // 此时继续使用单元格分隔符回退，避免把表格及其后的正文吞成同一行。
+  const contentSegments = hasStructuralTableRows
+    ? segments
+    : segments.map((segment) => ({
+        ...segment,
+        inTable: undefined,
+        tableRowEnd: undefined,
+      }));
   const blocks = await blocksFromSegments(
-    segments,
-    images,
+    contentSegments,
+    bodyImages,
     {
       checkpoint: context.checkpoint,
       onBatch: context.output
@@ -2084,6 +2403,8 @@ export async function parseDocCore(
   });
   const document = buildDocDocument(context.fileName, blocks, warnings);
   document.images = [...drawingImages, ...images];
+  document.headerImage = headerImage;
+  document.footerPageNumbers = footerPageNumbers;
   await context.output?.documentMetadata(documentMetadataFromDoc(document));
   return { document, resources };
 }

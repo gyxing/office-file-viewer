@@ -5,6 +5,7 @@ import type {
   PresentationWarning,
   SlideBackground,
   SlideElement,
+  SpeakerNotesModel,
   TextStyle,
   ThemeModel,
 } from '../presentation/types';
@@ -128,6 +129,8 @@ export type PptSlideModel = {
   hidden?: boolean;
   /** PptSlideModel 的背景填充模型；未提供时使用来源格式或渲染器的默认行为。 */
   background?: SlideBackground;
+  /** 当前幻灯片关联的演讲者备注正文。 */
+  speakerNotes?: SpeakerNotesModel;
   /** PptSlideModel 包含的 elements 有序集合。 */
   elements: SlideElement[];
   /** PptSlideModel 在对应二进制流中的字节偏移。 */

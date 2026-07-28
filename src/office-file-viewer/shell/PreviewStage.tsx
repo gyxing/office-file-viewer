@@ -58,6 +58,8 @@ type OfficePreviewStageProps = {
   activeSheetId?: string;
   /** 当前预览缩放比例。 */
   zoom: number;
+  /** 演讲者备注面板当前是否展开。 */
+  showSpeakerNotes: boolean;
   /** 在 SelectSlide 事件发生时调用的回调函数。 */
   onSelectSlide: (index: number) => void;
   /** 在 SelectSheet 事件发生时调用的回调函数。 */
@@ -78,6 +80,7 @@ function OfficePreviewStageComponent({
   activeIndex,
   activeSheetId,
   zoom,
+  showSpeakerNotes,
   onSelectSlide,
   onSelectSheet,
 }: OfficePreviewStageProps) {
@@ -106,6 +109,7 @@ function OfficePreviewStageComponent({
           document={pptxDocument}
           activeIndex={activeIndex}
           zoom={zoom}
+          showSpeakerNotes={showSpeakerNotes}
           onSelectSlide={onSelectSlide}
         />
       )}

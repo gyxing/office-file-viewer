@@ -379,6 +379,8 @@ function parseShape(
             ? 'title'
             : textType === 1 || textType === 5
             ? 'body'
+            : textType === 2
+            ? 'notes'
             : undefined,
         boxStyle: {
           verticalAlign: readTextVerticalAlign(properties.get(0x0087)?.value),

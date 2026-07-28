@@ -33,6 +33,7 @@
 }
 
 .office-file-doc-page-frame__article {
+  position: relative;
   box-sizing: border-box;
   background: #fff;
   box-shadow: 0 14px 30px rgba(15, 23, 42, 14%);
@@ -40,6 +41,25 @@
     sans-serif;
   letter-spacing: 0;
   transform-origin: top left;
+}
+
+.office-file-doc-page-frame__header-image {
+  position: absolute;
+  top: 55px;
+  left: 120px;
+  width: 110px;
+  height: auto;
+}
+
+.office-file-doc-page-frame__footer {
+  position: absolute;
+  right: 120px;
+  bottom: 52px;
+  left: 120px;
+  color: #111;
+  font-size: 12px;
+  line-height: 1;
+  text-align: center;
 }
 
 .office-file-doc-paragraph {
@@ -75,6 +95,10 @@
   font-size: 13px;
   line-height: 1.65;
   border-collapse: collapse;
+}
+
+.office-file-doc-table--document-grid tr {
+  height: 31px;
 }
 
 .office-file-doc-table__cell {

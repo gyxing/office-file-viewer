@@ -16,13 +16,26 @@ function DocTableBlockComponent({ block }: DocTableBlockProps) {
   const borderColor = block.style?.borderColor ?? '#cfd7e3';
   const totalColumns =
     block.columns?.reduce((sum, width) => sum + width, 0) ?? 0;
+  const hasRowSpans = block.rows.some((row) =>
+    row.cells.some((cell) => Boolean(cell.rowSpan && cell.rowSpan > 1)),
+  );
+
+  const wrapperStyle =
+    block.width && block.align === 'center'
+      ? {
+          width: block.width,
+          marginLeft: `calc((100% - ${block.width}px) / 2)`,
+        }
+      : undefined;
 
   return (
-    <div className="office-file-doc-table">
-      <table
-        className="office-file-doc-table__table"
-        style={{ width: block.width ?? '100%' }}
-      >
+    <div
+      className={`office-file-doc-table${
+        block.width ? ' office-file-doc-table--document-grid' : ''
+      }`}
+      style={wrapperStyle}
+    >
+      <table className="office-file-doc-table__table" style={{ width: '100%' }}>
         {block.columns?.length ? (
           <colgroup>
             {block.columns.map((width, index) => (
@@ -47,6 +60,9 @@ function DocTableBlockComponent({ block }: DocTableBlockProps) {
                   colSpan={
                     cell.colSpan && cell.colSpan > 1 ? cell.colSpan : undefined
                   }
+                  rowSpan={
+                    cell.rowSpan && cell.rowSpan > 1 ? cell.rowSpan : undefined
+                  }
                   style={{
                     borderTop: cell.borderTop ?? `1px solid ${borderColor}`,
                     borderRight: cell.borderRight ?? `1px solid ${borderColor}`,
@@ -64,16 +80,25 @@ function DocTableBlockComponent({ block }: DocTableBlockProps) {
                   />
                 </td>
               ))}
-              {row.cells.length < columnCount
-                ? Array.from({ length: columnCount - row.cells.length }).map(
-                    (_, index) => (
-                      <td
-                        key={`${row.id}-empty-${index}`}
-                        className="office-file-doc-table__cell"
-                        style={{ border: `1px solid ${borderColor}` }}
-                      />
-                    ),
-                  )
+              {!hasRowSpans &&
+              row.cells.reduce(
+                (count, cell) => count + Math.max(1, cell.colSpan ?? 1),
+                0,
+              ) < columnCount
+                ? Array.from({
+                    length:
+                      columnCount -
+                      row.cells.reduce(
+                        (count, cell) => count + Math.max(1, cell.colSpan ?? 1),
+                        0,
+                      ),
+                  }).map((_, index) => (
+                    <td
+                      key={`${row.id}-empty-${index}`}
+                      className="office-file-doc-table__cell"
+                      style={{ border: `1px solid ${borderColor}` }}
+                    />
+                  ))
                 : null}
             </tr>
           ))}

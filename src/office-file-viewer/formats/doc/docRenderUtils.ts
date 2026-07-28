@@ -149,9 +149,14 @@ function weightedTextLength(text: string) {
 
 /** 执行 `estimateLineCount` 封装的DOC 渲染处理步骤。 */
 function estimateLineCount(text: string, width: number, fontSize: number) {
-  const weightedLength = weightedTextLength(text);
   const charsPerLine = Math.max(8, Math.floor(width / (fontSize * 0.95)));
-  return Math.max(1, Math.ceil(weightedLength / charsPerLine));
+  return text
+    .split('\n')
+    .reduce(
+      (lines, line) =>
+        lines + Math.max(1, Math.ceil(weightedTextLength(line) / charsPerLine)),
+      0,
+    );
 }
 
 /** 执行 `estimateParagraphTextHeight` 封装的DOC 渲染处理步骤。 */
@@ -178,19 +183,33 @@ function estimateParagraphTextHeight(
   );
 }
 
+/** 按 DOC 图片长宽比和并排数量计算源版式中的渲染宽度。 */
+export function getDocImageRenderWidth(
+  image: DocImage,
+  contentWidth: number,
+  rowLength: number,
+) {
+  const aspectRatio =
+    image.width && image.height ? image.width / image.height : undefined;
+  const singleImageMaxWidth =
+    aspectRatio && aspectRatio >= 0.75 && aspectRatio <= 1.25
+      ? Math.min(420, contentWidth)
+      : contentWidth;
+  const preferredWidth = image.width
+    ? Math.min(image.width, singleImageMaxWidth)
+    : singleImageMaxWidth;
+  return rowLength > 1 && image.width
+    ? Math.min(image.width, (contentWidth - DOC_IMAGE_ROW_GAP) / rowLength)
+    : preferredWidth;
+}
+
 /** 执行 `estimateImageHeight` 封装的DOC 渲染处理步骤。 */
 function estimateImageHeight(
   image: DocImage,
   contentWidth: number,
   rowLength: number,
 ) {
-  const preferredWidth = image.width
-    ? Math.min(image.width, contentWidth)
-    : contentWidth;
-  const renderedWidth =
-    rowLength > 1 && image.width
-      ? Math.min(image.width, (contentWidth - DOC_IMAGE_ROW_GAP) / rowLength)
-      : preferredWidth;
+  const renderedWidth = getDocImageRenderWidth(image, contentWidth, rowLength);
 
   if (image.width && image.height) {
     return (image.height * renderedWidth) / image.width;
@@ -224,16 +243,22 @@ function estimateTableHeight(
   const totalColumns =
     columns.reduce((sum, width) => sum + width, 0) || contentWidth;
 
-  const rowHeights = block.rows.map((row) =>
-    Math.max(
+  const rowHeights = block.rows.map((row) => {
+    let columnIndex = 0;
+    return Math.max(
       28,
-      ...row.cells.map((cell, cellIndex) => {
+      ...row.cells.map((cell) => {
         const fontSize = cell.style?.fontSize ?? 13;
         const lineHeight = cell.style?.lineHeight ?? 1.65;
         const padding =
           (cell.style?.paddingTop ?? 5) + (cell.style?.paddingBottom ?? 5);
+        const colSpan = Math.max(1, cell.colSpan ?? 1);
+        const spannedWidth = columns
+          .slice(columnIndex, columnIndex + colSpan)
+          .reduce((sum, width) => sum + width, 0);
+        columnIndex += colSpan;
         const width =
-          cell.width ?? (columns[cellIndex] / totalColumns) * contentWidth;
+          cell.width ?? (spannedWidth / totalColumns) * contentWidth;
         return (
           estimateLineCount(
             cell.text || ' ',
@@ -245,8 +270,8 @@ function estimateTableHeight(
           padding
         );
       }),
-    ),
-  );
+    );
+  });
 
   return rowHeights.reduce((sum, height) => sum + height, 0) + 16;
 }
@@ -332,7 +357,30 @@ export function paginateDocBlocks(
 
   const flushPage = () => {
     if (!currentBlocks.length) return;
-    pages.push({ id: `doc-page-${pages.length + 1}`, blocks: currentBlocks });
+    const looksLikeCover =
+      currentBlocks.some(
+        (block) => block.type === 'paragraph' && block.role === 'title',
+      ) &&
+      currentBlocks.some(
+        (block) => imagesFromImageOnlyParagraph(block).length,
+      ) &&
+      !currentBlocks.some((block) => block.type === 'table');
+    const pageBlocks = looksLikeCover
+      ? currentBlocks.map((block) =>
+          block.type === 'paragraph' && block.role === 'title'
+            ? {
+                ...block,
+                style: {
+                  ...block.style,
+                  spacingBefore: Math.max(197, block.style?.spacingBefore ?? 0),
+                  spacingAfter: 4,
+                },
+              }
+            : block,
+        )
+      : currentBlocks;
+    // 图片封面依靠大量空段落垂直居中，空段清理后用等价段前距恢复位置。
+    pages.push({ id: `doc-page-${pages.length + 1}`, blocks: pageBlocks });
     currentBlocks = [];
     currentHeight = 0;
   };
@@ -386,9 +434,104 @@ export function paginateDocBlocks(
 
   let index = 0;
   while (index < blocks.length) {
-    const imageOnlyParagraphImages = imagesFromImageOnlyParagraph(
-      blocks[index],
-    );
+    const currentBlock = blocks[index];
+    if (currentBlock.type === 'paragraph' && currentBlock.pageBreakBefore) {
+      flushPage();
+      index += 1;
+      continue;
+    }
+    if (currentBlock.type === 'paragraph' && currentBlock.role === 'heading') {
+      let keepIndex = index;
+      let keepHeight = 0;
+      while (keepIndex < blocks.length) {
+        const keepBlock = blocks[keepIndex];
+        if (
+          keepBlock.type !== 'paragraph' ||
+          keepBlock.role !== 'heading' ||
+          keepBlock.pageBreakBefore
+        ) {
+          break;
+        }
+        keepHeight += estimateBlockHeight(keepBlock, contentWidth);
+        keepIndex += 1;
+      }
+      const followingBlock = blocks[keepIndex];
+      const followingImages = followingBlock
+        ? imagesFromImageOnlyParagraph(followingBlock)
+        : [];
+      if (followingBlock && followingImages.length) {
+        keepHeight += estimateBlockHeight(followingBlock, contentWidth);
+      }
+      if (
+        followingImages.length &&
+        currentBlocks.length &&
+        currentHeight + keepHeight > contentHeight
+      ) {
+        // 图片标题与图片保持同页，避免分页后大图缺少所属说明。
+        flushPage();
+      }
+    }
+    const currentPageLooksLikeCover =
+      currentBlocks.some(
+        (block) => block.type === 'paragraph' && block.role === 'title',
+      ) &&
+      currentBlocks.some((block) => imagesFromImageOnlyParagraph(block).length);
+    if (currentBlock.type === 'table' && currentPageLooksLikeCover) {
+      // 封面后的状态表属于下一物理页；二进制 DOC 通常只依赖版式自然换页。
+      flushPage();
+    }
+    const currentTableHeight =
+      currentBlock.type === 'table'
+        ? estimateTableHeight(currentBlock, contentWidth)
+        : 0;
+    if (
+      currentBlock.type === 'table' &&
+      (currentTableHeight > contentHeight ||
+        (currentBlocks.length &&
+          currentHeight + currentTableHeight > contentHeight))
+    ) {
+      let rowIndex = 0;
+      let partIndex = 0;
+      while (rowIndex < currentBlock.rows.length) {
+        let availableHeight = contentHeight - currentHeight;
+        if (currentBlocks.length && availableHeight < 80) {
+          flushPage();
+          availableHeight = contentHeight;
+        }
+        const startRowIndex = rowIndex;
+        let rowsHeight = 16;
+        while (rowIndex < currentBlock.rows.length) {
+          const row = currentBlock.rows[rowIndex];
+          const rowHeight =
+            estimateTableHeight(
+              { ...currentBlock, rows: [row] },
+              contentWidth,
+            ) - 16;
+          if (
+            rowIndex > startRowIndex &&
+            (rowsHeight + rowHeight > availableHeight ||
+              rowIndex - startRowIndex >= 10)
+          ) {
+            break;
+          }
+          rowsHeight += rowHeight;
+          rowIndex += 1;
+        }
+        partIndex += 1;
+        appendBlock(
+          {
+            ...currentBlock,
+            id: `${currentBlock.id}-part-${partIndex}`,
+            rows: currentBlock.rows.slice(startRowIndex, rowIndex),
+          },
+          rowsHeight,
+        );
+        if (rowIndex < currentBlock.rows.length) flushPage();
+      }
+      index += 1;
+      continue;
+    }
+    const imageOnlyParagraphImages = imagesFromImageOnlyParagraph(currentBlock);
 
     if (imageOnlyParagraphImages.length) {
       const imageGroup = [...imageOnlyParagraphImages];
@@ -405,10 +548,7 @@ export function paginateDocBlocks(
       continue;
     }
 
-    appendBlock(
-      blocks[index],
-      estimateBlockHeight(blocks[index], contentWidth),
-    );
+    appendBlock(currentBlock, estimateBlockHeight(currentBlock, contentWidth));
     index += 1;
   }
 

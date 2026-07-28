@@ -68,6 +68,12 @@ export type OfficeFileViewerProps = {
   defaultPreviewKind?: PreviewKind;
   /** 组件首次渲染时采用的缩放比例。 */
   defaultZoom?: number;
+  /** 非受控模式下演讲者备注是否默认展开。 */
+  defaultShowSpeakerNotes?: boolean;
+  /** 受控模式下演讲者备注是否展开。 */
+  showSpeakerNotes?: boolean;
+  /** 演讲者备注展开状态变化时触发。 */
+  onSpeakerNotesVisibilityChange?: (visible: boolean) => void;
   /** 附加到预览器根元素的自定义类名。 */
   className?: string;
   /** 预览区域高度，支持任意 CSS 高度值；未提供时使用父容器高度。 */
@@ -242,6 +248,9 @@ function OfficeFileViewerComponent({
   defaultFileName = '未加载文件',
   defaultPreviewKind = 'pptx',
   defaultZoom = OFFICE_DEFAULT_ZOOM,
+  defaultShowSpeakerNotes = false,
+  showSpeakerNotes,
+  onSpeakerNotesVisibilityChange,
   className,
   height,
   style,
@@ -270,6 +279,9 @@ function OfficeFileViewerComponent({
   const [activeSheetId, setActiveSheetId] = useState<string>();
   const [zoom, setZoom] = useState(defaultZoom);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [internalShowSpeakerNotes, setInternalShowSpeakerNotes] = useState(
+    defaultShowSpeakerNotes,
+  );
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const loadGenerationRef = useRef(0);
   const requestControllerRef = useRef<AbortController>();
@@ -277,12 +289,16 @@ function OfficeFileViewerComponent({
   const pendingPartialRef = useRef<PendingPartialResult>();
   const partialFrameRef = useRef<number>();
   const defaultZoomRef = useRef(defaultZoom);
+  const defaultShowSpeakerNotesRef = useRef(defaultShowSpeakerNotes);
+  const showSpeakerNotesRef = useRef(showSpeakerNotes);
   const onFileParsedRef = useRef(onFileParsed);
   const onErrorRef = useRef(onError);
   const parseOptionsRef = useRef(parseOptions);
   const onParseProgressRef = useRef(onParseProgress);
 
   defaultZoomRef.current = defaultZoom;
+  defaultShowSpeakerNotesRef.current = defaultShowSpeakerNotes;
+  showSpeakerNotesRef.current = showSpeakerNotes;
   onFileParsedRef.current = onFileParsed;
   onErrorRef.current = onError;
   parseOptionsRef.current = parseOptions;
@@ -387,6 +403,9 @@ function OfficeFileViewerComponent({
         setFileName(file.name);
         setActiveIndex(0);
         setZoom(defaultZoomRef.current);
+        if (showSpeakerNotesRef.current === undefined) {
+          setInternalShowSpeakerNotes(defaultShowSpeakerNotesRef.current);
+        }
 
         const parseSession = createOfficeFileViewerParseSession(
           file,
@@ -643,6 +662,19 @@ function OfficeFileViewerComponent({
     setZoom(defaultZoom);
   }, [defaultZoom]);
 
+  const speakerNotesVisible = showSpeakerNotes ?? internalShowSpeakerNotes;
+  const handleToggleSpeakerNotes = useCallback(() => {
+    const nextVisible = !(showSpeakerNotes ?? internalShowSpeakerNotes);
+    if (showSpeakerNotes === undefined) {
+      setInternalShowSpeakerNotes(nextVisible);
+    }
+    onSpeakerNotesVisibilityChange?.(nextVisible);
+  }, [
+    internalShowSpeakerNotes,
+    onSpeakerNotesVisibilityChange,
+    showSpeakerNotes,
+  ]);
+
   const fullscreenSupported =
     typeof document !== 'undefined' &&
     typeof document.documentElement.requestFullscreen === 'function';
@@ -700,6 +732,8 @@ function OfficeFileViewerComponent({
           hasDocument={hasDocument}
           canGoPreviousSlide={canGoPreviousSlide}
           canGoNextSlide={canGoNextSlide}
+          showSpeakerNotes={speakerNotesVisible}
+          onToggleSpeakerNotes={handleToggleSpeakerNotes}
           onSelectFile={handleSelectFile}
           onPreviousSlide={handlePreviousSlide}
           onNextSlide={handleNextSlide}
@@ -725,6 +759,7 @@ function OfficeFileViewerComponent({
             activeIndex={activeIndex}
             activeSheetId={activeSheetId}
             zoom={zoom}
+            showSpeakerNotes={speakerNotesVisible}
             onSelectSlide={setActiveIndex}
             onSelectSheet={setActiveSheetId}
           />

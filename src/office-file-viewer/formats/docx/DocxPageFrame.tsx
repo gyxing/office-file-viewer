@@ -11,10 +11,20 @@ type DocxPageFrameProps = {
   zoom: number;
   /** DocxPageFrameProps 包含并负责布局的 React 子节点。 */
   children: ReactNode;
+  /** 当前页面的页眉内容。 */
+  header?: ReactNode;
+  /** 当前页面的页脚内容。 */
+  footer?: ReactNode;
 };
 
 /** 渲染 DocxPageFrameComponent 组件。 */
-function DocxPageFrameComponent({ page, zoom, children }: DocxPageFrameProps) {
+function DocxPageFrameComponent({
+  page,
+  zoom,
+  children,
+  header,
+  footer,
+}: DocxPageFrameProps) {
   const scale = zoom / 100;
   // DOCX 的边框和页边距来自文档本身，放在 article 上才能随页面坐标系一起缩放。
   const shellStyle = useMemo<CSSProperties>(
@@ -57,6 +67,13 @@ function DocxPageFrameComponent({ page, zoom, children }: DocxPageFrameProps) {
       scale,
     ],
   );
+  const regionStyle = useMemo(
+    () => ({
+      left: page.marginLeft,
+      width: page.width - page.marginLeft - page.marginRight,
+    }),
+    [page.marginLeft, page.marginRight, page.width],
+  );
 
   return (
     <div className="office-file-docx-page-frame" style={shellStyle}>
@@ -64,7 +81,29 @@ function DocxPageFrameComponent({ page, zoom, children }: DocxPageFrameProps) {
         className="office-file-docx-page-frame__article"
         style={articleStyle}
       >
+        {header ? (
+          <div
+            className="office-file-docx-page-frame__header"
+            style={{
+              ...regionStyle,
+              top: page.headerDistance ?? page.marginTop / 2,
+            }}
+          >
+            {header}
+          </div>
+        ) : null}
         {children}
+        {footer ? (
+          <div
+            className="office-file-docx-page-frame__footer"
+            style={{
+              ...regionStyle,
+              bottom: page.footerDistance ?? page.marginBottom / 2,
+            }}
+          >
+            {footer}
+          </div>
+        ) : null}
       </article>
     </div>
   );

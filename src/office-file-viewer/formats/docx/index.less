@@ -46,6 +46,25 @@
   }
 }
 
+.office-file-docx-page-frame__header,
+.office-file-docx-page-frame__footer {
+  position: absolute;
+  z-index: 2;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.office-file-docx-page-frame__footer {
+  text-align: center;
+  transform: translateY(50%);
+}
+
+.office-file-docx-page-frame__page-number {
+  color: #000;
+  font-size: 14px;
+  font-family: SimSun, '宋体', serif;
+}
+
 .office-file-docx-table-block {
   margin: 0;
 

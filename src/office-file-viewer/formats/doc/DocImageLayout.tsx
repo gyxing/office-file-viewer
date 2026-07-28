@@ -2,7 +2,11 @@
 import type { CSSProperties } from 'react';
 import React, { memo, useMemo } from 'react';
 import type { DocImage } from '../../services/doc/types';
-import { DOC_IMAGE_ROW_GAP, imageRows } from './docRenderUtils';
+import {
+  DOC_IMAGE_ROW_GAP,
+  getDocImageRenderWidth,
+  imageRows,
+} from './docRenderUtils';
 
 /** 定义 DocImageLayout 组件可接收的属性。 */
 type DocImageLayoutProps = {
@@ -33,22 +37,22 @@ function DocImageLayoutComponent({
           style={{ maxWidth: contentWidth }}
         >
           {row.map((image) => {
-            const preferredWidth = image.width
-              ? Math.min(image.width, contentWidth)
-              : contentWidth;
-            const rowWidth =
-              row.length > 1 && image.width
-                ? Math.min(
-                    image.width,
-                    (contentWidth - DOC_IMAGE_ROW_GAP) / row.length,
-                  )
-                : preferredWidth;
+            const rowWidth = getDocImageRenderWidth(
+              image,
+              contentWidth,
+              row.length,
+            );
+            const aspectRatio =
+              image.width && image.height ? image.width / image.height : 0;
+            const centerSingleImage =
+              row.length === 1 && aspectRatio >= 0.75 && aspectRatio <= 1.25;
             const figureStyle: CSSProperties = {
               width: rowWidth,
               maxWidth:
                 row.length > 1
                   ? `calc((100% - ${DOC_IMAGE_ROW_GAP}px) / ${row.length})`
                   : '100%',
+              marginInline: centerSingleImage ? 'auto' : undefined,
             };
 
             return (

@@ -19,6 +19,7 @@ import {
   FilePptIcon,
   FileWordIcon,
   FullscreenIcon,
+  NotesIcon,
   ZoomInIcon,
   ZoomOutIcon,
 } from './icons';
@@ -38,6 +39,10 @@ type OfficeToolbarProps = {
   canGoPreviousSlide: boolean;
   /** 当前幻灯片是否允许切换到下一页。 */
   canGoNextSlide: boolean;
+  /** 演讲者备注面板当前是否展开。 */
+  showSpeakerNotes: boolean;
+  /** 切换演讲者备注面板的展开状态。 */
+  onToggleSpeakerNotes: () => void;
   /** 在 SelectFile 事件发生时调用的回调函数。 */
   onSelectFile: (file: File) => void;
   /** 在 PreviousSlide 事件发生时调用的回调函数。 */
@@ -75,6 +80,8 @@ function OfficeToolbarComponent({
   hasDocument,
   canGoPreviousSlide,
   canGoNextSlide,
+  showSpeakerNotes,
+  onToggleSpeakerNotes,
   onSelectFile,
   onPreviousSlide,
   onNextSlide,
@@ -90,6 +97,11 @@ function OfficeToolbarComponent({
     () => OFFICE_ZOOM_LEVELS.map((value) => ({ value, label: `${value}%` })),
     [],
   );
+  // 只有已加载且至少存在一个可切换方向的演示文稿才需要显示翻页导航。
+  const showSlideNavigation =
+    isPresentationPreviewKind(previewKind) &&
+    hasDocument &&
+    (canGoPreviousSlide || canGoNextSlide);
 
   return (
     <div className="office-file-toolbar">
@@ -111,30 +123,44 @@ function OfficeToolbarComponent({
         >
           <Button icon={getPreviewIcon(previewKind)}>选择文件</Button>
         </Upload>
-        <Tooltip title="上一页">
-          <Button
-            aria-label="上一页"
-            icon={<ChevronLeftIcon />}
-            disabled={
-              !isPresentationPreviewKind(previewKind) ||
-              !hasDocument ||
-              !canGoPreviousSlide
-            }
-            onClick={onPreviousSlide}
-          />
-        </Tooltip>
-        <Tooltip title="下一页">
-          <Button
-            aria-label="下一页"
-            icon={<ChevronRightIcon />}
-            disabled={
-              !isPresentationPreviewKind(previewKind) ||
-              !hasDocument ||
-              !canGoNextSlide
-            }
-            onClick={onNextSlide}
-          />
-        </Tooltip>
+        {showSlideNavigation ? (
+          <>
+            <Tooltip title="上一页">
+              <Button
+                aria-label="上一页"
+                icon={<ChevronLeftIcon />}
+                disabled={!canGoPreviousSlide}
+                onClick={onPreviousSlide}
+              />
+            </Tooltip>
+            <Tooltip title="下一页">
+              <Button
+                aria-label="下一页"
+                icon={<ChevronRightIcon />}
+                disabled={!canGoNextSlide}
+                onClick={onNextSlide}
+              />
+            </Tooltip>
+          </>
+        ) : null}
+        {isPresentationPreviewKind(previewKind) ? (
+          <Tooltip
+            title={showSpeakerNotes ? '隐藏演讲者备注' : '显示演讲者备注'}
+          >
+            <Button
+              aria-label={
+                showSpeakerNotes ? '隐藏演讲者备注' : '显示演讲者备注'
+              }
+              aria-pressed={showSpeakerNotes}
+              type={showSpeakerNotes ? 'primary' : 'default'}
+              icon={<NotesIcon />}
+              disabled={!hasDocument}
+              onClick={onToggleSpeakerNotes}
+            >
+              备注
+            </Button>
+          </Tooltip>
+        ) : null}
         <Select
           value={zoom}
           className="office-file-toolbar__zoom"

@@ -4,6 +4,7 @@ import type { PresentationDocument } from '../../services/presentation/types';
 import { OfficeEmpty } from '../../shell/Empty';
 import './index.less';
 import { PptxSlideViewport } from './PptxSlideViewport';
+import { PptxSpeakerNotes } from './PptxSpeakerNotes';
 import { PptxThumbnailPane } from './PptxThumbnailPane';
 
 /** 定义 PptxViewer 组件可接收的属性。 */
@@ -14,6 +15,8 @@ type PptxViewerProps = {
   activeIndex: number;
   /** 当前预览缩放比例。 */
   zoom: number;
+  /** 演讲者备注面板当前是否展开。 */
+  showSpeakerNotes: boolean;
   /** 在 SelectSlide 事件发生时调用的回调函数。 */
   onSelectSlide: (index: number) => void;
 };
@@ -23,6 +26,7 @@ function PptxViewerComponent({
   document,
   activeIndex,
   zoom,
+  showSpeakerNotes,
   onSelectSlide,
 }: PptxViewerProps) {
   if (!document?.slides.length) {
@@ -38,11 +42,19 @@ function PptxViewerComponent({
         activeIndex={activeIndex}
         onSelectSlide={onSelectSlide}
       />
-      <PptxSlideViewport
-        slide={currentSlide}
-        activeIndex={activeIndex}
-        zoom={zoom}
-      />
+      <div className="office-file-pptx-viewer__workspace">
+        <PptxSlideViewport
+          slide={currentSlide}
+          activeIndex={activeIndex}
+          zoom={zoom}
+        />
+        {showSpeakerNotes ? (
+          <PptxSpeakerNotes
+            slideIndex={currentSlide?.index ?? activeIndex + 1}
+            notes={currentSlide?.speakerNotes}
+          />
+        ) : null}
+      </div>
     </div>
   );
 }

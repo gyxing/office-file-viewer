@@ -1,7 +1,7 @@
 // DocPageFrame 提供 DOC 降级预览的页面框架，负责页面尺寸、页边距和缩放。
 import type { CSSProperties, ReactNode } from 'react';
 import React, { memo, useMemo } from 'react';
-import type { DocPage } from '../../services/doc/types';
+import type { DocImage, DocPage } from '../../services/doc/types';
 
 /** 定义 DocPageFrame 组件可接收的属性。 */
 type DocPageFrameProps = {
@@ -11,10 +11,20 @@ type DocPageFrameProps = {
   zoom: number;
   /** DocPageFrameProps 包含并负责布局的 React 子节点。 */
   children: ReactNode;
+  /** 当前物理页需要显示的页眉徽标。 */
+  headerImage?: DocImage;
+  /** 当前物理页需要显示的页脚页码文本。 */
+  footerText?: string;
 };
 
 /** 渲染 DocPageFrameComponent 组件。 */
-function DocPageFrameComponent({ page, zoom, children }: DocPageFrameProps) {
+function DocPageFrameComponent({
+  page,
+  zoom,
+  children,
+  headerImage,
+  footerText,
+}: DocPageFrameProps) {
   const scale = zoom / 100;
   // 外层占位使用缩放后的尺寸，内层 article 保留原始 Word 坐标系并用 transform 缩放。
   const shellStyle = useMemo<CSSProperties>(
@@ -48,7 +58,17 @@ function DocPageFrameComponent({ page, zoom, children }: DocPageFrameProps) {
         className="office-file-doc-page-frame__article"
         style={articleStyle}
       >
+        {headerImage ? (
+          <img
+            className="office-file-doc-page-frame__header-image"
+            src={headerImage.src}
+            alt=""
+          />
+        ) : null}
         {children}
+        {footerText ? (
+          <div className="office-file-doc-page-frame__footer">{footerText}</div>
+        ) : null}
       </article>
     </div>
   );

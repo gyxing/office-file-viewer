@@ -10,6 +10,10 @@ export type DocDocument = {
   paragraphs: DocParagraph[];
   /** DocDocument 包含的 images 有序集合。 */
   images: DocImage[];
+  /** 从页眉 story 中识别出的徽标图片；未提供时不渲染页眉图片。 */
+  headerImage?: DocImage;
+  /** 页脚 story 是否包含 PAGE 字段。 */
+  footerPageNumbers?: boolean;
   /** DocDocument 解析时产生但不阻止继续预览的警告集合。 */
   warnings: string[];
   /** DOC/WPS 文档持有且需要在销毁时释放的浏览器资源。 */
@@ -75,6 +79,8 @@ export type DocParagraphBlock = {
   role?: 'title' | 'heading' | 'body';
   /** DocParagraphBlock 使用的渲染或文本样式。 */
   style?: DocTextStyle;
+  /** 源文档在该段落前存在显式分页符；渲染分页时该占位段落不显示。 */
+  pageBreakBefore?: boolean;
 };
 
 /** 描述 DocTableBlock 在 DOC 二进制解析中的数据结构。 */
@@ -125,6 +131,8 @@ export type DocTableCell = {
   width?: number;
   /** 表格单元格横向跨越的列数。 */
   colSpan?: number;
+  /** 表格单元格纵向跨越的行数。 */
+  rowSpan?: number;
   /** DocTableCell 的垂直对齐方式；未提供时沿用来源格式或渲染器的默认规则。 */
   verticalAlign?: 'top' | 'middle' | 'bottom';
 };

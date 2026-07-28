@@ -249,7 +249,11 @@ export class DocDocumentAssembler {
     if (this.completed) throw new Error('DOC 组装已经完成');
     const images = metadata.images.map((image) => ({ ...image }));
     images.forEach((image) => resolveDocImage(image, this.resources));
-    this.metadata = { ...metadata, images };
+    const headerImage = metadata.headerImage
+      ? { ...metadata.headerImage }
+      : undefined;
+    if (headerImage) resolveDocImage(headerImage, this.resources);
+    this.metadata = { ...metadata, images, headerImage };
   }
 
   addBlocks(startIndex: number, blocks: DocBlock[]) {

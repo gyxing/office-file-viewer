@@ -10,6 +10,14 @@ export type PptMasterDescriptor = {
   masterId: number;
 };
 
+/** 备注列表中的持久化引用；实际幻灯片关联必须读取 NotesAtom.slideIdRef。 */
+export type PptNotesDescriptor = {
+  /** NotesContainer 在持久化目录中的引用。 */
+  persistId: number;
+  /** 备注页自身标识，仅用于诊断，不能作为幻灯片顺序。 */
+  notesId: number;
+};
+
 /** 读取 `readSlidePersistFields` 所需的源数据，供PPT 二进制解析使用。 */
 function readSlidePersistFields(record: PptRecord) {
   if (record.length < 16) return undefined;
@@ -32,6 +40,7 @@ export function readPptSlideLists(
 ) {
   const slides: PptSlideDescriptor[] = [];
   const masters: PptMasterDescriptor[] = [];
+  const notes: PptNotesDescriptor[] = [];
   const reader = new PptRecordReader(
     documentStream,
     documentRecord.dataOffset,
@@ -40,7 +49,8 @@ export function readPptSlideLists(
 
   for (const child of reader.records()) {
     if (child.type !== PPT_RECORD.SLIDE_LIST_WITH_TEXT) continue;
-    if (child.instance !== 0 && child.instance !== 1) continue;
+    if (child.instance !== 0 && child.instance !== 1 && child.instance !== 2)
+      continue;
     const listReader = new PptRecordReader(
       documentStream,
       child.dataOffset,
@@ -52,7 +62,7 @@ export function readPptSlideLists(
       if (!fields?.persistId) {
         context.warnings.push({
           code: 'PPT_SLIDE_PERSIST_INVALID',
-          message: '幻灯片或母版引用记录长度无效',
+          message: '幻灯片、母版或备注引用记录长度无效',
           offset: item.offset,
         });
         continue;
@@ -63,14 +73,19 @@ export function readPptSlideLists(
           slideId: fields.objectId,
           index: slides.length + 1,
         });
-      } else {
+      } else if (child.instance === 1) {
         masters.push({
           persistId: fields.persistId,
           masterId: fields.objectId,
+        });
+      } else {
+        notes.push({
+          persistId: fields.persistId,
+          notesId: fields.objectId,
         });
       }
     }
   }
 
-  return { slides, masters };
+  return { slides, masters, notes };
 }

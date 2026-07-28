@@ -62,6 +62,14 @@ export type GradientFill = {
   stops: GradientStop[];
 };
 
+/** 描述单页幻灯片关联的演讲者备注正文。 */
+export type SpeakerNotesModel = {
+  /** 按源文档顺序保留的备注段落。 */
+  paragraphs: TextParagraph[];
+  /** 供搜索、复制和无样式降级展示使用的纯文本。 */
+  plainText: string;
+};
+
 /** 描述演示文稿标准模型使用的标准化模型。 */
 export type SlideModel = {
   /** SlideModel 在所属文档或任务中的唯一标识。 */
@@ -76,6 +84,8 @@ export type SlideModel = {
   hidden?: boolean;
   /** SlideModel 的背景填充模型；未提供时使用来源格式或渲染器的默认行为。 */
   background?: SlideBackground;
+  /** 当前幻灯片关联的演讲者备注正文；未提供表示没有可展示备注。 */
+  speakerNotes?: SpeakerNotesModel;
   /** SlideModel 包含的 elements 有序集合。 */
   elements: SlideElement[];
 };

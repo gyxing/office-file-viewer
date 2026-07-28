@@ -33,6 +33,7 @@ import type {
   DocxInline,
   DocxPage,
   DocxPageContent,
+  DocxPageRegionVariants,
   DocxParagraphBlock,
   DocxPosition,
   DocxShape,
@@ -63,6 +64,8 @@ type ParseContext = {
   documentRels: Record<string, OfficeRelationship>;
   /** ParseContext 使用的主题颜色和字体配置。 */
   theme: OfficeTheme;
+  /** 文档网格推导出的默认正文行高，单位为标准化渲染像素。 */
+  defaultLineHeight?: number;
   /** ParseContext 关联的 styles 结构；字段形状由 DocxStyleCatalog 定义。 */
   styles: DocxStyleCatalog;
   /** ParseContext 包含的 images 有序集合。 */
@@ -79,6 +82,8 @@ type ParseContext = {
 type ReadBlockChildrenOptions = {
   /** 是否位于形状内部；用于选择局部坐标和排版规则。 */
   insideShape?: boolean;
+  /** 是否位于表格单元格内部；单元格正文不吸附页面行网格。 */
+  insideTable?: boolean;
 };
 
 /** 描述 DocxStyleDefinition 在 DOCX 解析中的数据结构。 */
@@ -2258,8 +2263,9 @@ function readParagraphBlocks(
   pNode: Element,
   id: string,
   context: ParseContext,
+  options?: ReadBlockChildrenOptions,
 ): DocxParagraphBlock[] {
-  const paragraph = parseParagraph(pNode, id, context);
+  const paragraph = parseParagraph(pNode, id, context, options);
   return [paragraph];
 }
 
@@ -2297,11 +2303,22 @@ function parseParagraph(
   pNode: Element,
   id: string,
   context: ParseContext,
+  options?: ReadBlockChildrenOptions,
 ): DocxParagraphBlock {
   const pPr = childByLocalName(pNode, 'pPr');
   const style = resolveParagraphStyle(pPr, context.styles, context.theme);
   const inlines = readParagraphRuns(pNode, style.style, context);
   const text = textFromInlines(inlines).trim();
+  const fontSize = style.style?.fontSize ?? 14;
+  const lineHeight =
+    style.lineHeight !== undefined &&
+    style.lineHeight <= 4 &&
+    !options?.insideTable &&
+    context.defaultLineHeight !== undefined &&
+    fontSize * style.lineHeight < context.defaultLineHeight
+      ? context.defaultLineHeight
+      : style.lineHeight ??
+        (options?.insideTable ? undefined : context.defaultLineHeight);
 
   return {
     id,
@@ -2309,7 +2326,7 @@ function parseParagraph(
     inlines,
     text,
     align: style.align,
-    lineHeight: style.lineHeight,
+    lineHeight,
     style: style.style,
     spacingBefore: style.spacingBefore,
     spacingAfter: style.spacingAfter,
@@ -2439,6 +2456,7 @@ function readTableRowHeightMultiplier(rowNode: Element) {
 /** 读取 `readTableRowHeight` 所需的源数据，供 DOCX 解析使用。 */
 function readTableRowHeight(
   rowNode: Element,
+  applyGridHeight: boolean,
 ): Pick<DocxTableRow, 'height' | 'heightRule'> {
   const trPr = childByLocalName(rowNode, 'trPr');
   const trHeight = childByLocalName(trPr, 'trHeight');
@@ -2450,8 +2468,14 @@ function readTableRowHeight(
     height !== undefined && height < 80
       ? readTableRowHeightMultiplier(rowNode)
       : 1;
+  const lineGridMultiplier =
+    applyGridHeight && heightRule === 'atLeast' ? 1.4 : 1;
   return {
-    height: height === undefined ? undefined : height * heightMultiplier,
+    // WPS 的 atLeast 行高仍会叠加正文行网格，直接作为 CSS 最小高度会让表格明显偏扁。
+    height:
+      height === undefined
+        ? undefined
+        : height * heightMultiplier * lineGridMultiplier,
     heightRule:
       heightRule === 'exact' || heightRule === 'atLeast'
         ? heightRule
@@ -2463,7 +2487,7 @@ function readTableRowHeight(
 
 /** 读取 `readCellBlocks` 所需的源数据，供 DOCX 解析使用。 */
 function readCellBlocks(cellNode: Element, id: string, context: ParseContext) {
-  return readBlockChildren(cellNode, id, context);
+  return readBlockChildren(cellNode, id, context, { insideTable: true });
 }
 
 /** 获取 `getParagraphAnchorLineHeight` 返回的数据。 */
@@ -2641,7 +2665,7 @@ function parseTable(
 
     return {
       id: `${id}-row-${rowIndex + 1}`,
-      ...readTableRowHeight(rowNode),
+      ...readTableRowHeight(rowNode, context.defaultLineHeight !== undefined),
       cells,
     };
   });
@@ -2664,7 +2688,12 @@ function readBlockChildren(
     if (matchesLocalName(child, 'p')) {
       paragraphIndex += 1;
       blocks.push(
-        ...readParagraphBlocks(child, `${id}-p-${paragraphIndex}`, context),
+        ...readParagraphBlocks(
+          child,
+          `${id}-p-${paragraphIndex}`,
+          context,
+          options,
+        ),
       );
     }
     if (matchesLocalName(child, 'tbl')) {
@@ -2711,6 +2740,8 @@ function readSectionPage(sectPr: Element | null | undefined): DocxPage {
       twipToPx(attr(pgMar, 'w:left') ?? attr(pgMar, 'left')) ??
         DEFAULT_PAGE.marginLeft,
     ),
+    headerDistance: twipToPx(attr(pgMar, 'w:header') ?? attr(pgMar, 'header')),
+    footerDistance: twipToPx(attr(pgMar, 'w:footer') ?? attr(pgMar, 'footer')),
     borderTop: readBorder(childByLocalName(pgBorders, 'top')),
     borderRight: readBorder(childByLocalName(pgBorders, 'right')),
     borderBottom: readBorder(childByLocalName(pgBorders, 'bottom')),
@@ -2721,6 +2752,117 @@ function readSectionPage(sectPr: Element | null | undefined): DocxPage {
 /** 读取 `readPage` 所需的源数据，供 DOCX 解析使用。 */
 function readPage(bodyNode: Element | null | undefined): DocxPage {
   return readSectionPage(childByLocalName(bodyNode, 'sectPr'));
+}
+
+/** 获取 OOXML 部件对应的关系文件路径。 */
+function getPartRelationshipsPath(partPath: string) {
+  const lastSlash = partPath.lastIndexOf('/');
+  const directory = lastSlash >= 0 ? partPath.slice(0, lastSlash) : '';
+  const fileName = lastSlash >= 0 ? partPath.slice(lastSlash + 1) : partPath;
+  return `${directory ? `${directory}/` : ''}_rels/${fileName}.rels`;
+}
+
+/** 解析页眉部件，并同步其中新增的媒体和对象索引。 */
+function readHeaderPartBlocks(
+  partPath: string,
+  type: string,
+  context: ParseContext,
+) {
+  const xml = readXml(context.packageState.entries, partPath);
+  if (!xml) return undefined;
+  const partContext: ParseContext = {
+    ...context,
+    documentRels:
+      context.packageState.relationships[getPartRelationshipsPath(partPath)] ??
+      {},
+  };
+  const root = parseXml(xml).documentElement;
+  const blocks = readBlockChildren(root, `header-${type}`, partContext);
+  context.imageIndex = partContext.imageIndex;
+  context.chartIndex = partContext.chartIndex;
+  context.shapeIndex = partContext.shapeIndex;
+  return blocks;
+}
+
+/** 读取当前节的页眉、页脚页码及首页差异设置。 */
+function readSectionPageRegions(
+  sectPr: Element | null | undefined,
+  context: ParseContext,
+): Pick<
+  DocxPageContent,
+  'headers' | 'footerPageNumbers' | 'differentFirstPage'
+> {
+  const headers: DocxPageRegionVariants<DocxBlock[]> = {};
+  const footerPageNumbers: DocxPageRegionVariants<boolean> = {};
+  childrenByLocalName(sectPr, 'headerReference').forEach((reference) => {
+    const type = (attr(reference, 'w:type') ?? attr(reference, 'type')) as
+      | 'default'
+      | 'first'
+      | 'even';
+    const relationshipId = attr(reference, 'r:id') ?? attr(reference, 'id');
+    const partPath = relationshipId
+      ? context.documentRels[relationshipId]?.target
+      : undefined;
+    if (!partPath || !type) return;
+    const blocks = readHeaderPartBlocks(partPath, type, context);
+    if (blocks?.length) headers[type] = blocks;
+  });
+  childrenByLocalName(sectPr, 'footerReference').forEach((reference) => {
+    const type = (attr(reference, 'w:type') ?? attr(reference, 'type')) as
+      | 'default'
+      | 'first'
+      | 'even';
+    const relationshipId = attr(reference, 'r:id') ?? attr(reference, 'id');
+    const partPath = relationshipId
+      ? context.documentRels[relationshipId]?.target
+      : undefined;
+    const xml = partPath
+      ? readXml(context.packageState.entries, partPath)
+      : undefined;
+    if (
+      type &&
+      xml &&
+      /\bPAGE\b/i.test(textContent(parseXml(xml).documentElement))
+    ) {
+      footerPageNumbers[type] = true;
+    }
+  });
+  return {
+    headers: Object.keys(headers).length ? headers : undefined,
+    footerPageNumbers: Object.keys(footerPageNumbers).length
+      ? footerPageNumbers
+      : undefined,
+    differentFirstPage: Boolean(childByLocalName(sectPr, 'titlePg')),
+  };
+}
+
+/** 从 WPS 文档网格推导未显式设置行距的正文行高。 */
+function readDefaultGridLineHeight(
+  bodyNode: Element | null | undefined,
+  styles: DocxStyleCatalog,
+): number | undefined {
+  const docGrid = childByLocalName(
+    childByLocalName(bodyNode, 'sectPr'),
+    'docGrid',
+  );
+  const linePitch = positiveTwipToPx(
+    attr(docGrid, 'w:linePitch') ?? attr(docGrid, 'linePitch'),
+  );
+  if (linePitch === undefined) return undefined;
+  const defaultStyle = resolveDocxStyle(
+    styles.defaults.paragraphStyleId,
+    styles,
+  );
+  const explicitLineMultiplier =
+    defaultStyle?.lineHeight !== undefined && defaultStyle.lineHeight <= 4
+      ? defaultStyle.lineHeight
+      : undefined;
+  if (explicitLineMultiplier === undefined && linePitch > 16.1)
+    return undefined;
+  const lineMultiplier = explicitLineMultiplier ?? 2;
+  // WPS 会把普通正文吸附到文档行网格；紧凑双网格减一像素以抵消浏览器行盒取整。
+  const gridLineHeight = linePitch * lineMultiplier;
+  return linePitch <= 16.1 ? gridLineHeight - 1 : gridLineHeight;
 }
 
 /** 执行 `markTitle` 封装的 DOCX 解析处理步骤。 */
@@ -2871,6 +3013,40 @@ function normalizeDocxPages(pages: DocxPageContent[]) {
     }));
 }
 
+/** 判断节点是否包含 Word/WPS 保存的上次渲染分页位置。 */
+function hasRenderedPageBreak(node: Element) {
+  return descendantsByLocalName(node, 'lastRenderedPageBreak').length > 0;
+}
+
+/** 判断节点是否包含显式分页符。 */
+function hasExplicitPageBreak(node: Element) {
+  return descendantsByLocalName(node, 'br').some(
+    (breakNode) =>
+      (attr(breakNode, 'w:type') ?? attr(breakNode, 'type')) === 'page',
+  );
+}
+
+/** 判断段落是否只负责承载显式分页符，不应生成可见空行。 */
+function isPageBreakOnlyParagraph(node: Element) {
+  if (!matchesLocalName(node, 'p') || !hasExplicitPageBreak(node)) return false;
+  return (
+    !textContent(node).trim() &&
+    descendantsByLocalName(node, 'drawing').length === 0 &&
+    descendantsByLocalName(node, 'pict').length === 0
+  );
+}
+
+/** 读取表格内分页标记所在的行索引，分页从该行之前开始。 */
+function readTablePageBreakRows(tableNode: Element) {
+  return childrenByLocalName(tableNode, 'tr')
+    .map((rowNode, rowIndex) =>
+      hasRenderedPageBreak(rowNode) || hasExplicitPageBreak(rowNode)
+        ? rowIndex
+        : -1,
+    )
+    .filter((rowIndex) => rowIndex >= 0);
+}
+
 /** 解析 `parseDocx` 接收的数据，并返回 DOCX 解析结果。 */
 export async function parseDocx(file: File): Promise<DocxDocument> {
   // 解析顺序：包资源 -> 主题/样式 -> body 子节点，段落/表格内部再递归解析图片、图表和形状。
@@ -2880,12 +3056,19 @@ export async function parseDocx(file: File): Promise<DocxDocument> {
   const documentXml = readXml(entries, 'word/document.xml');
   const documentDoc = parseXml(documentXml);
   const bodyNode = childByLocalName(documentDoc.documentElement, 'body');
+  const preserveSectionPagination = Array.from(bodyNode?.children ?? []).some(
+    (child) =>
+      matchesLocalName(child, 'p') &&
+      Boolean(childByLocalName(childByLocalName(child, 'pPr'), 'sectPr')),
+  );
+  const styles = readDocxStyles(entries, theme);
   const context: ParseContext = {
     packageState,
     documentRels:
       packageState.relationships['word/_rels/document.xml.rels'] ?? {},
     theme,
-    styles: readDocxStyles(entries, theme),
+    defaultLineHeight: readDefaultGridLineHeight(bodyNode, styles),
+    styles,
     images: [],
     imageIndex: 0,
     chartIndex: 0,
@@ -2895,7 +3078,45 @@ export async function parseDocx(file: File): Promise<DocxDocument> {
   const blocks: DocxBlock[] = [];
   const pages: DocxPageContent[] = [];
   let currentPageBlocks: DocxBlock[] = [];
+  let previousBoundaryWasExplicit = false;
+  const defaultSectPr = childByLocalName(bodyNode, 'sectPr');
+  const defaultRegions = readSectionPageRegions(defaultSectPr, context);
+  const pushCurrentPage = (
+    page: DocxPage,
+    regions: ReturnType<typeof readSectionPageRegions> = defaultRegions,
+  ) => {
+    if (!currentPageBlocks.length) return;
+    pages.push({
+      id: `docx-page-${pages.length + 1}`,
+      page,
+      blocks: currentPageBlocks,
+      ...regions,
+    });
+    currentPageBlocks = [];
+  };
+
   Array.from(bodyNode?.children ?? []).forEach((child, index) => {
+    const page = readPage(bodyNode);
+    const renderedPageBreak = hasRenderedPageBreak(child);
+    const explicitPageBreak = hasExplicitPageBreak(child);
+    const tablePageBreakRows = matchesLocalName(child, 'tbl')
+      ? readTablePageBreakRows(child)
+      : [];
+    if (
+      renderedPageBreak &&
+      !tablePageBreakRows.length &&
+      !previousBoundaryWasExplicit
+    ) {
+      pushCurrentPage(page);
+    }
+    previousBoundaryWasExplicit = false;
+
+    if (isPageBreakOnlyParagraph(child)) {
+      pushCurrentPage(page);
+      previousBoundaryWasExplicit = true;
+      return;
+    }
+
     const childBlocks: DocxBlock[] = [];
     if (matchesLocalName(child, 'p')) {
       childBlocks.push(
@@ -2903,12 +3124,37 @@ export async function parseDocx(file: File): Promise<DocxDocument> {
       );
     }
     if (matchesLocalName(child, 'tbl')) {
-      childBlocks.push(
-        offsetTableAfterPositionedParagraph(
-          parseTable(child, `table-${index + 1}`, context),
-          currentPageBlocks[currentPageBlocks.length - 1],
-        ),
+      const table = offsetTableAfterPositionedParagraph(
+        parseTable(child, `table-${index + 1}`, context),
+        currentPageBlocks[currentPageBlocks.length - 1],
       );
+      if (tablePageBreakRows.length) {
+        let rowStart = 0;
+        tablePageBreakRows.forEach((rowEnd) => {
+          if (rowEnd > rowStart) {
+            const tablePart = {
+              ...table,
+              id: `${table.id}-page-${rowStart + 1}-${rowEnd}`,
+              rows: table.rows.slice(rowStart, rowEnd),
+            };
+            blocks.push(tablePart);
+            currentPageBlocks.push(tablePart);
+          }
+          pushCurrentPage(page);
+          rowStart = rowEnd;
+        });
+        if (rowStart < table.rows.length) {
+          const tablePart = {
+            ...table,
+            id: `${table.id}-page-${rowStart + 1}-${table.rows.length}`,
+            rows: table.rows.slice(rowStart),
+          };
+          blocks.push(tablePart);
+          currentPageBlocks.push(tablePart);
+        }
+        return;
+      }
+      childBlocks.push(table);
     }
     blocks.push(...childBlocks);
     currentPageBlocks.push(...childBlocks);
@@ -2917,21 +3163,18 @@ export async function parseDocx(file: File): Promise<DocxDocument> {
       ? childByLocalName(childByLocalName(child, 'pPr'), 'sectPr')
       : null;
     if (paragraphSectPr) {
-      pages.push({
-        id: `docx-page-${pages.length + 1}`,
-        page: readSectionPage(paragraphSectPr),
-        blocks: currentPageBlocks,
-      });
-      currentPageBlocks = [];
+      pushCurrentPage(
+        readSectionPage(paragraphSectPr),
+        readSectionPageRegions(paragraphSectPr, context),
+      );
+    } else if (explicitPageBreak) {
+      pushCurrentPage(page);
+      previousBoundaryWasExplicit = true;
     }
   });
 
   if (currentPageBlocks.length) {
-    pages.push({
-      id: `docx-page-${pages.length + 1}`,
-      page: readPage(bodyNode),
-      blocks: currentPageBlocks,
-    });
+    pushCurrentPage(readPage(bodyNode));
   }
 
   const normalizedPages = normalizeDocxPages(pages);
@@ -2942,5 +3185,6 @@ export async function parseDocx(file: File): Promise<DocxDocument> {
     pages: normalizedPages,
     blocks,
     images: context.images,
+    preserveSectionPagination,
   };
 }

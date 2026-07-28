@@ -18,6 +18,7 @@ type DocViewerProps = {
 /** 提取并汇总 `collectAnchoredImageIds` 返回的数据。 */
 function collectAnchoredImageIds(document?: DocDocument) {
   const ids = new Set<string>();
+  if (document?.headerImage) ids.add(document.headerImage.id);
   document?.blocks.forEach((block) => {
     if (block.type === 'paragraph') {
       block.inlines?.forEach((inline) => {
@@ -79,7 +80,26 @@ function DocViewerComponent({ document, zoom }: DocViewerProps) {
       ) : null}
       <div className="office-file-doc-viewer__scroller">
         {pages.map((docPage, pageIndex) => (
-          <DocPageFrame key={docPage.id} page={page} zoom={zoom}>
+          <DocPageFrame
+            key={docPage.id}
+            page={page}
+            zoom={zoom}
+            headerImage={
+              docPage.blocks.length > 0 &&
+              docPage.blocks.every(
+                (block) =>
+                  block.type === 'paragraph' &&
+                  /^\s*\d+(?:\.\d+)*\s+.+\s+-\s*.+\s*-\s*$/.test(block.text),
+              )
+                ? undefined
+                : document.headerImage
+            }
+            footerText={
+              document.footerPageNumbers && pageIndex > 0
+                ? `- ${pageIndex} -`
+                : undefined
+            }
+          >
             <DocContentRenderer
               blocks={docPage.blocks}
               contentWidth={contentWidth}

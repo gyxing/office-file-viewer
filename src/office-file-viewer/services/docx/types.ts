@@ -10,6 +10,8 @@ export type DocxDocument = {
   blocks: DocxBlock[];
   /** DocxDocument 包含的 images 有序集合。 */
   images: DocxImage[];
+  /** 是否保留源文档由节属性定义的物理分页。 */
+  preserveSectionPagination?: boolean;
 };
 
 /** 描述 DocxPageContent 在 DOCX 解析中的数据结构。 */
@@ -20,6 +22,22 @@ export type DocxPageContent = {
   page: DocxPage;
   /** DocxPageContent 包含的 blocks 有序集合。 */
   blocks: DocxBlock[];
+  /** 页眉在首页、偶数页和默认页上的内容变体。 */
+  headers?: DocxPageRegionVariants<DocxBlock[]>;
+  /** 页脚是否包含动态页码的首页、偶数页和默认页变体。 */
+  footerPageNumbers?: DocxPageRegionVariants<boolean>;
+  /** 是否启用首页独立页眉页脚。 */
+  differentFirstPage?: boolean;
+};
+
+/** 描述 DOCX 页眉页脚针对不同页型的内容变体。 */
+export type DocxPageRegionVariants<T> = {
+  /** 默认页使用的内容。 */
+  default?: T;
+  /** 首页使用的内容。 */
+  first?: T;
+  /** 偶数页使用的内容。 */
+  even?: T;
 };
 
 /** 描述 DocxPage 在 DOCX 解析中的数据结构。 */
@@ -36,6 +54,10 @@ export type DocxPage = {
   marginBottom: number;
   /** DocxPage 的对应间距，单位为标准化渲染像素。 */
   marginLeft: number;
+  /** 页眉到页面顶部的距离，单位为标准化渲染像素。 */
+  headerDistance?: number;
+  /** 页脚到页面底部的距离，单位为标准化渲染像素。 */
+  footerDistance?: number;
   /** DocxPage 对应方向的 CSS 边框样式；未提供时沿用来源格式或渲染器的默认规则。 */
   borderTop?: string;
   /** DocxPage 对应方向的 CSS 边框样式；未提供时沿用来源格式或渲染器的默认规则。 */

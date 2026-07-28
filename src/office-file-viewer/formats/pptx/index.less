@@ -46,6 +46,15 @@
   text-align: left;
 }
 
+.office-file-pptx-viewer__workspace {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .office-file-pptx-viewer__viewport {
   display: flex;
   flex: 1 1 auto;
@@ -127,4 +136,94 @@
 
 .office-file-pptx-chart-frame {
   position: absolute;
+}
+
+.office-file-pptx-speaker-notes {
+  position: relative;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 100%;
+  height: 220px;
+  min-height: 120px;
+  max-height: 65%;
+  overflow: auto;
+  background: #fff;
+  border-top: 1px solid #d7deea;
+  color: #1f2937;
+}
+
+.office-file-pptx-speaker-notes__content {
+  padding: 20px 20px 28px;
+}
+
+.office-file-pptx-speaker-notes__paragraph {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 10px;
+  font-size: 14px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.office-file-pptx-speaker-notes__bullet {
+  flex: 0 0 auto;
+}
+
+.office-file-pptx-speaker-notes__paragraph--level-1 {
+  padding-left: 24px;
+}
+
+.office-file-pptx-speaker-notes__paragraph--level-2 {
+  padding-left: 48px;
+}
+
+.office-file-pptx-speaker-notes__paragraph--level-3 {
+  padding-left: 72px;
+}
+
+.office-file-pptx-speaker-notes__paragraph--level-4 {
+  padding-left: 96px;
+}
+
+.office-file-pptx-speaker-notes__paragraph--level-5 {
+  padding-left: 120px;
+}
+
+.office-file-pptx-speaker-notes__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 72px;
+  color: #98a2b3;
+  font-size: 14px;
+}
+
+.office-file-pptx-speaker-notes__resize-handle {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 12px;
+  cursor: row-resize;
+  background: #f8fafc;
+  outline: none;
+  touch-action: none;
+}
+
+.office-file-pptx-speaker-notes__resize-handle span {
+  width: 48px;
+  height: 4px;
+  background: #b8c2d1;
+  border-radius: 2px;
+}
+
+.office-file-pptx-speaker-notes__resize-handle:hover span,
+.office-file-pptx-speaker-notes__resize-handle:focus-visible span {
+  background: #2f6fed;
+}
+
+.office-file-pptx-speaker-notes__resize-handle:focus-visible {
+  box-shadow: inset 0 0 0 2px rgba(47, 111, 237, 35%);
 }

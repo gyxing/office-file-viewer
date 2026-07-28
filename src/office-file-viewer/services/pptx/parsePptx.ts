@@ -26,6 +26,7 @@ import {
   toHexColor,
   transformColor,
 } from './colors';
+import { parsePptxSpeakerNotes } from './parseSpeakerNotes';
 import type {
   ChartElement,
   GradientFill,
@@ -2108,6 +2109,11 @@ function parseSlideXml(
     width,
     height,
     background,
+    speakerNotes: parsePptxSpeakerNotes(
+      packageState.entries,
+      packageState.relationships,
+      relPath,
+    ),
     elements,
   };
 }

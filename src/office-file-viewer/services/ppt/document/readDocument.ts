@@ -1,4 +1,4 @@
-import type { ThemeModel } from '../../presentation/types';
+import type { SpeakerNotesModel, ThemeModel } from '../../presentation/types';
 import { PPT_RECORD } from '../binary/constants';
 import { PptRecordReader } from '../binary/PptRecordReader';
 import { PptParseError } from '../errors';
@@ -10,6 +10,7 @@ import type {
 } from '../types';
 import { readPptFonts } from './readFonts';
 import { readPptMaster } from './readMaster';
+import { readPptNotes } from './readNotes';
 import { readPptSlide } from './readSlide';
 import { readPptSlideLists } from './readSlideLists';
 
@@ -126,6 +127,20 @@ export async function readPptBinaryDocument(
       ),
   );
   await observer?.structure({ width, height, theme, masters });
+  const speakerNotesBySlideId = new Map<number, SpeakerNotesModel>();
+  for (const descriptor of descriptors.notes) {
+    const notes = readPptNotes(
+      documentStream,
+      editChain,
+      descriptor,
+      theme,
+      fonts,
+      context,
+    );
+    if (notes?.speakerNotes) {
+      speakerNotesBySlideId.set(notes.slideIdRef, notes.speakerNotes);
+    }
+  }
   const slides = [];
   for (const descriptor of descriptors.slides) {
     const slide = readPptSlide(
@@ -139,6 +154,7 @@ export async function readPptBinaryDocument(
       context,
     );
     if (slide) {
+      slide.speakerNotes = speakerNotesBySlideId.get(descriptor.slideId);
       // 幻灯片局部背景优先于母版；两者都未声明时才使用主题背景。
       slide.background ??= masters.get(slide.masterId ?? Number.NaN)
         ?.background ?? {

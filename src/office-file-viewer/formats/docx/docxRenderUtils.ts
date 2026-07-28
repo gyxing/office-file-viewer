@@ -46,3 +46,10 @@ export function getDocxEmptyParagraphHeight(block: DocxParagraphBlock) {
   if (block.lineHeight === undefined) return fontSize * 1.2;
   return block.lineHeight > 4 ? block.lineHeight : fontSize * block.lineHeight;
 }
+
+/** 将 DOCX 行高转换为 CSS 可识别的倍率或像素值。 */
+export function getDocxCssLineHeight(block: DocxParagraphBlock) {
+  if (block.lineHeight === undefined) return undefined;
+  // OOXML 的 exact/atLeast 行距已经换算为像素，不能作为无单位倍率传给 React。
+  return block.lineHeight > 4 ? `${block.lineHeight}px` : block.lineHeight;
+}

@@ -5,6 +5,7 @@ import type { DocxParagraphBlock } from '../../services/docx/types';
 import { DocxInlineContent } from './DocxInlineContent';
 import {
   buildDocxTextStyle,
+  getDocxCssLineHeight,
   getDocxEmptyParagraphHeight,
 } from './docxRenderUtils';
 import { calculatePositionStyle } from './positionUtils';
@@ -77,7 +78,7 @@ function DocxParagraphComponent({
       paddingRight: block.paddingRight,
       minHeight: baseMinHeight,
       textAlign: block.align,
-      lineHeight: block.lineHeight,
+      lineHeight: getDocxCssLineHeight(block),
       color: block.style?.color ?? '#000',
       fontSize: block.style?.fontSize ?? 14,
       fontWeight: block.style?.bold ? 700 : 400,

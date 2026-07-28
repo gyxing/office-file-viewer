@@ -109,6 +109,16 @@ export function ZoomInIcon(props: OfficeIconProps) {
   );
 }
 
+// NotesIcon 表示演讲者备注面板。
+/** 渲染 NotesIcon 组件。 */
+export function NotesIcon(props: OfficeIconProps) {
+  return (
+    <OfficeIconBase {...props}>
+      <path d="M5 3.5h14v17H5zM8 8h8M8 12h8M8 16h5" />
+    </OfficeIconBase>
+  );
+}
+
 // FullscreenIcon 表示进入全屏操作。
 /** 渲染 FullscreenIcon 组件。 */
 export function FullscreenIcon(props: OfficeIconProps) {
