@@ -100,7 +100,12 @@ function DocxParagraphComponent({
     hasPositionedElements || hasBlockLevelInline || asDiv ? 'div' : 'p';
 
   return (
-    <Container style={paragraphStyle}>
+    <Container
+      style={paragraphStyle}
+      data-office-word-outline-target={
+        block.outlineLevel !== undefined ? block.id : undefined
+      }
+    >
       {block.inlines.map((inline, index) => (
         <DocxInlineContent
           key={`${block.id}-inline-${index}`}

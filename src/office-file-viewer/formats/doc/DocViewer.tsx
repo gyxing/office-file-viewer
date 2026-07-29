@@ -1,6 +1,7 @@
-import React, { memo, useMemo } from 'react';
+import React, { memo, useMemo, useRef } from 'react';
 import type { DocDocument } from '../../services/doc/types';
 import { OfficeEmpty } from '../../shell/Empty';
+import { WordOutlineSidebar } from '../word-outline/WordOutlineSidebar';
 import { DocContentRenderer } from './DocContentRenderer';
 import { DocImageGallery } from './DocImageGallery';
 import { DocPageFrame } from './DocPageFrame';
@@ -46,6 +47,7 @@ function collectAnchoredImageIds(document?: DocDocument) {
 // DocViewer 负责旧版 DOC/WPS 降级预览的固定警告和页面滚动区。
 /** 渲染 DocViewerComponent 组件。 */
 function DocViewerComponent({ document, zoom }: DocViewerProps) {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const page = document?.page;
   const contentWidth = page
     ? page.width - page.marginLeft - page.marginRight
@@ -66,6 +68,10 @@ function DocViewerComponent({ document, zoom }: DocViewerProps) {
       document?.images.filter((image) => !anchoredImageIds.has(image.id)) ?? [],
     [anchoredImageIds, document],
   );
+  const layoutKey = useMemo(
+    () => `${zoom}:${pages.map((item) => item.id).join('|')}`,
+    [pages, zoom],
+  );
 
   if (!document?.blocks.length || !page || !pages.length) {
     return <OfficeEmpty kind="doc" />;
@@ -78,37 +84,48 @@ function DocViewerComponent({ document, zoom }: DocViewerProps) {
           {document.warnings.join(' ')}
         </div>
       ) : null}
-      <div className="office-file-doc-viewer__scroller">
-        {pages.map((docPage, pageIndex) => (
-          <DocPageFrame
-            key={docPage.id}
-            page={page}
-            zoom={zoom}
-            headerImage={
-              docPage.blocks.length > 0 &&
-              docPage.blocks.every(
-                (block) =>
-                  block.type === 'paragraph' &&
-                  /^\s*\d+(?:\.\d+)*\s+.+\s+-\s*.+\s*-\s*$/.test(block.text),
-              )
-                ? undefined
-                : document.headerImage
-            }
-            footerText={
-              document.footerPageNumbers && pageIndex > 0
-                ? `- ${pageIndex} -`
-                : undefined
-            }
-          >
-            <DocContentRenderer
-              blocks={docPage.blocks}
-              contentWidth={contentWidth}
-            />
-            {pageIndex === pages.length - 1 ? (
-              <DocImageGallery images={unanchoredImages} />
-            ) : null}
-          </DocPageFrame>
-        ))}
+      <div className="office-file-doc-viewer__body">
+        <WordOutlineSidebar
+          items={document.outline ?? []}
+          scrollContainerRef={scrollContainerRef}
+          documentIdentity={document}
+          layoutKey={layoutKey}
+        />
+        <div
+          ref={scrollContainerRef}
+          className="office-file-doc-viewer__scroller"
+        >
+          {pages.map((docPage, pageIndex) => (
+            <DocPageFrame
+              key={docPage.id}
+              page={page}
+              zoom={zoom}
+              headerImage={
+                docPage.blocks.length > 0 &&
+                docPage.blocks.every(
+                  (block) =>
+                    block.type === 'paragraph' &&
+                    /^\s*\d+(?:\.\d+)*\s+.+\s+-\s*.+\s*-\s*$/.test(block.text),
+                )
+                  ? undefined
+                  : document.headerImage
+              }
+              footerText={
+                document.footerPageNumbers && pageIndex > 0
+                  ? `- ${pageIndex} -`
+                  : undefined
+              }
+            >
+              <DocContentRenderer
+                blocks={docPage.blocks}
+                contentWidth={contentWidth}
+              />
+              {pageIndex === pages.length - 1 ? (
+                <DocImageGallery images={unanchoredImages} />
+              ) : null}
+            </DocPageFrame>
+          ))}
+        </div>
       </div>
     </div>
   );

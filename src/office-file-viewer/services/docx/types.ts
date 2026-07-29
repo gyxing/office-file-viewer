@@ -1,3 +1,5 @@
+import type { WordOutlineItem } from '../word/types';
+
 /** 描述 DOCX 解析生成的标准化文档模型。 */
 export type DocxDocument = {
   /** DocxDocument 对外展示的标题。 */
@@ -10,6 +12,8 @@ export type DocxDocument = {
   blocks: DocxBlock[];
   /** DocxDocument 包含的 images 有序集合。 */
   images: DocxImage[];
+  /** 源 DOCX 明确声明的大纲条目；为空时不显示目录侧栏。 */
+  outline?: WordOutlineItem[];
   /** 是否保留源文档由节属性定义的物理分页。 */
   preserveSectionPagination?: boolean;
 };
@@ -120,6 +124,8 @@ export type DocxParagraphBlock = {
   inlines: DocxInline[];
   /** DocxParagraphBlock 携带或渲染的文本内容。 */
   text: string;
+  /** 源 DOCX 明确声明的大纲级别，使用从 0 开始的内部表示。 */
+  outlineLevel?: number;
   /** DocxParagraphBlock 的水平对齐方式；未提供时沿用来源格式或渲染器的默认规则。 */
   align?: 'left' | 'center' | 'right' | 'justify';
   /** DocxParagraphBlock 的行高，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */

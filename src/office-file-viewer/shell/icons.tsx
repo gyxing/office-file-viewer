@@ -128,3 +128,38 @@ export function FullscreenIcon(props: OfficeIconProps) {
     </OfficeIconBase>
   );
 }
+
+// OutlineIcon 表示 Word 文档的层级大纲。
+/** 渲染 OutlineIcon 组件。 */
+export function OutlineIcon(props: OfficeIconProps) {
+  return (
+    <OfficeIconBase {...props}>
+      <circle cx="5" cy="7" r="1" />
+      <circle cx="5" cy="12" r="1" />
+      <circle cx="8" cy="17" r="1" />
+      <path d="M9 7h10M9 12h10M12 17h7" />
+    </OfficeIconBase>
+  );
+}
+
+// PanelLeftCloseIcon 表示收起左侧面板。
+/** 渲染 PanelLeftCloseIcon 组件。 */
+export function PanelLeftCloseIcon(props: OfficeIconProps) {
+  return (
+    <OfficeIconBase {...props}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M8 4v16m7-5-3-3 3-3" />
+    </OfficeIconBase>
+  );
+}
+
+// PanelLeftOpenIcon 表示展开左侧面板。
+/** 渲染 PanelLeftOpenIcon 组件。 */
+export function PanelLeftOpenIcon(props: OfficeIconProps) {
+  return (
+    <OfficeIconBase {...props}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M8 4v16m4-5 3-3-3-3" />
+    </OfficeIconBase>
+  );
+}

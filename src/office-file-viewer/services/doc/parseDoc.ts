@@ -9,7 +9,9 @@ function createYieldIfNeeded() {
   let deadline = Date.now() + 12;
   return async () => {
     if (Date.now() < deadline) return;
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
     deadline = Date.now() + 12;
   };
 }

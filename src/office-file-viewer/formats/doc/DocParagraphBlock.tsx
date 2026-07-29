@@ -27,7 +27,13 @@ function DocParagraphBlockComponent({ block }: DocParagraphBlockProps) {
   );
 
   return (
-    <p className="office-file-doc-paragraph" style={paragraphStyle}>
+    <p
+      className="office-file-doc-paragraph"
+      style={paragraphStyle}
+      data-office-word-outline-target={
+        block.outlineLevel !== undefined ? block.id : undefined
+      }
+    >
       <DocInlineContent
         inlines={block.inlines}
         fallback={block.text}

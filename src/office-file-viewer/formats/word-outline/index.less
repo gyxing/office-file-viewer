@@ -1,0 +1,116 @@
+.office-file-word-outline {
+  box-sizing: border-box;
+  display: flex;
+  flex: 0 0 260px;
+  flex-direction: column;
+  width: 260px;
+  min-width: 0;
+  height: 100%;
+  color: #1f2937;
+  background: #fff;
+  border-right: 1px solid #d9e0e8;
+  transition: flex-basis 160ms ease, width 160ms ease;
+}
+
+.office-file-word-outline--collapsed {
+  flex-basis: 44px;
+  width: 44px;
+}
+
+.office-file-word-outline__header {
+  display: flex;
+  flex: 0 0 48px;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  padding: 0 8px 0 14px;
+  border-bottom: 1px solid #e5eaf0;
+}
+
+.office-file-word-outline__title {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.office-file-word-outline__count {
+  min-width: 24px;
+  margin-left: auto;
+  color: #64748b;
+  font-size: 12px;
+  text-align: center;
+}
+
+.office-file-word-outline__toggle {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  color: #475569;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.office-file-word-outline__toggle:hover {
+  color: #1677ff;
+  background: #f0f5ff;
+}
+
+.office-file-word-outline__toggle:focus-visible {
+  outline: 2px solid #1677ff;
+  outline-offset: 1px;
+}
+
+.office-file-word-outline__tree-host {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 8px 6px 10px;
+  overflow: hidden;
+}
+
+.office-file-word-outline__tree-host .ant-tree {
+  height: 100%;
+  color: inherit;
+  background: transparent;
+}
+
+.office-file-word-outline__tree-host .ant-tree-node-content-wrapper {
+  min-width: 0;
+  padding-inline: 4px;
+  border-radius: 5px;
+}
+
+.office-file-word-outline__tree-host
+  .ant-tree-node-selected.ant-tree-node-content-wrapper {
+  color: #0958d9;
+  background: #e6f4ff;
+}
+
+.office-file-word-outline__node-title {
+  display: block;
+  overflow: hidden;
+  line-height: 28px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.office-file-word-outline__rail {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 9px;
+}
+
+.office-file-word-outline__rail-icon {
+  color: #94a3b8;
+  font-size: 18px;
+}

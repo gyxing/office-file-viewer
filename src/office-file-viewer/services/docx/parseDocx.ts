@@ -84,14 +84,20 @@ type ReadBlockChildrenOptions = {
   insideShape?: boolean;
   /** 是否位于表格单元格内部；单元格正文不吸附页面行网格。 */
   insideTable?: boolean;
+  /** 是否位于页眉或页脚区域；这些段落不属于正文大纲。 */
+  insidePageRegion?: boolean;
 };
 
 /** 描述 DocxStyleDefinition 在 DOCX 解析中的数据结构。 */
 type DocxStyleDefinition = {
   /** 标识 DocxStyleDefinition 对应的 Office 文件或数据种类。 */
   kind: 'paragraph' | 'character' | 'table';
+  /** 源 styles.xml 中声明的样式名称。 */
+  name?: string;
   /** DocxStyleDefinition 的 basedOn 文本值。 */
   basedOn?: string;
+  /** 样式直接声明的大纲级别，使用从 0 开始的内部表示。 */
+  outlineLevel?: number;
   /** DocxStyleDefinition 使用的渲染或文本样式。 */
   style: DocxTextStyle;
 };
@@ -111,6 +117,10 @@ type DocxStyleCatalog = {
   };
   /** DocxStyleCatalog 按业务键索引的 styles 映射。 */
   styles: Record<string, DocxStyleDefinition>;
+  /** 按样式缓存继承后的大纲级别，null 表示没有大纲语义。 */
+  outlineLevelCache: Map<string, number | null>;
+  /** 按样式缓存 TOC 判定，避免为每个段落重复遍历继承链。 */
+  tocStyleCache: Map<string, boolean>;
 };
 
 const DEFAULT_PAGE: DocxPage = {
@@ -494,7 +504,13 @@ function readDocxStyles(
 ): DocxStyleCatalog {
   // styles.xml 会提供默认样式和命名样式，段落/文字解析时再与直接格式合并。
   const xml = readXml(entries, 'word/styles.xml');
-  if (!xml) return { defaults: {}, styles: {} };
+  if (!xml)
+    return {
+      defaults: {},
+      styles: {},
+      outlineLevelCache: new Map(),
+      tocStyleCache: new Map(),
+    };
 
   const doc = parseXml(xml);
   const root = doc.documentElement;
@@ -529,7 +545,10 @@ function readDocxStyles(
       attr(childByLocalName(styleNode, 'basedOn'), 'w:val') ??
       attr(childByLocalName(styleNode, 'basedOn'), 'val') ??
       undefined;
-    const name = styleId;
+    const name =
+      attr(childByLocalName(styleNode, 'name'), 'w:val') ??
+      attr(childByLocalName(styleNode, 'name'), 'val') ??
+      styleId;
     const pPr = childByLocalName(styleNode, 'pPr');
     const rPr = childByLocalName(styleNode, 'rPr');
 
@@ -546,21 +565,26 @@ function readDocxStyles(
       style = readTextStyle(rPr, theme);
     }
 
-    if (style) {
-      styles[name] = {
-        kind:
-          kindAttr === 'paragraph'
-            ? 'paragraph'
-            : kindAttr === 'table'
-            ? 'table'
-            : 'character',
-        basedOn,
-        style,
-      };
-    }
+    styles[styleId] = {
+      kind:
+        kindAttr === 'paragraph'
+          ? 'paragraph'
+          : kindAttr === 'table'
+          ? 'table'
+          : 'character',
+      name,
+      basedOn,
+      outlineLevel: readDocxOutlineLevel(pPr),
+      style: style ?? {},
+    };
   });
 
-  return { defaults, styles };
+  return {
+    defaults,
+    styles,
+    outlineLevelCache: new Map(),
+    tocStyleCache: new Map(),
+  };
 }
 
 /** 读取 `readUnderline` 所需的源数据，供 DOCX 解析使用。 */
@@ -673,6 +697,73 @@ function resolveDocxStyle(
   return mergeTextStyle(base, entry.style);
 }
 
+/** 读取段落属性直接声明的 OOXML 大纲级别。 */
+function readDocxOutlineLevel(
+  pPr: Element | null | undefined,
+): number | undefined {
+  const raw =
+    attr(childByLocalName(pPr, 'outlineLvl'), 'w:val') ??
+    attr(childByLocalName(pPr, 'outlineLvl'), 'val');
+  if (raw === undefined) return undefined;
+  const level = Number.parseInt(raw, 10);
+  return Number.isInteger(level) && level >= 0 && level <= 9
+    ? level
+    : undefined;
+}
+
+/** 沿 basedOn 继承链解析样式大纲级别，并缓存结果。 */
+function resolveDocxOutlineLevel(
+  styleId: string | undefined,
+  catalog: DocxStyleCatalog,
+  seen: Set<string> = new Set(),
+): number | undefined {
+  if (!styleId) return undefined;
+  if (catalog.outlineLevelCache.has(styleId))
+    return catalog.outlineLevelCache.get(styleId) ?? undefined;
+  if (seen.has(styleId)) {
+    catalog.outlineLevelCache.set(styleId, null);
+    return undefined;
+  }
+
+  const entry = catalog.styles[styleId];
+  if (!entry || entry.kind !== 'paragraph') {
+    catalog.outlineLevelCache.set(styleId, null);
+    return undefined;
+  }
+  seen.add(styleId);
+  const level =
+    entry.outlineLevel ?? resolveDocxOutlineLevel(entry.basedOn, catalog, seen);
+  catalog.outlineLevelCache.set(styleId, level ?? null);
+  return level;
+}
+
+/** 判断段落样式是否为目录域生成的 TOC 样式。 */
+function isDocxTocStyle(
+  styleId: string | undefined,
+  catalog: DocxStyleCatalog,
+  seen: Set<string> = new Set(),
+): boolean {
+  if (!styleId) return false;
+  const cached = catalog.tocStyleCache.get(styleId);
+  if (cached !== undefined) return cached;
+  if (seen.has(styleId)) {
+    catalog.tocStyleCache.set(styleId, false);
+    return false;
+  }
+
+  const entry = catalog.styles[styleId];
+  if (!entry) {
+    catalog.tocStyleCache.set(styleId, false);
+    return false;
+  }
+  seen.add(styleId);
+  const isToc =
+    /^toc\s*\d+$/i.test(entry.name ?? styleId) ||
+    isDocxTocStyle(entry.basedOn, catalog, seen);
+  catalog.tocStyleCache.set(styleId, isToc);
+  return isToc;
+}
+
 /** 解析并确定 `resolveParagraphStyle` 对应的引用或配置。 */
 function resolveParagraphStyle(
   pPr: Element | null | undefined,
@@ -683,6 +774,7 @@ function resolveParagraphStyle(
   const styleId =
     attr(childByLocalName(pPr, 'pStyle'), 'w:val') ??
     attr(childByLocalName(pPr, 'pStyle'), 'val');
+  const effectiveStyleId = styleId ?? catalog.defaults.paragraphStyleId;
   const baseStyle = resolveDocxStyle(
     catalog.defaults.paragraphStyleId,
     catalog,
@@ -711,6 +803,11 @@ function resolveParagraphStyle(
     paddingRight: directStyle?.paddingRight ?? style?.paddingRight,
     paddingBottom: directStyle?.paddingBottom ?? style?.paddingBottom,
     paddingLeft: directStyle?.paddingLeft ?? style?.paddingLeft,
+    styleId: effectiveStyleId,
+    outlineLevel:
+      readDocxOutlineLevel(pPr) ??
+      resolveDocxOutlineLevel(effectiveStyleId, catalog),
+    isTocStyle: isDocxTocStyle(effectiveStyleId, catalog),
     style: mergeTextStyle(
       style,
       directStyle,
@@ -2309,6 +2406,15 @@ function parseParagraph(
   const style = resolveParagraphStyle(pPr, context.styles, context.theme);
   const inlines = readParagraphRuns(pNode, style.style, context);
   const text = textFromInlines(inlines).trim();
+  const outlineLevel =
+    text &&
+    !options?.insideTable &&
+    !options?.insidePageRegion &&
+    !style.isTocStyle &&
+    style.outlineLevel !== undefined &&
+    style.outlineLevel <= 8
+      ? style.outlineLevel
+      : undefined;
   const fontSize = style.style?.fontSize ?? 14;
   const lineHeight =
     style.lineHeight !== undefined &&
@@ -2325,6 +2431,7 @@ function parseParagraph(
     type: 'paragraph',
     inlines,
     text,
+    outlineLevel,
     align: style.align,
     lineHeight,
     style: style.style,
@@ -2777,7 +2884,9 @@ function readHeaderPartBlocks(
       {},
   };
   const root = parseXml(xml).documentElement;
-  const blocks = readBlockChildren(root, `header-${type}`, partContext);
+  const blocks = readBlockChildren(root, `header-${type}`, partContext, {
+    insidePageRegion: true,
+  });
   context.imageIndex = partContext.imageIndex;
   context.chartIndex = partContext.chartIndex;
   context.shapeIndex = partContext.shapeIndex;
@@ -3178,6 +3287,18 @@ export async function parseDocx(file: File): Promise<DocxDocument> {
   }
 
   const normalizedPages = normalizeDocxPages(pages);
+  const outline = blocks.flatMap((block) =>
+    block.type === 'paragraph' && block.outlineLevel !== undefined && block.text
+      ? [
+          {
+            id: `outline-${block.id}`,
+            text: block.text,
+            level: block.outlineLevel,
+            targetBlockId: block.id,
+          },
+        ]
+      : [],
+  );
 
   return {
     title: markTitle(blocks),
@@ -3185,6 +3306,7 @@ export async function parseDocx(file: File): Promise<DocxDocument> {
     pages: normalizedPages,
     blocks,
     images: context.images,
+    outline,
     preserveSectionPagination,
   };
 }

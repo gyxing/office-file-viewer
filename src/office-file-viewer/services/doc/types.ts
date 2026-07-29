@@ -1,3 +1,5 @@
+import type { WordOutlineItem } from '../word/types';
+
 /** 描述 DOC 二进制解析生成的标准化文档模型。 */
 export type DocDocument = {
   /** DocDocument 对外展示的标题。 */
@@ -10,6 +12,8 @@ export type DocDocument = {
   paragraphs: DocParagraph[];
   /** DocDocument 包含的 images 有序集合。 */
   images: DocImage[];
+  /** 源 DOC/WPS 明确声明的大纲条目；为空时不显示目录侧栏。 */
+  outline?: WordOutlineItem[];
   /** 从页眉 story 中识别出的徽标图片；未提供时不渲染页眉图片。 */
   headerImage?: DocImage;
   /** 页脚 story 是否包含 PAGE 字段。 */
@@ -77,6 +81,8 @@ export type DocParagraphBlock = {
   inlines?: DocTextInline[];
   /** 段落的语义角色，用于选择标题、标题级别或正文样式。 */
   role?: 'title' | 'heading' | 'body';
+  /** 源 DOC/WPS 明确声明的大纲级别，使用从 0 开始的内部表示。 */
+  outlineLevel?: number;
   /** DocParagraphBlock 使用的渲染或文本样式。 */
   style?: DocTextStyle;
   /** 源文档在该段落前存在显式分页符；渲染分页时该占位段落不显示。 */

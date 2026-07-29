@@ -11,6 +11,11 @@ import {
 } from './chunkDocBlocks';
 import { DocBlockStreamBuilder } from './DocBlockStreamBuilder';
 import { extractDocDrawingCanvases } from './parseDocDrawingCanvas';
+import {
+  parseDocStyleOutlineCatalog,
+  readDocParagraphOutlineLevel,
+  type DocStyleOutlineCatalog,
+} from './parseDocStyleOutline';
 import type {
   DocBlock,
   DocDocument,
@@ -62,6 +67,8 @@ type DocParagraphRun = {
   tableRowEnd?: boolean;
   /** 当前段落是否要求在段前强制分页。 */
   pageBreakBefore?: boolean;
+  /** 源 PAPX 明确声明的段落大纲级别。 */
+  outlineLevel?: number;
 };
 
 /** 描述 DocTextSegment 在 DOC 二进制解析中的数据结构。 */
@@ -76,6 +83,8 @@ type DocTextSegment = {
   tableRowEnd?: boolean;
   /** 当前文本片段所在段落是否要求段前分页。 */
   pageBreakBefore?: boolean;
+  /** 源 PAPX 明确声明的段落大纲级别。 */
+  outlineLevel?: number;
 };
 
 /** 描述 DocImageSegment 在 DOC 二进制解析中的数据结构。 */
@@ -92,6 +101,8 @@ type DocImageSegment = {
   tableRowEnd?: boolean;
   /** 当前文本片段所在段落是否要求段前分页。 */
   pageBreakBefore?: boolean;
+  /** 源 PAPX 明确声明的段落大纲级别。 */
+  outlineLevel?: number;
 };
 
 /** 描述 DocImageCandidate 在 DOC 二进制解析中的数据结构。 */
@@ -134,6 +145,8 @@ type DocLine = {
   tableRowEnd?: boolean;
   /** 当前行是否要求在段前强制分页。 */
   pageBreakBefore?: boolean;
+  /** 源 PAPX 明确声明的段落大纲级别。 */
+  outlineLevel?: number;
   /** DocLine 执行 match 操作时调用的函数。 */
   match: (regexp: RegExp) => RegExpMatchArray | null;
 };
@@ -286,6 +299,8 @@ function parseFib(wordDocument: Uint8Array) {
     ccpAtn: readFibField(wordDocument, 92),
     ccpEdn: readFibField(wordDocument, 96),
     ccpTxbx: readFibField(wordDocument, 100),
+    fcStshf: readFibField(wordDocument, 154),
+    lcbStshf: readFibField(wordDocument, 158),
 
     fcPlcfBteChpx: readFibField(wordDocument, 250),
     lcbPlcfBteChpx: readFibField(wordDocument, 254),
@@ -776,6 +791,7 @@ function parseCharacterRuns(
 function parsePapxFkpPage(
   wordDocument: Uint8Array,
   pageOffset: number,
+  outlineCatalog: DocStyleOutlineCatalog,
 ): DocParagraphRun[] {
   const page = wordDocument.slice(pageOffset, pageOffset + 512);
   if (page.length < 512) return [];
@@ -800,13 +816,18 @@ function parsePapxFkpPage(
     // PAPX 的 grpprl 以两字节 istd 开头，段落 SPRM 必须从样式索引之后解析。
     const style = parseGrpprlStyle(grpprl.slice(Math.min(2, grpprl.length)));
     const structure = parseGrpprlParagraphStructure(grpprl);
+    // 表格单元格可能复用标题样式，但 Word 导航窗格只读取正文段落。
+    const outlineLevel = structure.inTable
+      ? undefined
+      : readDocParagraphOutlineLevel(grpprl, outlineCatalog);
     if (
       style ||
       structure.inTable !== undefined ||
       structure.tableRowEnd !== undefined ||
-      structure.pageBreakBefore !== undefined
+      structure.pageBreakBefore !== undefined ||
+      outlineLevel !== undefined
     ) {
-      runs.push({ fcStart, fcEnd, style, ...structure });
+      runs.push({ fcStart, fcEnd, style, ...structure, outlineLevel });
     }
   }
 
@@ -818,9 +839,10 @@ function parseParagraphRuns(
   wordDocument: Uint8Array,
   tableStream: Uint8Array,
   fib: DocFib,
+  outlineCatalog: DocStyleOutlineCatalog,
 ): DocParagraphRun[] {
   return parsePlcBtePapx(tableStream, fib).flatMap((entry) =>
-    parsePapxFkpPage(wordDocument, entry.pn * 512).filter(
+    parsePapxFkpPage(wordDocument, entry.pn * 512, outlineCatalog).filter(
       (run) => run.fcEnd > entry.fcStart && run.fcStart < entry.fcEnd,
     ),
   );
@@ -884,11 +906,13 @@ function paragraphStructureForRange(
         inTable: run.inTable ?? structure.inTable,
         tableRowEnd: run.tableRowEnd ?? structure.tableRowEnd,
         pageBreakBefore: run.pageBreakBefore ?? structure.pageBreakBefore,
+        outlineLevel: run.outlineLevel ?? structure.outlineLevel,
       }),
       {
         inTable: undefined as boolean | undefined,
         tableRowEnd: undefined as boolean | undefined,
         pageBreakBefore: undefined as boolean | undefined,
+        outlineLevel: undefined as number | undefined,
       },
     );
 }
@@ -1155,6 +1179,7 @@ function normalizeDocTextSegments(
             inTable: segment.inTable,
             tableRowEnd: segment.tableRowEnd,
             pageBreakBefore: segment.pageBreakBefore,
+            outlineLevel: segment.outlineLevel,
           };
         }
         if (text === '\u0008') {
@@ -1167,6 +1192,7 @@ function normalizeDocTextSegments(
             inTable: segment.inTable,
             tableRowEnd: segment.tableRowEnd,
             pageBreakBefore: segment.pageBreakBefore,
+            outlineLevel: segment.outlineLevel,
           };
         }
         return {
@@ -1175,6 +1201,7 @@ function normalizeDocTextSegments(
           inTable: segment.inTable,
           tableRowEnd: segment.tableRowEnd,
           pageBreakBefore: segment.pageBreakBefore,
+          outlineLevel: segment.outlineLevel,
         };
       })
       .filter(
@@ -1487,6 +1514,7 @@ function createParagraphBlock(
   inlines?: DocTextInline[],
   style?: DocTextStyle,
   pageBreakBefore?: boolean,
+  outlineLevel?: number,
 ): DocParagraphBlock {
   const compactLength = text.replace(/\s+/g, '').length;
   const hasImages = Boolean(inlines?.some((inline) => inline.type === 'image'));
@@ -1520,6 +1548,7 @@ function createParagraphBlock(
     role,
     style: mergeStyleIntoTextStyle(inferredStyle, style),
     pageBreakBefore,
+    outlineLevel,
   };
 }
 
@@ -1689,6 +1718,9 @@ async function blocksFromSegments(
       pageBreakBefore: structuralSegments.some(
         (segment) => segment.pageBreakBefore,
       ),
+      outlineLevel: structuralSegments.find(
+        (segment) => segment.outlineLevel !== undefined,
+      )?.outlineLevel,
       match: (pattern) => text.match(pattern),
     };
   };
@@ -1777,6 +1809,23 @@ async function blocksFromSegments(
       return;
     }
 
+    if (line.outlineLevel !== undefined) {
+      // 源大纲语义优先于列表外观推断，避免编号标题被降成普通列表项。
+      await flushTable();
+      await flushList();
+      await builder.add(
+        createParagraphBlock(
+          textLine,
+          builder.nextSourceIndex,
+          line.inlines,
+          line.style,
+          line.pageBreakBefore,
+          line.outlineLevel,
+        ),
+      );
+      return;
+    }
+
     const listLine = parseListLine(line);
     if (listLine) {
       await flushTable();
@@ -1796,6 +1845,7 @@ async function blocksFromSegments(
         line.inlines,
         line.style,
         line.pageBreakBefore,
+        line.outlineLevel,
       ),
     );
   };
@@ -2180,6 +2230,18 @@ function buildDocDocument(
     paragraphs.find((paragraph) => paragraph.text)?.text ??
     (fileName || 'DOC \u6587\u6863');
   const images = [] as DocImage[];
+  const outline = blocks.flatMap((block) =>
+    block.type === 'paragraph' && block.outlineLevel !== undefined && block.text
+      ? [
+          {
+            id: `outline-${block.id}`,
+            text: block.text,
+            level: block.outlineLevel,
+            targetBlockId: block.id,
+          },
+        ]
+      : [],
+  );
 
   return {
     title,
@@ -2187,6 +2249,7 @@ function buildDocDocument(
     blocks,
     paragraphs,
     images,
+    outline,
     warnings,
   };
 }
@@ -2275,13 +2338,24 @@ export async function parseDocCore(
   }
 
   const fonts = parseFontTable(tableStream, fib);
+  const outlineCatalog = parseDocStyleOutlineCatalog(
+    tableStream,
+    fib.fcStshf,
+    fib.lcbStshf,
+  );
+  warnings.push(...outlineCatalog.warnings);
   const characterRuns = parseCharacterRuns(
     wordDocument,
     tableStream,
     fib,
     fonts,
   );
-  const paragraphRuns = parseParagraphRuns(wordDocument, tableStream, fib);
+  const paragraphRuns = parseParagraphRuns(
+    wordDocument,
+    tableStream,
+    fib,
+    outlineCatalog,
+  );
   await context.checkpoint({
     stage: 'resources',
     percent: 0.5,

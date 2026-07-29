@@ -5,6 +5,7 @@ import type {
   DocxPageRegionVariants,
 } from '../../services/docx/types';
 import { OfficeEmpty } from '../../shell/Empty';
+import { WordOutlineSidebar } from '../word-outline/WordOutlineSidebar';
 import { DocxBlockRenderer } from './DocxBlockRenderer';
 import { DocxPageFrame } from './DocxPageFrame';
 import './index.less';
@@ -176,6 +177,7 @@ function useMeasuredDocxPages(
 // DocxViewer 负责 DOCX 页面内容的缩放渲染和滚动布局。
 /** 渲染 DocxViewerComponent 组件。 */
 function DocxViewerComponent({ document, zoom }: DocxViewerProps) {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const sourcePages = useMemo<DocxPageContent[]>(
     () =>
       document
@@ -197,6 +199,10 @@ function DocxViewerComponent({ document, zoom }: DocxViewerProps) {
   const { measureRef, pages } = useMeasuredDocxPages(
     sourcePages,
     preserveSectionPagination,
+  );
+  const layoutKey = useMemo(
+    () => `${zoom}:${pages.map((item) => item.id).join('|')}`,
+    [pages, zoom],
   );
   if (!document?.blocks.length || !pages.length) {
     return <OfficeEmpty kind="docx" />;
@@ -231,55 +237,66 @@ function DocxViewerComponent({ document, zoom }: DocxViewerProps) {
           ))}
         </div>
       ) : null}
-      <div className="office-file-docx-viewer__scroller">
-        {pages.map((pageItem, pageIndex) => {
-          const differentEvenOdd = Boolean(
-            pageItem.headers?.even !== undefined ||
-              pageItem.footerPageNumbers?.even !== undefined,
-          );
-          const firstBodyText = pageItem.blocks.find(
-            (block) => block.type === 'paragraph' && block.text,
-          );
-          // 目录首页在源文档中关闭页眉，后续目录续页恢复默认页眉。
-          const suppressHeader =
-            firstBodyText?.type === 'paragraph' &&
-            firstBodyText.text === '目录';
-          const headerBlocks = suppressHeader
-            ? undefined
-            : selectPageRegion<DocxPageContent['blocks']>(
-                pageItem.headers,
-                pageIndex,
-                pageItem.differentFirstPage,
-                differentEvenOdd,
-              );
-          const footerPageNumber = selectPageRegion<boolean>(
-            pageItem.footerPageNumbers,
-            pageIndex,
-            pageItem.differentFirstPage,
-            differentEvenOdd,
-          );
-          return (
-            <DocxPageFrame
-              key={pageItem.id}
-              page={pageItem.page}
-              zoom={zoom}
-              header={
-                headerBlocks?.length
-                  ? renderPageBlocks({ ...pageItem, blocks: headerBlocks })
-                  : undefined
-              }
-              footer={
-                footerPageNumber && pageIndex > 0 ? (
-                  <span className="office-file-docx-page-frame__page-number">
-                    - {pageIndex} -
-                  </span>
-                ) : undefined
-              }
-            >
-              {renderPageBlocks(pageItem)}
-            </DocxPageFrame>
-          );
-        })}
+      <div className="office-file-docx-viewer__body">
+        <WordOutlineSidebar
+          items={document.outline ?? []}
+          scrollContainerRef={scrollContainerRef}
+          documentIdentity={document}
+          layoutKey={layoutKey}
+        />
+        <div
+          ref={scrollContainerRef}
+          className="office-file-docx-viewer__scroller"
+        >
+          {pages.map((pageItem, pageIndex) => {
+            const differentEvenOdd = Boolean(
+              pageItem.headers?.even !== undefined ||
+                pageItem.footerPageNumbers?.even !== undefined,
+            );
+            const firstBodyText = pageItem.blocks.find(
+              (block) => block.type === 'paragraph' && block.text,
+            );
+            // 目录首页在源文档中关闭页眉，后续目录续页恢复默认页眉。
+            const suppressHeader =
+              firstBodyText?.type === 'paragraph' &&
+              firstBodyText.text === '目录';
+            const headerBlocks = suppressHeader
+              ? undefined
+              : selectPageRegion<DocxPageContent['blocks']>(
+                  pageItem.headers,
+                  pageIndex,
+                  pageItem.differentFirstPage,
+                  differentEvenOdd,
+                );
+            const footerPageNumber = selectPageRegion<boolean>(
+              pageItem.footerPageNumbers,
+              pageIndex,
+              pageItem.differentFirstPage,
+              differentEvenOdd,
+            );
+            return (
+              <DocxPageFrame
+                key={pageItem.id}
+                page={pageItem.page}
+                zoom={zoom}
+                header={
+                  headerBlocks?.length
+                    ? renderPageBlocks({ ...pageItem, blocks: headerBlocks })
+                    : undefined
+                }
+                footer={
+                  footerPageNumber && pageIndex > 0 ? (
+                    <span className="office-file-docx-page-frame__page-number">
+                      - {pageIndex} -
+                    </span>
+                  ) : undefined
+                }
+              >
+                {renderPageBlocks(pageItem)}
+              </DocxPageFrame>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
