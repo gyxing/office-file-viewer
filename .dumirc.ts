@@ -4,7 +4,7 @@ import { resolve as resolvePath } from 'node:path';
 export default defineConfig({
   base: '/office-file-viewer/',
   publicPath: '/office-file-viewer/',
-  outputPath: 'homepage',
+  outputPath: 'docs-dist',
   locales: [
     { id: 'en-US', name: 'English' },
     { id: 'zh-CN', name: '简体中文', base: '/zh-CN' },
