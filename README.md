@@ -1,52 +1,54 @@
 # Office File Viewer
 
+English | [简体中文](./README.zh-CN.md)
+
 > A browser-based React component for offline preview of DOC/DOCX/WPS, XLS/XLSX, and PPT/PPTX files.
 
-`office-file-viewer` 是一个面向 React 的纯浏览器 Office 文件预览组件。文件下载、解析和渲染均在浏览器内完成，不需要配套的文档转换服务，也不会主动把本地文件上传到服务器。
+`office-file-viewer` is a browser-only Office file viewer component for React. File downloading, parsing, and rendering all take place in the browser. It requires no companion document conversion service and does not actively upload local files to a server.
 
-支持 DOC、DOCX、WPS、XLS、XLSX、PPT 和 PPTX。组件统一提供文件选择、远程加载、解析进度、缩放、全屏、幻灯片翻页和工作表切换等能力。
+It supports DOC, DOCX, WPS, XLS, XLSX, PPT, and PPTX files. The component provides a consistent experience across formats, including file selection, remote loading, parsing progress, zoom, fullscreen mode, slide navigation, and worksheet switching.
 
-> 这是独立解析和渲染实现，不等同于 Microsoft Office 或 WPS 的原生排版引擎。复杂文档的显示结果可能与桌面应用存在差异，使用前请阅读[支持格式](#支持格式)和[使用边界](#使用边界)。
+> This is an independent parsing and rendering implementation. It is not the native layout engine used by Microsoft Office or WPS Office. Complex documents may render differently from desktop applications. Read [Supported formats](#supported-formats) and [Limitations](#limitations) before use.
 
-## 主要特性
+## Features
 
-- **纯前端解析**：本地文件无需上传，适合内网、离线环境和对数据隐私敏感的场景
-- **七种文件格式**：支持 DOC/DOCX/WPS、XLS/XLSX、PPT/PPTX
-- **统一 React 组件**：不同格式共用同一套加载、错误、空状态、缩放和全屏交互
-- **多种文件来源**：支持 `File`、远程 URL，以及返回 `File`、`Blob`、URL 或 `Response` 的异步函数
-- **Worker 解析**：DOC/WPS、XLS、PPT 可在 Web Worker 中解析，降低大文件阻塞主线程的时间
-- **进度与取消**：提供解析阶段、完成度订阅和会话取消能力；切换文件时自动丢弃过期结果
-- **渐进预览**：组件解析 DOC/WPS、XLS、PPT 时可逐步接收已完成内容并提前渲染
-- **资源管理**：组件自动释放 Worker、订阅和 Blob URL，底层 API 也提供显式释放函数
-- **宿主集成**：兼容 antd v4、v5、v6，并继承宿主项目的 `ConfigProvider`
-- **图表降级**：图表或地图数据加载失败时优先使用文档内快照，无法降级时显示明确状态
+- **Browser-only parsing**: Local files do not need to be uploaded, making the component suitable for intranets, offline environments, and privacy-sensitive scenarios
+- **Seven file formats**: Supports DOC/DOCX/WPS, XLS/XLSX, and PPT/PPTX
+- **Unified React component**: All formats share the same loading, error, empty-state, zoom, and fullscreen interactions
+- **Multiple file sources**: Accepts a `File`, a remote URL, or an async function that returns a `File`, `Blob`, URL, or `Response`
+- **Worker-based parsing**: DOC/WPS, XLS, and PPT files can be parsed in a Web Worker to reduce main-thread blocking for large files
+- **Progress and cancellation**: Exposes parsing stages, progress subscriptions, and session cancellation; stale results are automatically discarded when switching files
+- **Progressive preview**: The component can receive completed content incrementally and render it early while parsing DOC/WPS, XLS, and PPT files
+- **Resource management**: The component automatically releases Workers, subscriptions, and Blob URLs; the low-level API also provides explicit disposal functions
+- **Host integration**: Compatible with antd v4, v5, and v6, and inherits the host application's `ConfigProvider`
+- **Chart fallback**: Uses snapshots embedded in the document when chart or map data fails to load, and shows an explicit state when no fallback is available
 
-## 安装
+## Installation
 
 ```bash
 npm install office-file-viewer antd react react-dom
 ```
 
-项目使用 Yarn 时：
+For projects using Yarn:
 
 ```bash
 yarn add office-file-viewer antd react react-dom
 ```
 
-`react`、`react-dom` 和 `antd` 由宿主项目提供；`echarts` 与 `jszip` 是组件自身的运行时依赖。
+`react`, `react-dom`, and `antd` are provided by the host project. `echarts` and `jszip` are runtime dependencies of the component itself.
 
-宿主构建工具需要支持 `.less` 文件，因为组件样式会随模块一起导入。
+The host build tool must support `.less` files because the component styles are imported with the modules.
 
-## 版本兼容
+## Version compatibility
 
-| antd 版本           | React / ReactDOM | 支持状态 | 说明                              |
-| ------------------- | ---------------- | -------- | --------------------------------- |
-| `4.24.x`            | `>=16.9.0`       | 支持     | 宿主入口需要加载 antd v4 全局样式 |
-| `5.x`               | `>=16.9.0`       | 支持     | 使用 antd v5 的样式机制           |
-| `6.x`               | `>=18.0.0`       | 支持     | React 版本要求来自 antd v6        |
-| `6.x` + React 16/17 | -                | 不支持   | 不满足 antd v6 自身要求           |
+| antd version        | React / ReactDOM | Status      | Notes                                          |
+| ------------------- | ---------------- | ----------- | ---------------------------------------------- |
+| `4.24.x`            | `>=16.9.0`       | Supported   | The host entry must load antd v4 global styles |
+| `5.x`               | `>=16.9.0`       | Supported   | Uses the antd v5 styling system                |
+| `6.x`               | `>=18.0.0`       | Supported   | The React requirement comes from antd v6       |
+| `6.x` + React 16/17 | -                | Unsupported | Does not meet antd v6's own requirements       |
 
-当前 peerDependencies 范围：
+Current peer dependency ranges:
 
 ```text
 antd: >=4.24.0 <7.0.0
@@ -54,19 +56,19 @@ react: >=16.9.0
 react-dom: >=16.9.0
 ```
 
-React 的 peer 下限用于兼容 antd v4/v5 宿主项目，并不表示 antd v6 可以运行在 React 16/17 上。
+The React peer dependency floor supports host projects using antd v4 or v5. It does not mean antd v6 can run on React 16 or 17.
 
-使用 antd v4 时，需要在宿主应用入口加载全局样式：
+When using antd v4, load the global stylesheet in the host application entry:
 
 ```tsx
 import 'antd/dist/antd.css';
 ```
 
-antd v5、v6 不需要导入上述文件。组件不会创建额外的根级 `ConfigProvider`，主题、语言和组件前缀由宿主配置决定。
+antd v5 and v6 do not require the stylesheet above. The component does not create an additional root-level `ConfigProvider`; theme, locale, and component prefix settings come from the host configuration.
 
-## 快速开始
+## Quick start
 
-不传 `uri` 时，组件会显示文件选择入口：
+When `uri` is omitted, the component displays a file picker:
 
 ```tsx
 import { OfficeFileViewer } from 'office-file-viewer';
@@ -76,7 +78,7 @@ export default function OfficePreview() {
 }
 ```
 
-传入本地文件或远程地址：
+Pass a local file or remote URL:
 
 ```tsx
 import { OfficeFileViewer } from 'office-file-viewer';
@@ -94,9 +96,9 @@ export default function OfficePreview({ file }: { file: File }) {
 }
 ```
 
-未传 `height` 时，预览器使用父容器高度；因此父容器需要提供可计算的高度。也可以直接传入数字像素值、`720px`、`80vh` 或 `100%`。
+When `height` is omitted, the viewer uses the height of its parent container, so the parent must have a computable height. You can also pass a numeric pixel value, `720px`, `80vh`, or `100%` directly.
 
-使用异步文件来源、解析配置和事件回调：
+Use an async file source, parsing options, and event callbacks:
 
 ```tsx
 import { OfficeFileViewer } from 'office-file-viewer';
@@ -114,19 +116,19 @@ export default function OfficePreview() {
         console.info(progress.stage, `${progress.message}${percent}`);
       }}
       onFileParsed={(parsed, file) => {
-        console.info('解析完成', parsed.kind, file.name);
+        console.info('Parsing completed', parsed.kind, file.name);
       }}
       onError={(error, file) => {
-        console.error('预览失败', file?.name, error);
+        console.error('Preview failed', file?.name, error);
       }}
     />
   );
 }
 ```
 
-## `uri` 文件来源
+## `uri` file sources
 
-`uri` 支持以下形式：
+`uri` accepts the following forms:
 
 ```ts
 type OfficeFileViewerUri =
@@ -135,37 +137,37 @@ type OfficeFileViewerUri =
   | (() => Promise<File | Blob | string | Response>);
 ```
 
-使用远程文件时需要注意：
+Consider the following when using remote files:
 
-- 跨域地址必须允许浏览器通过 CORS 访问。
-- URL 最好包含受支持的文件扩展名。
-- 无扩展名地址需要通过 `Content-Disposition` 文件名或响应 `Content-Type` 识别格式。
-- 带有不受支持扩展名的 URL 会在下载前被拒绝，即使响应内容实际是 Office 文件。
-- `uri` 变化时，旧 URL 下载会通过 `AbortController` 取消。
-- 自定义异步函数本身无法被强制取消，但过期结果不会覆盖新文件。
-- 用户手动选择文件时，同样会终止当前远程下载并使旧解析结果失效。
+- Cross-origin URLs must allow browser access through CORS.
+- URLs should preferably include a supported file extension.
+- URLs without an extension must expose the format through the filename in `Content-Disposition` or the response `Content-Type`.
+- A URL with an unsupported extension is rejected before downloading, even if the response actually contains an Office file.
+- When `uri` changes, the previous URL download is cancelled through `AbortController`.
+- A custom async function cannot be forcibly cancelled, but its stale result will not replace a newer file.
+- Manually selecting a file also stops the current remote download and invalidates stale parsing results.
 
-## 组件属性
+## Component props
 
-| 属性                 | 类型                                             | 默认值         | 说明                                           |
-| -------------------- | ------------------------------------------------ | -------------- | ---------------------------------------------- |
-| `uri`                | `OfficeFileViewerUri`                            | -              | 预加载文件来源；不传时显示文件选择入口         |
-| `defaultFileName`    | `string`                                         | `'未加载文件'` | 未加载文件时显示的名称                         |
-| `defaultPreviewKind` | `PreviewKind`                                    | `'pptx'`       | 未加载文件时使用的空状态格式                   |
-| `defaultZoom`        | `number`                                         | `100`          | 初始缩放百分比，最终限制在 `25` 至 `300`       |
-| `className`          | `string`                                         | -              | 根容器自定义类名                               |
-| `height`             | `CSSProperties['height']`                        | `100%`         | 预览器高度；不传时跟随父容器                   |
-| `style`              | `CSSProperties`                                  | -              | 根容器自定义样式                               |
-| `parseOptions`       | `OfficeParseOptions`                             | `{}`           | Worker 模式与自定义 Worker 工厂                |
-| `onParseProgress`    | `(progress: ParseProgress) => void`              | -              | 解析阶段或完成度变化时触发                     |
-| `onFileParsed`       | `(parsed: ParsedOfficeFile, file: File) => void` | -              | 完整文件解析成功后触发一次，不接收内部渐进结果 |
-| `onError`            | `(error: Error, file?: File) => void`            | -              | 文件下载、解析或全屏操作失败时触发             |
+| Prop                 | Type                                             | Default        | Description                                                            |
+| -------------------- | ------------------------------------------------ | -------------- | ---------------------------------------------------------------------- |
+| `uri`                | `OfficeFileViewerUri`                            | -              | File source to preload; displays the file picker when omitted          |
+| `defaultFileName`    | `string`                                         | `'未加载文件'` | Name displayed when no file is loaded                                  |
+| `defaultPreviewKind` | `PreviewKind`                                    | `'pptx'`       | Empty-state format used when no file is loaded                         |
+| `defaultZoom`        | `number`                                         | `100`          | Initial zoom percentage, clamped to the range from `25` to `300`       |
+| `className`          | `string`                                         | -              | Custom class name for the root container                               |
+| `height`             | `CSSProperties['height']`                        | `100%`         | Viewer height; follows the parent container when omitted               |
+| `style`              | `CSSProperties`                                  | -              | Custom styles for the root container                                   |
+| `parseOptions`       | `OfficeParseOptions`                             | `{}`           | Worker mode and custom Worker factory                                  |
+| `onParseProgress`    | `(progress: ParseProgress) => void`              | -              | Called when the parsing stage or progress changes                      |
+| `onFileParsed`       | `(parsed: ParsedOfficeFile, file: File) => void` | -              | Called once after full parsing; does not receive progressive internals |
+| `onError`            | `(error: Error, file?: File) => void`            | -              | Called when file downloading, parsing, or fullscreen operation fails   |
 
-`PreviewKind` 的可选值为 `'docx' | 'doc' | 'xlsx' | 'xls' | 'pptx' | 'ppt'`；WPS 文件复用 `'doc'` 预览模型。
+The available `PreviewKind` values are `'docx' | 'doc' | 'xlsx' | 'xls' | 'pptx' | 'ppt'`. WPS files reuse the `'doc'` preview model.
 
-传入 `height` 时优先于 `style.height`。百分比高度依赖父级高度；如果页面没有固定高度，建议使用数字、`px` 或 `vh`。
+When provided, `height` takes precedence over `style.height`. Percentage heights depend on the parent height; if the page has no fixed height, use a number, `px`, or `vh` value.
 
-常用公开类型：
+Common public types:
 
 ```ts
 import type {
@@ -182,49 +184,49 @@ import type {
 } from 'office-file-viewer';
 ```
 
-## 支持格式
+## Supported formats
 
-| 文档类型           | 扩展名  | 当前能力                                                               |
-| ------------------ | ------- | ---------------------------------------------------------------------- |
-| Word OOXML         | `.docx` | 富文本段落、列表、表格、图片、图表、VML/WPG 形状、超链接、样式与主题色 |
-| Word 97–2003       | `.doc`  | CFB、FIB、Piece Table、FKP、SPRM、正文结构、表格、列表及图片提取       |
-| WPS 文字           | `.wps`  | 复用 DOC 二进制解析链路，以内容可读和资源提取为目标                    |
-| Excel OOXML        | `.xlsx` | 多工作表、单元格值与样式、合并单元格、行列尺寸、浮动图片和图表         |
-| Excel 97–2003      | `.xls`  | BIFF8 工作簿、单元格、格式、合并区域、行列尺寸、OfficeArt 图片及图表   |
-| PowerPoint XML     | `.pptx` | 母版与布局继承、文本、形状、图片、表格、背景、渐变、阴影及常见图表     |
-| PowerPoint 97–2003 | `.ppt`  | 二进制记录、母版、文本、形状、图片、嵌入图表及无法解析内容的静态预览   |
+| Document type      | Extension | Current capabilities                                                                                                  |
+| ------------------ | --------- | --------------------------------------------------------------------------------------------------------------------- |
+| Word OOXML         | `.docx`   | Rich-text paragraphs, lists, tables, images, charts, VML/WPG shapes, hyperlinks, styles, and theme colors             |
+| Word 97-2003       | `.doc`    | CFB, FIB, Piece Table, FKP, SPRM, body structure, tables, lists, and image extraction                                 |
+| WPS Writer         | `.wps`    | Reuses the DOC binary parsing pipeline, prioritizing readable content and resource extraction                         |
+| Excel OOXML        | `.xlsx`   | Multiple worksheets, cell values and styles, merged cells, row and column dimensions, floating images, and charts     |
+| Excel 97-2003      | `.xls`    | BIFF8 workbooks, cells, formatting, merged ranges, row and column dimensions, OfficeArt images, and charts            |
+| PowerPoint XML     | `.pptx`   | Master and layout inheritance, text, shapes, images, tables, backgrounds, gradients, shadows, and common chart types  |
+| PowerPoint 97-2003 | `.ppt`    | Binary records, masters, text, shapes, images, embedded charts, and static previews for content that cannot be parsed |
 
-Office/WPS 图表当前覆盖线图、柱图、饼图、环形图、面积图、散点图、气泡图、雷达图和地图等常见类型。非标准扩展或损坏数据会尽量使用文档内快照，无法降级时显示明确状态。
+Office and WPS charts currently cover common types such as line, column, pie, doughnut, area, scatter, bubble, radar, and map charts. Non-standard extensions or corrupted data use snapshots embedded in the document when possible; otherwise, the viewer displays an explicit state.
 
-格式表中的能力表示解析器已经覆盖的主要路径，并不保证所有 Office 版本、厂商扩展、宏、嵌入对象、动画或复杂排版都能完整还原。
+The capabilities in the table describe the main parser paths currently covered. They do not guarantee complete restoration of every Office version, vendor extension, macro, embedded object, animation, or complex layout.
 
-## Web Worker 与性能
+## Web Worker and performance
 
-`parseOptions.worker` 控制解析任务的执行位置：
+`parseOptions.worker` controls where parsing runs:
 
-| 模式       | DOC/WPS、XLS、PPT                                         | DOCX、XLSX、PPTX                         |
-| ---------- | --------------------------------------------------------- | ---------------------------------------- |
-| `'auto'`   | 默认优先 Worker；环境不支持或 Worker 启动失败时回退主线程 | 当前直接使用主线程                       |
-| `'always'` | 强制使用 Worker；无法创建时抛出配置错误                   | 当前尚未完成 Worker 迁移，会抛出配置错误 |
-| `'never'`  | 始终使用主线程                                            | 始终使用主线程                           |
+| Mode       | DOC/WPS, XLS, PPT                                              | DOCX, XLSX, PPTX                                            |
+| ---------- | -------------------------------------------------------------- | ----------------------------------------------------------- |
+| `'auto'`   | Prefers a Worker; falls back to the main thread when necessary | Currently runs directly on the main thread                  |
+| `'always'` | Requires a Worker; throws a configuration error if unavailable | Worker migration is not yet complete; throws a config error |
+| `'never'`  | Always runs on the main thread                                 | Always runs on the main thread                              |
 
 ```tsx
 <OfficeFileViewer parseOptions={{ worker: 'auto' }} />
 ```
 
-每个解析会话拥有独立 Worker。文件缓冲区会通过 transferable object 移交给 Worker，解析过程通过有序消息、ACK 背压和取消消息协调。组件切换文件或卸载时会终止当前 Worker。
+Each parsing session owns an independent Worker. File buffers are transferred to the Worker as transferable objects. Ordered messages, ACK backpressure, and cancellation messages coordinate parsing. The component terminates the current Worker when switching files or unmounting.
 
-`workerFactory` 允许宿主接管 Worker 创建方式，主要用于有特殊资源路径或 CSP 配置的构建环境。工厂必须返回与当前解析协议兼容的 Worker；一般项目保持默认即可。
+`workerFactory` allows the host to control Worker creation, mainly for build environments with special asset paths or CSP settings. The factory must return a Worker compatible with the current parsing protocol; most projects should keep the default.
 
-大文件注意事项：
+Notes for large files:
 
-- Worker 能降低旧二进制格式解析对主线程的阻塞，但不会减少文件本身和解析模型占用的内存。
-- DOCX、XLSX、PPTX 当前仍在主线程解析，复杂或超大文件可能造成界面短暂卡顿。
-- 组件没有设置文件大小、ZIP 条目数量、单条目大小或累计解压大小限制，宿主应根据业务场景预先校验。
+- Workers reduce the time spent blocking the main thread while parsing legacy binary formats, but do not reduce the memory used by the file itself or the parsed model.
+- DOCX, XLSX, and PPTX files are currently parsed on the main thread, so complex or very large files may briefly make the interface unresponsive.
+- The component does not limit file size, ZIP entry count, individual entry size, or total decompressed size. The host should validate these according to its use case.
 
-## 底层解析会话
+## Low-level parsing sessions
 
-需要自行管理解析生命周期时，可以直接使用 `createOfficeParseSession`：
+Use `createOfficeParseSession` when you need to manage the parsing lifecycle directly:
 
 ```ts
 import {
@@ -243,7 +245,7 @@ export async function parseFile(file: File) {
 
   try {
     const parsed = await session.result;
-    console.info('解析完成', parsed.kind);
+    console.info('Parsing completed', parsed.kind);
     return parsed;
   } finally {
     unsubscribe();
@@ -260,84 +262,84 @@ export function disposeParsedFile(parsed: ParsedOfficeFile) {
 }
 ```
 
-`OfficeParseSession` 提供：
+`OfficeParseSession` provides:
 
-- `result`：最终解析结果 Promise
-- `status`：`starting`、`running`、`completed`、`cancelled` 或 `failed`
-- `subscribe(listener)`：订阅解析进度，返回取消订阅函数
-- `cancel()`：请求取消当前任务
-- `dispose()`：释放 Worker、订阅和未移交给结果的临时资源
+- `result`: A Promise for the final parsing result
+- `status`: `starting`, `running`, `completed`, `cancelled`, or `failed`
+- `subscribe(listener)`: Subscribes to parsing progress and returns an unsubscribe function
+- `cancel()`: Requests cancellation of the current task
+- `dispose()`: Releases the Worker, subscriptions, and temporary resources not transferred to the result
 
-进度阶段包括 `reading`、`container`、`structure`、`content`、`resources` 和 `assembling`。`percent` 存在时取值范围为 `0` 到 `1`。
+Progress stages include `reading`, `container`, `structure`, `content`, `resources`, and `assembling`. When present, `percent` ranges from `0` to `1`.
 
-`OfficeFileViewer` 会自动完成取消和资源释放。直接使用底层会话时，应在结束后调用 `session.dispose()`；长期保存的解析结果不再使用时，再调用对应的文档释放函数清理 Blob URL。
+`OfficeFileViewer` automatically handles cancellation and resource cleanup. When using the low-level session directly, call `session.dispose()` after completion. When a long-lived parsing result is no longer needed, call the corresponding document disposal function to release Blob URLs.
 
-## 交互说明
+## Interactions
 
-- 缩放范围为 `25%` 至 `300%`，工具栏快捷档位为 `50%`、`75%`、`100%`、`125%`、`150%`、`200%`。
-- PPT/PPTX 支持幻灯片翻页和缩略图导航。
-- XLS/XLSX 支持工作表标签切换。
-- DOC/DOCX/WPS 不显示额外文档标题栏；旧格式解析警告会显示在原标题栏位置。
-- 全屏依赖浏览器 Fullscreen API；不支持时按钮会禁用，按 `Esc` 退出后状态会自动同步。
-- 地图图表可能需要加载外部 GeoJSON；网络失败时优先显示文档快照，否则显示加载失败状态。
+- The zoom range is `25%` to `300%`, with toolbar presets at `50%`, `75%`, `100%`, `125%`, `150%`, and `200%`.
+- PPT/PPTX supports slide navigation and thumbnail navigation.
+- XLS/XLSX supports switching between worksheet tabs.
+- DOC/DOCX/WPS does not display an additional document title bar; legacy-format parsing warnings appear where the original title bar would be.
+- Fullscreen mode depends on the browser Fullscreen API. The button is disabled when unsupported, and the state synchronizes automatically after exiting with `Esc`.
+- Map charts may need to load external GeoJSON data. If the network request fails, the viewer uses a document snapshot when available; otherwise, it displays a failure state.
 
-## 使用边界
+## Limitations
 
-- 组件面向现代浏览器，依赖 `File`、`fetch`、`DOMParser`、`AbortController`、`IntersectionObserver`、`ResizeObserver`、Blob URL、Canvas、Web Worker 和 Fullscreen API 等能力。
-- 本地文件解析和常规渲染不依赖服务端；远程 `uri`、外链图片或动态地图数据仍可能需要网络访问。
-- 远程文件必须满足浏览器 CORS 策略。组件不会代理下载，也不会绕过鉴权和跨域限制。
-- 面向不可信文件时，建议宿主在解析前限制文件大小、扩展名、MIME 类型和来源，并在服务端补充病毒扫描等安全策略。
-- DOC/WPS、XLS、PPT 属于旧二进制格式，目前优先保证内容可读，不保证复杂分页、动画、锚点、图文环绕和排版与桌面 Office 完全一致。
-- OOXML 文档可能包含未覆盖的厂商扩展、宏、ActiveX、OLE 对象、SmartArt 或复杂动画；这些内容可能降级、忽略或显示静态预览。
-- 预览器只负责读取与显示，不提供编辑、保存、格式转换、打印排版或 PDF 导出能力。
+- The component targets modern browsers and depends on APIs including `File`, `fetch`, `DOMParser`, `AbortController`, `IntersectionObserver`, `ResizeObserver`, Blob URLs, Canvas, Web Workers, and the Fullscreen API.
+- Local file parsing and normal rendering do not require a server. A remote `uri`, externally linked images, or dynamic map data may still require network access.
+- Remote files must comply with browser CORS policies. The component does not proxy downloads or bypass authentication and cross-origin restrictions.
+- For untrusted files, hosts should validate file size, extension, MIME type, and source before parsing, and add server-side protections such as malware scanning where appropriate.
+- DOC/WPS, XLS, and PPT are legacy binary formats. The current implementation prioritizes readable content and does not guarantee that complex pagination, animation, anchoring, text wrapping, or layout will match desktop Office applications exactly.
+- OOXML documents may contain unsupported vendor extensions, macros, ActiveX controls, OLE objects, SmartArt, or complex animations. Such content may be degraded, ignored, or shown as a static preview.
+- The viewer is read-only. It does not provide editing, saving, format conversion, print layout, or PDF export.
 
-## 项目结构
+## Project structure
 
 ```text
 src/
 ├── index.ts
 └── office-file-viewer/
-    ├── OfficeFileViewer.tsx  # 对外主组件与文件加载编排
-    ├── shell/                # 工具栏、预览分发和通用状态
+    ├── OfficeFileViewer.tsx  # Public component and file-loading orchestration
+    ├── shell/                # Toolbar, preview dispatch, and shared states
     ├── services/
-    │   ├── parsing/          # 解析会话、Worker 协议、运行时与结果组装
-    │   ├── doc/ docx/        # DOC/WPS 与 DOCX 解析
-    │   ├── xls/ xlsx/        # XLS 与 XLSX 解析
-    │   └── ppt/ pptx/        # PPT 与 PPTX 解析
-    ├── formats/              # 各文档格式的 React 渲染器
+    │   ├── parsing/          # Parsing sessions, Worker protocol, runtime, and result assembly
+    │   ├── doc/ docx/        # DOC/WPS and DOCX parsing
+    │   ├── xls/ xlsx/        # XLS and XLSX parsing
+    │   └── ppt/ pptx/        # PPT and PPTX parsing
+    ├── formats/              # React renderers for each document format
     └── shared/
-        ├── binary/           # CFB 等二进制基础能力
-        ├── officeart/        # OfficeArt 图形记录
-        ├── ooxml/            # ZIP、XML、关系、主题、媒体和图表适配
-        └── chart/            # ECharts 渲染和失败降级
+        ├── binary/           # Binary primitives such as CFB
+        ├── officeart/        # OfficeArt drawing records
+        ├── ooxml/            # ZIP, XML, relationships, themes, media, and chart adapters
+        └── chart/            # ECharts rendering and failure fallback
 ```
 
-核心数据流：
+Core data flow:
 
 ```text
 File / URL / async loader
-  → 文件名与 MIME 类型识别
-  → 主线程或 Web Worker 解析
-  → 标准化 TypeScript 文档模型
-  → React 格式渲染器
-  → 浏览器预览
+  → Detect filename and MIME type
+  → Parse on the main thread or in a Web Worker
+  → Normalize into TypeScript document models
+  → Render with React format renderers
+  → Display the browser preview
 ```
 
-## 本地开发
+## Local development
 
 ```bash
 yarn
 yarn start
 ```
 
-构建组件库和 Dumi 文档：
+Build the component library and Dumi documentation:
 
 ```bash
 yarn build
 yarn docs:build
 ```
 
-项目使用 TypeScript、ESLint、Stylelint 和 Prettier 进行静态检查。发布前建议在目标 React/antd 组合中验证本地文件、远程 URI、Worker、全屏和各格式示例文档。
+The project uses TypeScript, ESLint, Stylelint, and Prettier for static checks. Before publishing, test local files, remote URIs, Workers, fullscreen mode, and sample documents for each format in the target React and antd combinations.
 
 ## License
 
