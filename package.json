@@ -5,12 +5,17 @@
   "keywords": [
     "office",
     "office-viewer",
+    "office-parser",
     "file-viewer",
     "document-viewer",
+    "document-preview",
     "react",
     "react-component",
+    "typescript",
     "browser",
+    "client-side",
     "offline",
+    "web-worker",
     "doc",
     "docx",
     "wps",
@@ -19,7 +24,19 @@
     "ppt",
     "pptx"
   ],
+  "homepage": "https://github.com/gyxing/office-x-viewer#readme",
+  "bugs": {
+    "url": "https://github.com/gyxing/office-x-viewer/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gyxing/office-x-viewer.git"
+  },
   "license": "MIT",
+  "author": {
+    "name": "gyxing",
+    "url": "https://github.com/gyxing"
+  },
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
@@ -84,6 +101,5 @@
   },
   "publishConfig": {
     "access": "public"
-  },
-  "authors": []
+  }
 }
