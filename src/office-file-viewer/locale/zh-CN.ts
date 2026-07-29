@@ -39,6 +39,14 @@ export const zhCN: OfficeFileViewerMessages = {
   },
   loading: { parsing: '正在解析文件' },
   error: { previewFailed: '预览失败' },
+  lazyContent: {
+    loading: '正在加载内容',
+    retry: '重试',
+    pageLoadFailed: '页面加载失败',
+    slideLoadFailed: '幻灯片加载失败',
+    sheetLoadFailed: '工作表加载失败',
+    resourceLoadFailed: '文档资源加载失败',
+  },
   progress: {
     stages: {
       reading: '正在读取文件',

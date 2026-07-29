@@ -49,7 +49,9 @@ export class XlsDocumentAssembler {
       throw new Error(`XLS 工作表修订无效：${index}@${revision}`);
     }
     sheet.images.forEach((image) => {
-      image.src = this.resources.resolve(image.src);
+      if (typeof image.src === 'string') {
+        image.src = this.resources.resolve(image.src);
+      }
     });
     this.sheets.set(index, { revision, sheet });
   }
@@ -108,7 +110,7 @@ function resolveElementResources(
   element: SlideElement,
   resources: ResourceRegistry,
 ) {
-  if (element.type === 'image') {
+  if (element.type === 'image' && typeof element.src === 'string') {
     element.src = resources.resolve(element.src);
     return;
   }
@@ -120,8 +122,14 @@ function resolveElementResources(
 }
 
 /** 解析并确定 `resolveSlideResources` 对应的引用或配置。 */
-function resolveSlideResources(slide: SlideModel, resources: ResourceRegistry) {
-  if (slide.background?.imageRef) {
+export function resolveSlideResources(
+  slide: SlideModel,
+  resources: ResourceRegistry,
+) {
+  if (
+    slide.background?.imageRef &&
+    typeof slide.background.imageRef === 'string'
+  ) {
     slide.background.imageRef = resources.resolve(slide.background.imageRef);
   }
   slide.elements.forEach((element) =>
@@ -201,7 +209,7 @@ export class PptDocumentAssembler {
 }
 
 /** 解析并确定 `resolveDocImage` 对应的引用或配置。 */
-function resolveDocImage(image: DocImage, resources: ResourceRegistry) {
+export function resolveDocImage(image: DocImage, resources: ResourceRegistry) {
   image.src = resources.resolve(image.src);
 }
 
@@ -216,7 +224,7 @@ function resolveDocInlines(
 }
 
 /** 解析并确定 `resolveDocBlockResources` 对应的引用或配置。 */
-function resolveDocBlockResources(
+export function resolveDocBlockResources(
   block: DocBlock,
   resources: ResourceRegistry,
 ) {
@@ -233,6 +241,20 @@ function resolveDocBlockResources(
   });
 }
 
+/** 克隆 DOC 元数据并解析其中的图片资源引用。 */
+export function resolveDocMetadataResources(
+  metadata: PortableDocMetadata,
+  resources: ResourceRegistry,
+): PortableDocMetadata {
+  const images = metadata.images.map((image) => ({ ...image }));
+  images.forEach((image) => resolveDocImage(image, resources));
+  const headerImage = metadata.headerImage
+    ? { ...metadata.headerImage }
+    : undefined;
+  if (headerImage) resolveDocImage(headerImage, resources);
+  return { ...metadata, images, headerImage };
+}
+
 /** 将 DOC 跨线程元数据、正文块和图片资源还原成现有文档模型。 */
 export class DocDocumentAssembler {
   private metadata: PortableDocMetadata | undefined;
@@ -247,13 +269,7 @@ export class DocDocumentAssembler {
 
   setMetadata(metadata: PortableDocMetadata) {
     if (this.completed) throw new Error('DOC 组装已经完成');
-    const images = metadata.images.map((image) => ({ ...image }));
-    images.forEach((image) => resolveDocImage(image, this.resources));
-    const headerImage = metadata.headerImage
-      ? { ...metadata.headerImage }
-      : undefined;
-    if (headerImage) resolveDocImage(headerImage, this.resources);
-    this.metadata = { ...metadata, images, headerImage };
+    this.metadata = resolveDocMetadataResources(metadata, this.resources);
   }
 
   addBlocks(startIndex: number, blocks: DocBlock[]) {

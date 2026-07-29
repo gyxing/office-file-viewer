@@ -1,10 +1,15 @@
-import type { DocDocument } from './doc/types';
+import { disposeDocDocument, type DocDocument } from './doc/types';
 import type { DocxDocument } from './docx/types';
 import type { OfficeParseOptions } from './parsing';
 import { createOfficeParseSession } from './parsing';
 import type { PptxDocument } from './pptx/types';
+import { disposePresentationDocument } from './presentation/dispose';
 import type { PresentationDocument } from './presentation/types';
-import type { SpreadsheetWorkbook } from './spreadsheet/types';
+import { disposeDocumentSession } from './session';
+import {
+  disposeSpreadsheetWorkbook,
+  type SpreadsheetWorkbook,
+} from './spreadsheet/types';
 
 // 组件入口只关心“文件类型 + 解析结果”，具体格式的包结构解析都收敛在各自 service 中。
 export {
@@ -54,6 +59,26 @@ export type ParsedOfficeFile =
       /** ParsedOfficeFile 当前关联的标准化文档模型。 */
       document: DocDocument;
     };
+
+/** 释放完整解析结果持有的格式资源和附加文档会话。 */
+export async function disposeParsedOfficeFile(
+  parsed: ParsedOfficeFile | undefined,
+) {
+  if (!parsed) return;
+
+  const owner =
+    parsed.kind === 'xls' || parsed.kind === 'xlsx'
+      ? parsed.workbook
+      : parsed.document;
+  if (parsed.kind === 'xls' || parsed.kind === 'xlsx') {
+    disposeSpreadsheetWorkbook(parsed.workbook);
+  } else if (parsed.kind === 'ppt' || parsed.kind === 'pptx') {
+    disposePresentationDocument(parsed.document);
+  } else if (parsed.kind === 'doc') {
+    disposeDocDocument(parsed.document);
+  }
+  await disposeDocumentSession(owner);
+}
 
 /** 解析 `parseOfficeFile` 接收的数据，并返回Office 文件解析与渲染结果。 */
 export async function parseOfficeFile(

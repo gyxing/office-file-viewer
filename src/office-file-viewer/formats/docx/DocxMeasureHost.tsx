@@ -1,0 +1,91 @@
+import type { ReactNode } from 'react';
+import React, { useLayoutEffect, useRef } from 'react';
+import type { DocxBlock } from '../../services/docx/types';
+import { DocxPageFrame } from './DocxPageFrame';
+import type { DocxMeasuredBlock, DocxMeasurementBatch } from './docxPagination';
+
+type DocxMeasureHostProps = {
+  batch?: DocxMeasurementBatch;
+  renderBlock(block: DocxBlock): ReactNode;
+  onMeasured(
+    batch: DocxMeasurementBatch,
+    blocks: readonly DocxMeasuredBlock[],
+    durationMs: number,
+  ): void;
+  onError(batch: DocxMeasurementBatch, error: unknown): void;
+};
+
+/** 同一时间只挂载一个 DOCX 测量批次，完成后由 Source 立即切换下一批。 */
+export function DocxMeasureHost({
+  batch,
+  renderBlock,
+  onMeasured,
+  onError,
+}: DocxMeasureHostProps) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const timingRef = useRef({ batchId: '', startedAt: 0 });
+  if (batch && timingRef.current.batchId !== batch.id) {
+    timingRef.current = { batchId: batch.id, startedAt: performance.now() };
+  }
+
+  useLayoutEffect(() => {
+    if (!batch) return;
+    try {
+      const article = hostRef.current?.querySelector<HTMLElement>(
+        '.office-file-docx-page-frame__article',
+      );
+      const elements = Array.from(article?.children ?? []) as HTMLElement[];
+      const contextCount = batch.contextBefore?.previousBlock ? 1 : 0;
+      const measuredElements = elements.slice(contextCount);
+      if (measuredElements.length !== batch.blocks.length) {
+        throw new Error('DOCX 测量批次的块数量与渲染结果不一致');
+      }
+      const measurements = batch.blocks.map((block, index) => {
+        const element = measuredElements[index];
+        const nextElement = measuredElements[index + 1];
+        const height = nextElement
+          ? nextElement.offsetTop - element.offsetTop
+          : element.offsetHeight +
+            Number.parseFloat(
+              window.getComputedStyle(element).marginBottom || '0',
+            );
+        const rowHeights =
+          block.type === 'table'
+            ? Array.from(
+                element.querySelectorAll<HTMLElement>('tbody > tr'),
+              ).map((row) => row.getBoundingClientRect().height)
+            : undefined;
+        return {
+          block,
+          height,
+          rowHeights,
+          rowOffset: batch.rowOffsets[block.id],
+          originalTableRowCount: batch.originalTableRowCounts[block.id],
+        };
+      });
+      onMeasured(
+        batch,
+        measurements,
+        performance.now() - timingRef.current.startedAt,
+      );
+    } catch (error) {
+      onError(batch, error);
+    }
+  }, [batch, onError, onMeasured]);
+
+  if (!batch) return null;
+  const blocks = batch.contextBefore?.previousBlock
+    ? [batch.contextBefore.previousBlock, ...batch.blocks]
+    : batch.blocks;
+  return (
+    <div
+      ref={hostRef}
+      className="office-file-docx-viewer__measure"
+      aria-hidden="true"
+    >
+      <DocxPageFrame page={batch.sourcePage.page} zoom={100}>
+        {blocks.map(renderBlock)}
+      </DocxPageFrame>
+    </div>
+  );
+}

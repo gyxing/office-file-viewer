@@ -1,0 +1,44 @@
+.office-file-word-pages {
+  min-height: 100%;
+}
+
+.office-file-word-pages__spacer {
+  width: 1px;
+  pointer-events: none;
+}
+
+.office-file-word-pages__item {
+  box-sizing: border-box;
+}
+
+.office-file-word-pages__item > .office-file-docx-page-frame {
+  margin-bottom: 0;
+}
+
+.office-file-word-pages__placeholder {
+  box-sizing: border-box;
+  display: flex;
+  width: min(100%, 794px);
+  margin: 0 auto;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+  color: #64748b;
+  background: #fff;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 14%);
+}
+
+.office-file-word-pages__retry {
+  padding: 5px 14px;
+  color: #1677ff;
+  background: #fff;
+  border: 1px solid #91caff;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.office-file-word-pages__retry:focus-visible {
+  outline: 2px solid #1677ff;
+  outline-offset: 2px;
+}

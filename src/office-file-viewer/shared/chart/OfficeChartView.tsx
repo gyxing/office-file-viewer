@@ -201,6 +201,8 @@ function OfficeChartViewComponent({
           className="office-file-chart__snapshot"
           src={staticSnapshotSrc}
           alt={chart.title ?? chart.degradedFrom ?? messages.chart.staticAlt}
+          loading="lazy"
+          decoding="async"
         />
       </div>
     );
@@ -225,6 +227,8 @@ function OfficeChartViewComponent({
           className="office-file-chart__snapshot"
           src={chart.snapshotSrc}
           alt={chart.title ?? chart.mapRegion ?? chart.degradedFrom ?? ''}
+          loading="lazy"
+          decoding="async"
         />
       </div>
     );

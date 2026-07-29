@@ -334,39 +334,91 @@ function createImageParagraphBlock(
   };
 }
 
-/**
- * 按 DOC 页面可用高度估算分页，并把连续图片段落拆到多个页面中。
- * 旧版 DOC 缺少稳定的前端分页信息，该方法只保证内容不再挤成一个长页面。
- */
-export function paginateDocBlocks(
-  blocks: DocBlock[],
-  page: DocPage,
-  contentWidth: number,
-): PaginatedDocPage[] {
-  const contentHeight = Math.max(
-    240,
-    page.minHeight -
-      page.marginTop -
-      page.marginBottom -
-      DOC_PAGE_HEIGHT_BUFFER,
+function isUnbrokenDocHeading(block: DocBlock) {
+  return (
+    block.type === 'paragraph' &&
+    block.role === 'heading' &&
+    !block.pageBreakBefore
   );
-  const pages: PaginatedDocPage[] = [];
-  let currentBlocks: DocBlock[] = [];
-  let currentHeight = 0;
-  let syntheticImageIndex = 0;
+}
 
-  const flushPage = () => {
-    if (!currentBlocks.length) return;
+/** 找出必须留到下一批才能判断“标题跟图”和连续图片的尾部起点。 */
+function findDocPaginationCarryStart(blocks: readonly DocBlock[]) {
+  let index = blocks.length;
+  while (index > 0 && imagesFromImageOnlyParagraph(blocks[index - 1]).length) {
+    index -= 1;
+  }
+  if (index < blocks.length) {
+    while (index > 0 && isUnbrokenDocHeading(blocks[index - 1])) {
+      index -= 1;
+    }
+    return index;
+  }
+  while (index > 0 && isUnbrokenDocHeading(blocks[index - 1])) {
+    index -= 1;
+  }
+  return index < blocks.length ? index : blocks.length;
+}
+
+/** DOC 同步与异步分页共用的增量状态机。 */
+export class DocPaginationState {
+  private readonly contentHeight: number;
+  private readonly readyPages: PaginatedDocPage[] = [];
+  private currentBlocks: DocBlock[] = [];
+  private carryBlocks: DocBlock[] = [];
+  private currentHeight = 0;
+  private syntheticImageIndex = 0;
+  private pageSequence = 0;
+  private completed = false;
+  private sawBlock = false;
+
+  constructor(page: DocPage, private readonly contentWidth: number) {
+    this.contentHeight = Math.max(
+      240,
+      page.minHeight -
+        page.marginTop -
+        page.marginBottom -
+        DOC_PAGE_HEIGHT_BUFFER,
+    );
+  }
+
+  append(blocks: readonly DocBlock[], complete = false) {
+    if (this.completed) throw new Error('DOC 分页状态已经完成');
+    this.sawBlock ||= blocks.length > 0;
+    const pending = [...this.carryBlocks, ...blocks];
+    const processEnd = complete
+      ? pending.length
+      : findDocPaginationCarryStart(pending);
+    this.carryBlocks = pending.slice(processEnd);
+    this.processBlocks(pending.slice(0, processEnd));
+    if (complete) {
+      this.processBlocks(this.carryBlocks);
+      this.carryBlocks = [];
+      this.flushPage();
+      if (!this.sawBlock && !this.readyPages.length) {
+        this.readyPages.push({ id: 'doc-page-1', blocks: [] });
+      }
+      this.completed = true;
+    }
+    return this.drain();
+  }
+
+  private drain() {
+    return this.readyPages.splice(0);
+  }
+
+  private flushPage() {
+    if (!this.currentBlocks.length) return;
     const looksLikeCover =
-      currentBlocks.some(
+      this.currentBlocks.some(
         (block) => block.type === 'paragraph' && block.role === 'title',
       ) &&
-      currentBlocks.some(
+      this.currentBlocks.some(
         (block) => imagesFromImageOnlyParagraph(block).length,
       ) &&
-      !currentBlocks.some((block) => block.type === 'table');
+      !this.currentBlocks.some((block) => block.type === 'table');
     const pageBlocks = looksLikeCover
-      ? currentBlocks.map((block) =>
+      ? this.currentBlocks.map((block) =>
           block.type === 'paragraph' && block.role === 'title'
             ? {
                 ...block,
@@ -378,35 +430,38 @@ export function paginateDocBlocks(
               }
             : block,
         )
-      : currentBlocks;
+      : this.currentBlocks;
+    this.pageSequence += 1;
     // 图片封面依靠大量空段落垂直居中，空段清理后用等价段前距恢复位置。
-    pages.push({ id: `doc-page-${pages.length + 1}`, blocks: pageBlocks });
-    currentBlocks = [];
-    currentHeight = 0;
-  };
+    this.readyPages.push({
+      id: `doc-page-${this.pageSequence}`,
+      blocks: pageBlocks,
+    });
+    this.currentBlocks = [];
+    this.currentHeight = 0;
+  }
 
-  const appendBlock = (block: DocBlock, estimatedHeight: number) => {
+  private appendBlock(block: DocBlock, estimatedHeight: number) {
     if (
-      currentBlocks.length &&
-      currentHeight + estimatedHeight > contentHeight
+      this.currentBlocks.length &&
+      this.currentHeight + estimatedHeight > this.contentHeight
     ) {
-      flushPage();
+      this.flushPage();
     }
-    currentBlocks.push(block);
-    currentHeight += estimatedHeight;
-  };
+    this.currentBlocks.push(block);
+    this.currentHeight += estimatedHeight;
+  }
 
-  const appendImageRows = (images: DocImage[]) => {
-    const rows = imageRows(images, contentWidth);
+  private appendImageRows(images: DocImage[]) {
+    const rows = imageRows(images, this.contentWidth);
     let pendingImages: DocImage[] = [];
     let pendingHeight = DOC_IMAGE_LAYOUT_VERTICAL_MARGIN;
-
     const flushImages = () => {
       if (!pendingImages.length) return;
-      syntheticImageIndex += 1;
-      appendBlock(
+      this.syntheticImageIndex += 1;
+      this.appendBlock(
         createImageParagraphBlock(
-          `doc-image-page-group-${syntheticImageIndex}`,
+          `doc-image-page-group-${this.syntheticImageIndex}`,
           pendingImages,
         ),
         pendingHeight,
@@ -414,144 +469,162 @@ export function paginateDocBlocks(
       pendingImages = [];
       pendingHeight = DOC_IMAGE_LAYOUT_VERTICAL_MARGIN;
     };
-
     rows.forEach((row) => {
       const rowHeight =
-        estimateImageRowHeight(row, contentWidth) +
+        estimateImageRowHeight(row, this.contentWidth) +
         (pendingImages.length ? DOC_IMAGE_LAYOUT_ROW_GAP : 0);
       if (
         pendingImages.length &&
-        currentHeight + pendingHeight + rowHeight > contentHeight
+        this.currentHeight + pendingHeight + rowHeight > this.contentHeight
       ) {
         flushImages();
       }
       pendingImages.push(...row);
       pendingHeight += rowHeight;
     });
-
     flushImages();
-  };
+  }
 
-  let index = 0;
-  while (index < blocks.length) {
-    const currentBlock = blocks[index];
-    if (currentBlock.type === 'paragraph' && currentBlock.pageBreakBefore) {
-      flushPage();
-      index += 1;
-      continue;
-    }
-    if (currentBlock.type === 'paragraph' && currentBlock.role === 'heading') {
-      let keepIndex = index;
-      let keepHeight = 0;
-      while (keepIndex < blocks.length) {
-        const keepBlock = blocks[keepIndex];
-        if (
-          keepBlock.type !== 'paragraph' ||
-          keepBlock.role !== 'heading' ||
-          keepBlock.pageBreakBefore
-        ) {
-          break;
-        }
-        keepHeight += estimateBlockHeight(keepBlock, contentWidth);
-        keepIndex += 1;
-      }
-      const followingBlock = blocks[keepIndex];
-      const followingImages = followingBlock
-        ? imagesFromImageOnlyParagraph(followingBlock)
-        : [];
-      if (followingBlock && followingImages.length) {
-        keepHeight += estimateBlockHeight(followingBlock, contentWidth);
+  private processBlocks(blocks: readonly DocBlock[]) {
+    let index = 0;
+    while (index < blocks.length) {
+      const currentBlock = blocks[index];
+      if (currentBlock.type === 'paragraph' && currentBlock.pageBreakBefore) {
+        this.flushPage();
+        index += 1;
+        continue;
       }
       if (
-        followingImages.length &&
-        currentBlocks.length &&
-        currentHeight + keepHeight > contentHeight
+        currentBlock.type === 'paragraph' &&
+        currentBlock.role === 'heading'
       ) {
-        // 图片标题与图片保持同页，避免分页后大图缺少所属说明。
-        flushPage();
-      }
-    }
-    const currentPageLooksLikeCover =
-      currentBlocks.some(
-        (block) => block.type === 'paragraph' && block.role === 'title',
-      ) &&
-      currentBlocks.some((block) => imagesFromImageOnlyParagraph(block).length);
-    if (currentBlock.type === 'table' && currentPageLooksLikeCover) {
-      // 封面后的状态表属于下一物理页；二进制 DOC 通常只依赖版式自然换页。
-      flushPage();
-    }
-    const currentTableHeight =
-      currentBlock.type === 'table'
-        ? estimateTableHeight(currentBlock, contentWidth)
-        : 0;
-    if (
-      currentBlock.type === 'table' &&
-      (currentTableHeight > contentHeight ||
-        (currentBlocks.length &&
-          currentHeight + currentTableHeight > contentHeight))
-    ) {
-      let rowIndex = 0;
-      let partIndex = 0;
-      while (rowIndex < currentBlock.rows.length) {
-        let availableHeight = contentHeight - currentHeight;
-        if (currentBlocks.length && availableHeight < 80) {
-          flushPage();
-          availableHeight = contentHeight;
-        }
-        const startRowIndex = rowIndex;
-        let rowsHeight = 16;
-        while (rowIndex < currentBlock.rows.length) {
-          const row = currentBlock.rows[rowIndex];
-          const rowHeight =
-            estimateTableHeight(
-              { ...currentBlock, rows: [row] },
-              contentWidth,
-            ) - 16;
+        let keepIndex = index;
+        let keepHeight = 0;
+        while (keepIndex < blocks.length) {
+          const keepBlock = blocks[keepIndex];
           if (
-            rowIndex > startRowIndex &&
-            (rowsHeight + rowHeight > availableHeight ||
-              rowIndex - startRowIndex >= 10)
+            keepBlock.type !== 'paragraph' ||
+            keepBlock.role !== 'heading' ||
+            keepBlock.pageBreakBefore
           ) {
             break;
           }
-          rowsHeight += rowHeight;
-          rowIndex += 1;
+          keepHeight += estimateBlockHeight(keepBlock, this.contentWidth);
+          keepIndex += 1;
         }
-        partIndex += 1;
-        appendBlock(
-          {
-            ...currentBlock,
-            id: `${currentBlock.id}-part-${partIndex}`,
-            rows: currentBlock.rows.slice(startRowIndex, rowIndex),
-          },
-          rowsHeight,
+        const followingBlock = blocks[keepIndex];
+        const followingImages = followingBlock
+          ? imagesFromImageOnlyParagraph(followingBlock)
+          : [];
+        if (followingImages.length) {
+          keepHeight += estimateBlockHeight(followingBlock, this.contentWidth);
+        }
+        if (
+          followingImages.length &&
+          this.currentBlocks.length &&
+          this.currentHeight + keepHeight > this.contentHeight
+        ) {
+          this.flushPage();
+        }
+      }
+      const currentPageLooksLikeCover =
+        this.currentBlocks.some(
+          (block) => block.type === 'paragraph' && block.role === 'title',
+        ) &&
+        this.currentBlocks.some(
+          (block) => imagesFromImageOnlyParagraph(block).length,
         );
-        if (rowIndex < currentBlock.rows.length) flushPage();
+      if (currentBlock.type === 'table' && currentPageLooksLikeCover) {
+        this.flushPage();
       }
+      const currentTableHeight =
+        currentBlock.type === 'table'
+          ? estimateTableHeight(currentBlock, this.contentWidth)
+          : 0;
+      if (
+        currentBlock.type === 'table' &&
+        (currentTableHeight > this.contentHeight ||
+          (this.currentBlocks.length &&
+            this.currentHeight + currentTableHeight > this.contentHeight))
+      ) {
+        this.appendTableParts(currentBlock);
+        index += 1;
+        continue;
+      }
+      const imageOnlyParagraphImages =
+        imagesFromImageOnlyParagraph(currentBlock);
+      if (imageOnlyParagraphImages.length) {
+        const imageGroup = [...imageOnlyParagraphImages];
+        let nextIndex = index + 1;
+        while (nextIndex < blocks.length) {
+          const nextImages = imagesFromImageOnlyParagraph(blocks[nextIndex]);
+          if (!nextImages.length) break;
+          imageGroup.push(...nextImages);
+          nextIndex += 1;
+        }
+        this.appendImageRows(imageGroup);
+        index = nextIndex;
+        continue;
+      }
+      this.appendBlock(
+        currentBlock,
+        estimateBlockHeight(currentBlock, this.contentWidth),
+      );
       index += 1;
-      continue;
     }
-    const imageOnlyParagraphImages = imagesFromImageOnlyParagraph(currentBlock);
-
-    if (imageOnlyParagraphImages.length) {
-      const imageGroup = [...imageOnlyParagraphImages];
-      let nextIndex = index + 1;
-      while (nextIndex < blocks.length) {
-        const nextImages = imagesFromImageOnlyParagraph(blocks[nextIndex]);
-        if (!nextImages.length) break;
-        imageGroup.push(...nextImages);
-        nextIndex += 1;
-      }
-
-      appendImageRows(imageGroup);
-      index = nextIndex;
-      continue;
-    }
-
-    appendBlock(currentBlock, estimateBlockHeight(currentBlock, contentWidth));
-    index += 1;
   }
 
-  flushPage();
-  return pages.length ? pages : [{ id: 'doc-page-1', blocks }];
+  private appendTableParts(currentBlock: Extract<DocBlock, { type: 'table' }>) {
+    let rowIndex = 0;
+    let partIndex = 0;
+    while (rowIndex < currentBlock.rows.length) {
+      let availableHeight = this.contentHeight - this.currentHeight;
+      if (this.currentBlocks.length && availableHeight < 80) {
+        this.flushPage();
+        availableHeight = this.contentHeight;
+      }
+      const startRowIndex = rowIndex;
+      let rowsHeight = 16;
+      while (rowIndex < currentBlock.rows.length) {
+        const row = currentBlock.rows[rowIndex];
+        const rowHeight =
+          estimateTableHeight(
+            { ...currentBlock, rows: [row] },
+            this.contentWidth,
+          ) - 16;
+        if (
+          rowIndex > startRowIndex &&
+          (rowsHeight + rowHeight > availableHeight ||
+            rowIndex - startRowIndex >= 10)
+        ) {
+          break;
+        }
+        rowsHeight += rowHeight;
+        rowIndex += 1;
+      }
+      partIndex += 1;
+      this.appendBlock(
+        {
+          ...currentBlock,
+          id: `${currentBlock.id}-part-${partIndex}`,
+          sourceBlockId: currentBlock.sourceBlockId ?? currentBlock.id,
+          rows: currentBlock.rows.slice(startRowIndex, rowIndex),
+        },
+        rowsHeight,
+      );
+      if (rowIndex < currentBlock.rows.length) this.flushPage();
+    }
+  }
+}
+
+/**
+ * 按 DOC 页面可用高度估算分页，并把连续图片段落拆到多个页面中。
+ * 同步入口与渐进 Source 使用同一个状态机，保证页 ID 和块顺序一致。
+ */
+export function paginateDocBlocks(
+  blocks: DocBlock[],
+  page: DocPage,
+  contentWidth: number,
+): PaginatedDocPage[] {
+  return new DocPaginationState(page, contentWidth).append(blocks, true);
 }

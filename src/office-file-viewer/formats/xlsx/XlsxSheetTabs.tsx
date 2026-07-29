@@ -2,14 +2,17 @@
 import { Tabs, Typography } from 'antd';
 import React, { memo, useMemo } from 'react';
 import { useOfficeFileViewerMessages } from '../../locale';
-import type { XlsxSheet, XlsxWorkbook } from '../../services/xlsx/types';
+import type {
+  SpreadsheetSheetDescriptor,
+  SpreadsheetSourceSnapshot,
+} from '../../services/spreadsheet/SpreadsheetSource';
 
 /** 定义 XlsxSheetTabs 组件可接收的属性。 */
 type XlsxSheetTabsProps = {
   /** XlsxSheetTabsProps 当前关联的标准化工作簿。 */
-  workbook?: XlsxWorkbook;
-  /** 当前选中的工作表模型。 */
-  activeSheet: XlsxSheet;
+  snapshot: SpreadsheetSourceSnapshot;
+  /** 当前选中的工作表描述符。 */
+  activeSheet: SpreadsheetSheetDescriptor;
   /** 在 SelectSheet 事件发生时调用的回调函数。 */
   onSelectSheet: (sheetId: string) => void;
 };
@@ -22,25 +25,23 @@ const EMPTY_TABS: Array<{
 
 /** 渲染 XlsxSheetTabsComponent 组件。 */
 function XlsxSheetTabsComponent({
-  workbook,
+  snapshot,
   activeSheet,
   onSelectSheet,
 }: XlsxSheetTabsProps) {
   const messages = useOfficeFileViewerMessages();
   const tabItems = useMemo(
     () =>
-      workbook?.sheets.map((sheet) => ({
+      snapshot.sheets.map((sheet) => ({
         key: sheet.id,
         label: sheet.name,
       })) ?? EMPTY_TABS,
-    [workbook],
+    [snapshot],
   );
-  const rangeText =
-    activeSheet.range ??
-    messages.spreadsheet.dimensions(
-      activeSheet.rowCount,
-      activeSheet.columnCount,
-    );
+  const rangeText = messages.spreadsheet.dimensions(
+    activeSheet.rowCount,
+    activeSheet.columnCount,
+  );
 
   return (
     <div className="office-file-xlsx-sheet-tabs">

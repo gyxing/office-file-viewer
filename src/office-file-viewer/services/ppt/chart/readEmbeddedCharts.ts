@@ -1,7 +1,9 @@
+import type { CfbStreamReader } from '../../../shared/binary/cfb';
 import type { OfficeChartModel } from '../../../shared/ooxml/charts';
 import { parseXlsCore } from '../../xls/parseXlsCore';
 import { PPT_RECORD } from '../binary/constants';
 import { PptRecordReader } from '../binary/PptRecordReader';
+import { readPptPersistObject } from '../readPptPersistObject';
 import type { PptEditChain, PptParseContext, PptRecord } from '../types';
 
 const EX_OLE_OBJ_ATOM = 0x0fc3;
@@ -122,6 +124,72 @@ export async function readPptEmbeddedCharts(
           error instanceof Error ? error.message : '工作簿解析失败'
         }`,
         offset,
+      });
+    }
+    await context.yieldIfNeeded();
+  }
+  return context.charts;
+}
+
+/** 从已读取的根文档和按 Persist Offset 获取的 OLE 记录恢复嵌入图表。 */
+export async function readPptEmbeddedChartsFromStream(
+  documentRecordBytes: Uint8Array,
+  documentStream: CfbStreamReader,
+  editChain: PptEditChain,
+  context: PptParseContext,
+  signal?: AbortSignal,
+) {
+  const documentRecord = new PptRecordReader(documentRecordBytes).readRecord();
+  if (!documentRecord) return context.charts;
+  const objectAtoms: PptRecord[] = [];
+  collectRecords(
+    documentRecordBytes,
+    documentRecord,
+    EX_OLE_OBJ_ATOM,
+    objectAtoms,
+  );
+  for (const atom of objectAtoms) {
+    if (atom.data.length < 20) continue;
+    const view = new DataView(
+      atom.data.buffer,
+      atom.data.byteOffset,
+      atom.data.byteLength,
+    );
+    const objectId = view.getUint32(8, true);
+    const persistId = view.getUint32(16, true);
+    const loaded = await readPptPersistObject(
+      documentStream,
+      editChain,
+      persistId,
+      signal,
+    );
+    if (!loaded) continue;
+
+    try {
+      const storageRecord = new PptRecordReader(loaded.bytes).readRecord();
+      if (!storageRecord || storageRecord.type !== PPT_RECORD.EX_OLE_OBJ_STG) {
+        continue;
+      }
+      const bytes = await inflateOleStorage(storageRecord);
+      const result = await parseXlsCore(bytes, {
+        checkpoint: () => context.yieldIfNeeded(),
+      });
+      const chart = result.workbook.sheets
+        .flatMap((sheet) => sheet.charts)
+        .find((item) => item.chart);
+      if (chart) {
+        context.charts.set(objectId, {
+          chart: normalizeEmbeddedChart(chart.chart),
+          title: chart.title,
+        });
+      }
+    } catch (error) {
+      context.warnings.push({
+        code: 'PPT_EMBEDDED_CHART_FALLBACK',
+        message: `嵌入图表已保留静态预览：${
+          error instanceof Error ? error.message : '工作簿解析失败'
+        }`,
+        offset: loaded.sourceOffset,
       });
     }
     await context.yieldIfNeeded();

@@ -108,7 +108,9 @@ export function createPptTimeSlice(budgetMs = 8) {
   let startedAt = Date.now();
   return async () => {
     if (Date.now() - startedAt < budgetMs) return;
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
     startedAt = Date.now();
   };
 }

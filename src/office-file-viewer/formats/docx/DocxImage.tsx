@@ -2,6 +2,7 @@
 import type { CSSProperties } from 'react';
 import React, { memo, useMemo } from 'react';
 import type { DocxImageInline } from '../../services/docx/types';
+import { useOfficeResourceUrl } from '../../services/resource-store/useOfficeResourceUrl';
 import { calculatePositionStyle } from './positionUtils';
 
 /** 定义 DocxImage 组件可接收的属性。 */
@@ -23,6 +24,7 @@ type DocxImageStyle = CSSProperties & {
 function DocxImageComponent({ inline }: DocxImageProps) {
   const image = inline.image;
   const positionStyle = calculatePositionStyle(image.position);
+  const resource = useOfficeResourceUrl(image.src);
 
   const imageStyle = useMemo<DocxImageStyle>(
     () => ({
@@ -37,10 +39,14 @@ function DocxImageComponent({ inline }: DocxImageProps) {
   return (
     <img
       className="office-file-docx-inline-image"
-      src={image.src}
+      src={resource.url}
       alt={image.alt ?? ''}
       title={image.name}
       style={imageStyle}
+      loading="lazy"
+      decoding="async"
+      aria-busy={resource.loading || undefined}
+      data-resource-error={resource.error ? 'true' : undefined}
     />
   );
 }

@@ -63,6 +63,8 @@ function DocPageFrameComponent({
             className="office-file-doc-page-frame__header-image"
             src={headerImage.src}
             alt=""
+            loading="lazy"
+            decoding="async"
           />
         ) : null}
         {children}

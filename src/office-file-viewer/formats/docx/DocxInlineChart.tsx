@@ -2,7 +2,7 @@
 import type { CSSProperties } from 'react';
 import React, { memo, useMemo } from 'react';
 import type { DocxInline } from '../../services/docx/types';
-import { OfficeChartView } from '../../shared/chart/OfficeChartView';
+import { DocxChartView } from './DocxChartView';
 
 /** 定义 DocxInlineChart 组件可接收的属性。 */
 type DocxInlineChartProps = {
@@ -30,12 +30,7 @@ function DocxInlineChartComponent({ inline }: DocxInlineChartProps) {
 
   return (
     <span className="office-file-docx-inline-chart" style={chartStyle}>
-      <OfficeChartView
-        chart={chart.chart}
-        width={chart.width}
-        height={chart.height}
-        zoom={100}
-      />
+      <DocxChartView block={chart} zoom={100} />
     </span>
   );
 }

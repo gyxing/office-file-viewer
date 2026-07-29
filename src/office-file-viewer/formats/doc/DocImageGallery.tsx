@@ -30,6 +30,8 @@ function DocImageGalleryComponent({ images }: DocImageGalleryProps) {
               className="office-file-doc-image-gallery__img"
               src={image.src}
               alt={image.caption ?? image.id}
+              loading="lazy"
+              decoding="async"
             />
           </figure>
         ))}

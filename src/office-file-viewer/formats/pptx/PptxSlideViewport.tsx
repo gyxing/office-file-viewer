@@ -2,6 +2,7 @@
 import React, { memo, useEffect, useRef } from 'react';
 import type { SlideModel } from '../../services/pptx/types';
 import { PptxSlide } from './PptxSlide';
+import { PresentationSlideState } from './PresentationSlideState';
 
 /** 定义 PptxSlideViewport 组件可接收的属性。 */
 type PptxSlideViewportProps = {
@@ -11,6 +12,16 @@ type PptxSlideViewportProps = {
   activeIndex: number;
   /** 当前预览缩放比例。 */
   zoom: number;
+  /** 未加载出 Slide 时用于保持视口比例的文稿宽度。 */
+  width?: number;
+  /** 未加载出 Slide 时用于保持视口比例的文稿高度。 */
+  height?: number;
+  /** 当前页是否仍在按需读取。 */
+  loading?: boolean;
+  /** 当前页按需读取失败时的原始错误。 */
+  error?: Error;
+  /** 重试当前页读取。 */
+  onRetry?: () => void;
 };
 
 /** 渲染 PptxSlideViewportComponent 组件。 */
@@ -18,6 +29,11 @@ function PptxSlideViewportComponent({
   slide,
   activeIndex,
   zoom,
+  width = 960,
+  height = 540,
+  loading = false,
+  error,
+  onRetry = () => undefined,
 }: PptxSlideViewportProps) {
   const viewportRef = useRef<HTMLElement | null>(null);
 
@@ -33,6 +49,13 @@ function PptxSlideViewportComponent({
             slide={slide}
             zoom={zoom}
             renderKey={`slide-${slide.id}`}
+          />
+        ) : loading || error ? (
+          <PresentationSlideState
+            width={width}
+            height={height}
+            error={error}
+            onRetry={onRetry}
           />
         ) : null}
       </div>

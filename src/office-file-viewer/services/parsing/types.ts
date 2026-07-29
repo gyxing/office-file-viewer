@@ -1,3 +1,5 @@
+import type { PreviewKind } from './detectPreviewKind';
+
 /** 控制解析任务是否使用 Web Worker：自动选择、强制使用或禁用。 */
 export type WorkerMode = 'auto' | 'always' | 'never';
 
@@ -50,6 +52,38 @@ export type OfficeParseSession<TParsed> = {
   subscribe(listener: (progress: ParseProgress) => void): () => void;
   /** 请求取消当前解析任务。 */
   cancel(): void;
-  /** 释放会话持有的 Worker、订阅和文档资源。 */
+  /** 释放运行时和订阅；完整结果的资源由 disposeParsedOfficeFile 释放。 */
   dispose(): void;
+};
+
+/** 表示预览器内部使用的完整模型或按需内容源状态。 */
+export type OfficePreviewState<
+  TModel extends object,
+  TSource extends object,
+  TSummary extends object,
+> =
+  | {
+      sessionId: string;
+      previewKind: PreviewKind;
+      mode: 'materialized';
+      model: TModel;
+      source?: undefined;
+      summary?: undefined;
+    }
+  | {
+      sessionId: string;
+      previewKind: PreviewKind;
+      mode: 'source';
+      model?: undefined;
+      source: TSource;
+      summary: TSummary;
+    };
+
+/** 为内部预览状态附加统一的异步资源释放入口。 */
+export type OfficePreviewHandle<
+  TModel extends object,
+  TSource extends object,
+  TSummary extends object,
+> = OfficePreviewState<TModel, TSource, TSummary> & {
+  dispose(): Promise<void>;
 };

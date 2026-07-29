@@ -1,4 +1,5 @@
 import type { OfficeChartModel } from '../../shared/ooxml/charts';
+import type { OfficeResourceSource } from '../resource-store';
 
 /** 描述电子表格标准模型过程中可继续处理的警告。 */
 export type SpreadsheetWarning = {
@@ -161,7 +162,7 @@ export type SpreadsheetImage = {
   /** SpreadsheetImage 的可读名称。 */
   name?: string;
   /** 图片可直接用于 img 元素的资源地址。 */
-  src: string;
+  src: string | OfficeResourceSource;
   /** 图片无法显示时使用的替代文本。 */
   alt?: string;
   /** SpreadsheetImage 的起始锚点。 */
@@ -200,6 +201,30 @@ export type SpreadsheetChart = {
   height: number;
 };
 
+/** 描述单元格从源文件读取的对角边框；方向始终相对于完整单元格矩形。 */
+export type SpreadsheetDiagonalBorder = {
+  /** 是否绘制左下到右上的对角线。 */
+  up: boolean;
+  /** 是否绘制左上到右下的对角线。 */
+  down: boolean;
+  /** 对角边框颜色，使用标准化 CSS 颜色值。 */
+  color: string;
+  /** 对角边框宽度，单位为标准化渲染像素。 */
+  width: number;
+  /** 对角边框的源文件线型。 */
+  lineStyle:
+    | 'hair'
+    | 'thin'
+    | 'medium'
+    | 'thick'
+    | 'double'
+    | 'dotted'
+    | 'dashed'
+    | 'dashDot'
+    | 'dashDotDot'
+    | 'slantDashDot';
+};
+
 /** 描述电子表格标准模型使用的样式参数。 */
 export type SpreadsheetCellStyle = {
   /** 是否使用粗体渲染 SpreadsheetCellStyle；未提供时沿用来源格式或渲染器的默认规则。 */
@@ -236,4 +261,63 @@ export type SpreadsheetCellStyle = {
   borderColor?: string;
   /** 未单独指定方向时使用的统一边框宽度，单位为像素。 */
   borderWidth?: number;
+  /**
+   * 单元格对角边框。
+   *
+   * 对角线属于单元格样式，其端点由单元格或合并单元格的最终边框盒决定，
+   * 不能按工作表坐标猜测为浮动图形。
+   */
+  diagonalBorder?: SpreadsheetDiagonalBorder;
+};
+
+/** 描述电子表格范围，行列索引均为从 1 开始且包含结束位置。 */
+export type SpreadsheetRange = {
+  /** 范围起始行。 */
+  startRow: number;
+  /** 范围结束行。 */
+  endRow: number;
+  /** 范围起始列。 */
+  startColumn: number;
+  /** 范围结束列。 */
+  endColumn: number;
+};
+
+/** 描述范围内显式记录的行尺寸。 */
+export type SpreadsheetRowMetric = {
+  /** 从 1 开始的全局行索引。 */
+  index: number;
+  /** 行高，单位为标准化渲染像素。 */
+  height: number;
+  /** 当前行是否隐藏。 */
+  hidden: boolean;
+};
+
+/** 描述范围内显式记录的列尺寸。 */
+export type SpreadsheetColumnMetric = {
+  /** 从 1 开始的全局列索引。 */
+  index: number;
+  /** 列宽，单位为标准化渲染像素。 */
+  width: number;
+  /** 当前列是否隐藏。 */
+  hidden: boolean;
+};
+
+/** 按需范围查询返回的稀疏工作表数据。 */
+export type SpreadsheetRangeData = {
+  /** 当前数据版本。 */
+  revision: number;
+  /** 实际返回的完整全局范围，可能因合并单元格而扩展。 */
+  range: SpreadsheetRange;
+  /** 范围内存在内容或样式的稀疏单元格。 */
+  cells: readonly SpreadsheetCell[];
+  /** 范围内的行尺寸。 */
+  rows: readonly SpreadsheetRowMetric[];
+  /** 范围内的列尺寸。 */
+  columns: readonly SpreadsheetColumnMetric[];
+  /** 与范围相交的完整合并区域。 */
+  merges: readonly SpreadsheetMerge[];
+  /** 与范围相交的图片。 */
+  images: readonly SpreadsheetImage[];
+  /** 与范围相交的图表。 */
+  charts: readonly SpreadsheetChart[];
 };

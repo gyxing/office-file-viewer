@@ -24,7 +24,13 @@ import {
   parseXml,
   textContent,
 } from '../../shared/ooxml/xml';
+import type { OfficeResourceSource } from '../resource-store/types';
 import { loadDocxEntries } from './archive';
+import {
+  parseDocxBlock,
+  type DocxBlockParseOperations,
+  type DocxBlockParseResult,
+} from './parseDocxBlock';
 import type {
   DocxBlock,
   DocxChartBlock,
@@ -45,19 +51,19 @@ import type {
 } from './types';
 
 /** 枚举DOCX 解析可能处于的状态。 */
-type DocxPackageState = {
+export type DocxPackageState = {
   /** DocxPackageState 按压缩包路径索引的文件条目映射。 */
   entries: OfficeEntryMap;
   /** DocxPackageState 解析得到的 OOXML 关系映射。 */
   relationships: Record<string, Record<string, OfficeRelationship>>;
   /** 按 OOXML 包内路径索引的媒体资源映射。 */
-  mediaByPath: Record<string, string>;
+  mediaByPath: Record<string, OfficeResourceSource>;
   /** 按媒体文件名索引的资源映射。 */
-  mediaByName: Record<string, string>;
+  mediaByName: Record<string, OfficeResourceSource>;
 };
 
 /** 汇总DOCX 解析当前步骤需要共享的上下文。 */
-type ParseContext = {
+export type DocxParseContext = {
   /** ParseContext 关联的 packageState 结构；字段形状由 DocxPackageState 定义。 */
   packageState: DocxPackageState;
   /** ParseContext 按业务键索引的 documentRels 映射。 */
@@ -77,6 +83,8 @@ type ParseContext = {
   /** ParseContext 在所属集合中的位置索引。 */
   shapeIndex: number;
 };
+
+type ParseContext = DocxParseContext;
 
 /** 定义DOCX 解析的可选配置。 */
 type ReadBlockChildrenOptions = {
@@ -136,8 +144,14 @@ const DEFAULT_DOCX_FONT_FAMILY =
   '"Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif';
 
 // DOCX 与 PPTX 类似是 zip 包结构，正文、样式、主题、媒体通过关系文件互相引用。
-/** 根据输入构建 `buildPackageState` 返回的标准化结果。 */
-function buildPackageState(entries: OfficeEntryMap): DocxPackageState {
+/** 根据已读取条目和可选懒媒体索引建立 DOCX 包上下文。 */
+export function buildDocxPackageState(
+  entries: OfficeEntryMap,
+  lazyMedia?: {
+    byPath: Record<string, OfficeResourceSource>;
+    byName: Record<string, OfficeResourceSource>;
+  },
+): DocxPackageState {
   const relationships: DocxPackageState['relationships'] = {};
 
   for (const [path, value] of entries) {
@@ -146,7 +160,23 @@ function buildPackageState(entries: OfficeEntryMap): DocxPackageState {
     }
   }
 
-  const media = collectMedia(entries, 'word/media/');
+  const materializedMedia = lazyMedia
+    ? undefined
+    : collectMedia(entries, 'word/media/');
+  const media = lazyMedia ?? {
+    byPath: Object.fromEntries(
+      Object.entries(materializedMedia?.byPath ?? {}).map(([path, url]) => [
+        path,
+        { kind: 'url' as const, url },
+      ]),
+    ),
+    byName: Object.fromEntries(
+      Object.entries(materializedMedia?.byName ?? {}).map(([name, url]) => [
+        name,
+        { kind: 'url' as const, url },
+      ]),
+    ),
+  };
 
   return {
     entries,
@@ -1011,7 +1041,7 @@ function parseWpsWebExtensionChart(
   );
   const chart = parseWpsWebExtensionChartModel(
     doc.documentElement,
-    snapshotSrc,
+    snapshotSrc?.kind === 'url' ? snapshotSrc.url : undefined,
   );
   if (!chart) return undefined;
 
@@ -1032,6 +1062,7 @@ function parseWpsWebExtensionChart(
     id: `docx-chart-${context.chartIndex}`,
     type: 'chart',
     chart,
+    snapshotSource: snapshotSrc,
     width,
     height,
   };
@@ -3145,6 +3176,22 @@ function isPageBreakOnlyParagraph(node: Element) {
   );
 }
 
+function throwIfDocxParseAborted(signal?: AbortSignal) {
+  if (!signal?.aborted) return;
+  const error = new Error('DOCX 解析已取消');
+  error.name = 'AbortError';
+  throw error;
+}
+
+/** 在正文分批边界让出主线程，使取消事件能够及时生效。 */
+async function docxParseCheckpoint(signal?: AbortSignal) {
+  throwIfDocxParseAborted(signal);
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, 0);
+  });
+  throwIfDocxParseAborted(signal);
+}
+
 /** 读取表格内分页标记所在的行索引，分页从该行之前开始。 */
 function readTablePageBreakRows(tableNode: Element) {
   return childrenByLocalName(tableNode, 'tr')
@@ -3156,12 +3203,73 @@ function readTablePageBreakRows(tableNode: Element) {
     .filter((rowIndex) => rowIndex >= 0);
 }
 
-/** 解析 `parseDocx` 接收的数据，并返回 DOCX 解析结果。 */
-export async function parseDocx(file: File): Promise<DocxDocument> {
-  // 解析顺序：包资源 -> 主题/样式 -> body 子节点，段落/表格内部再递归解析图片、图表和形状。
-  const entries = await loadDocxEntries(file);
-  const packageState = buildPackageState(entries);
+type CreateDocxParseContextOptions = {
+  bodyNode?: Element | null;
+  media?: {
+    byPath: Record<string, OfficeResourceSource>;
+    byName: Record<string, OfficeResourceSource>;
+  };
+};
+
+/** 为物化和流式解析建立完全相同的样式、主题、关系及媒体上下文。 */
+export function createDocxParseContext(
+  entries: OfficeEntryMap,
+  options: CreateDocxParseContextOptions = {},
+): DocxParseContext {
+  const packageState = buildDocxPackageState(entries, options.media);
   const theme = readOfficeTheme(readXml(entries, 'word/theme/theme1.xml'));
+  const styles = readDocxStyles(entries, theme);
+  return {
+    packageState,
+    documentRels:
+      packageState.relationships['word/_rels/document.xml.rels'] ?? {},
+    theme,
+    defaultLineHeight: readDefaultGridLineHeight(options.bodyNode, styles),
+    styles,
+    images: [],
+    imageIndex: 0,
+    chartIndex: 0,
+    shapeIndex: 0,
+  };
+}
+
+export const docxBlockParseOperations: DocxBlockParseOperations<DocxParseContext> =
+  {
+    hasRenderedPageBreak,
+    hasExplicitPageBreak,
+    readTablePageBreakRows,
+    isPageBreakOnlyParagraph,
+    isParagraph: (node) => matchesLocalName(node, 'p'),
+    isTable: (node) => matchesLocalName(node, 'tbl'),
+    readParagraphBlocks,
+    parseTable,
+    offsetTable: offsetTableAfterPositionedParagraph,
+    readParagraphSection: (node) =>
+      matchesLocalName(node, 'p')
+        ? childByLocalName(childByLocalName(node, 'pPr'), 'sectPr')
+        : null,
+    readSectionPage,
+    readSectionRegions: readSectionPageRegions,
+  };
+
+/** 读取合成或完整 body 的默认页面属性。 */
+export const readDocxBodyPage = readPage;
+
+/** 标准化物理页 ID，并保留 WPS 整页形状的溢出拆分规则。 */
+export const normalizeDocxPageContents = normalizeDocxPages;
+
+/** 从当前已解析块推导文档标题。 */
+export const markDocxTitle = markTitle;
+
+/** 解析 `parseDocx` 接收的数据，并返回 DOCX 解析结果。 */
+export async function parseDocx(
+  file: File,
+  signal?: AbortSignal,
+): Promise<DocxDocument> {
+  // 解析顺序：包资源 -> 主题/样式 -> body 子节点，段落/表格内部再递归解析图片、图表和形状。
+  throwIfDocxParseAborted(signal);
+  const entries = await loadDocxEntries(file, { signal });
+  await docxParseCheckpoint(signal);
   const documentXml = readXml(entries, 'word/document.xml');
   const documentDoc = parseXml(documentXml);
   const bodyNode = childByLocalName(documentDoc.documentElement, 'body');
@@ -3170,19 +3278,7 @@ export async function parseDocx(file: File): Promise<DocxDocument> {
       matchesLocalName(child, 'p') &&
       Boolean(childByLocalName(childByLocalName(child, 'pPr'), 'sectPr')),
   );
-  const styles = readDocxStyles(entries, theme);
-  const context: ParseContext = {
-    packageState,
-    documentRels:
-      packageState.relationships['word/_rels/document.xml.rels'] ?? {},
-    theme,
-    defaultLineHeight: readDefaultGridLineHeight(bodyNode, styles),
-    styles,
-    images: [],
-    imageIndex: 0,
-    chartIndex: 0,
-    shapeIndex: 0,
-  };
+  const context = createDocxParseContext(entries, { bodyNode });
 
   const blocks: DocxBlock[] = [];
   const pages: DocxPageContent[] = [];
@@ -3204,83 +3300,30 @@ export async function parseDocx(file: File): Promise<DocxDocument> {
     currentPageBlocks = [];
   };
 
-  Array.from(bodyNode?.children ?? []).forEach((child, index) => {
+  const bodyChildren = Array.from(bodyNode?.children ?? []);
+  for (let index = 0; index < bodyChildren.length; index += 1) {
+    if (index % 32 === 0) await docxParseCheckpoint(signal);
+    const child = bodyChildren[index];
     const page = readPage(bodyNode);
-    const renderedPageBreak = hasRenderedPageBreak(child);
-    const explicitPageBreak = hasExplicitPageBreak(child);
-    const tablePageBreakRows = matchesLocalName(child, 'tbl')
-      ? readTablePageBreakRows(child)
-      : [];
-    if (
-      renderedPageBreak &&
-      !tablePageBreakRows.length &&
-      !previousBoundaryWasExplicit
-    ) {
-      pushCurrentPage(page);
-    }
-    previousBoundaryWasExplicit = false;
-
-    if (isPageBreakOnlyParagraph(child)) {
-      pushCurrentPage(page);
-      previousBoundaryWasExplicit = true;
-      return;
-    }
-
-    const childBlocks: DocxBlock[] = [];
-    if (matchesLocalName(child, 'p')) {
-      childBlocks.push(
-        ...readParagraphBlocks(child, `p-${index + 1}`, context),
-      );
-    }
-    if (matchesLocalName(child, 'tbl')) {
-      const table = offsetTableAfterPositionedParagraph(
-        parseTable(child, `table-${index + 1}`, context),
-        currentPageBlocks[currentPageBlocks.length - 1],
-      );
-      if (tablePageBreakRows.length) {
-        let rowStart = 0;
-        tablePageBreakRows.forEach((rowEnd) => {
-          if (rowEnd > rowStart) {
-            const tablePart = {
-              ...table,
-              id: `${table.id}-page-${rowStart + 1}-${rowEnd}`,
-              rows: table.rows.slice(rowStart, rowEnd),
-            };
-            blocks.push(tablePart);
-            currentPageBlocks.push(tablePart);
-          }
-          pushCurrentPage(page);
-          rowStart = rowEnd;
-        });
-        if (rowStart < table.rows.length) {
-          const tablePart = {
-            ...table,
-            id: `${table.id}-page-${rowStart + 1}-${table.rows.length}`,
-            rows: table.rows.slice(rowStart),
-          };
-          blocks.push(tablePart);
-          currentPageBlocks.push(tablePart);
-        }
-        return;
+    const result: DocxBlockParseResult = parseDocxBlock({
+      node: child,
+      index,
+      context,
+      defaultPage: page,
+      previousBlock: currentPageBlocks[currentPageBlocks.length - 1],
+      previousBoundaryWasExplicit,
+      operations: docxBlockParseOperations,
+    });
+    previousBoundaryWasExplicit = result.previousBoundaryWasExplicit;
+    for (const event of result.events) {
+      if (event.type === 'blocks') {
+        blocks.push(...event.blocks);
+        currentPageBlocks.push(...event.blocks);
+      } else {
+        pushCurrentPage(event.page, event.regions ?? defaultRegions);
       }
-      childBlocks.push(table);
     }
-    blocks.push(...childBlocks);
-    currentPageBlocks.push(...childBlocks);
-
-    const paragraphSectPr = matchesLocalName(child, 'p')
-      ? childByLocalName(childByLocalName(child, 'pPr'), 'sectPr')
-      : null;
-    if (paragraphSectPr) {
-      pushCurrentPage(
-        readSectionPage(paragraphSectPr),
-        readSectionPageRegions(paragraphSectPr, context),
-      );
-    } else if (explicitPageBreak) {
-      pushCurrentPage(page);
-      previousBoundaryWasExplicit = true;
-    }
-  });
+  }
 
   if (currentPageBlocks.length) {
     pushCurrentPage(readPage(bodyNode));
@@ -3300,6 +3343,7 @@ export async function parseDocx(file: File): Promise<DocxDocument> {
       : [],
   );
 
+  throwIfDocxParseAborted(signal);
   return {
     title: markTitle(blocks),
     page: normalizedPages[0]?.page ?? readPage(bodyNode),

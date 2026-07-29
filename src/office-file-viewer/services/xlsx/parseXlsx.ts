@@ -22,6 +22,7 @@ import {
   parseXml,
   textContent,
 } from '../../shared/ooxml/xml';
+import type { SpreadsheetDiagonalBorder } from '../spreadsheet/types';
 import { loadXlsxEntries } from './archive';
 import type {
   XlsxCell,
@@ -36,7 +37,7 @@ import type {
 } from './types';
 
 /** 描述 XLSX 解析使用的样式参数。 */
-type ParsedStyle = {
+export type ParsedStyle = {
   /** ParsedStyle 在源文件记录中的数字标识。 */
   fontId?: number;
   /** ParsedStyle 在源文件记录中的数字标识。 */
@@ -48,7 +49,7 @@ type ParsedStyle = {
 };
 
 /** 描述 StyleBook 在 XLSX 解析中的数据结构。 */
-type StyleBook = {
+export type StyleBook = {
   /** StyleBook 包含的 fonts 有序集合。 */
   fonts: XlsxCellStyle[];
   /** StyleBook 包含的 fills 有序集合。 */
@@ -64,6 +65,7 @@ type StyleBook = {
       | 'borderLeft'
       | 'borderColor'
       | 'borderWidth'
+      | 'diagonalBorder'
     >
   >;
   /** StyleBook 包含的 styles 有序集合。 */
@@ -211,7 +213,7 @@ function buildPackageState(entries: OfficeEntryMap): XlsxPackageState {
 }
 
 /** 解码 `decodeMojibake` 接收的源数据。 */
-function decodeMojibake(value: string) {
+export function decodeMojibake(value: string) {
   if (!/[ÃÂäåæçèé]|�|锟|鎬|宸|濮|韬|骞|涓|鍚|煡/.test(value)) {
     return value;
   }
@@ -245,14 +247,14 @@ function readSharedStrings(xml: string) {
 }
 
 /** 执行 `columnLabelToIndex` 封装的 XLSX 解析处理步骤。 */
-function columnLabelToIndex(label: string) {
+export function columnLabelToIndex(label: string) {
   return label
     .split('')
     .reduce((acc, char) => acc * 26 + char.charCodeAt(0) - 64, 0);
 }
 
 /** 执行 `columnIndexToLabel` 封装的 XLSX 解析处理步骤。 */
-function columnIndexToLabel(index: number) {
+export function columnIndexToLabel(index: number) {
   let value = index;
   let label = '';
   while (value > 0) {
@@ -264,7 +266,7 @@ function columnIndexToLabel(index: number) {
 }
 
 /** 解析 `parseCellRef` 接收的数据，并返回 XLSX 解析结果。 */
-function parseCellRef(ref: string): CellAddress {
+export function parseCellRef(ref: string): CellAddress {
   const match = ref.match(/^([A-Z]+)(\d+)$/i);
   if (!match) return { row: 1, column: 1 };
   return {
@@ -274,7 +276,7 @@ function parseCellRef(ref: string): CellAddress {
 }
 
 /** 解析 `parseRange` 接收的数据，并返回 XLSX 解析结果。 */
-function parseRange(range?: string) {
+export function parseRange(range?: string) {
   if (!range) return undefined;
   const [start, end = start] = range.replace(/\$/g, '').split(':');
   const startCell = parseCellRef(start);
@@ -392,6 +394,24 @@ function borderToCss(border?: ReturnType<typeof parseBorderStyle>) {
   return `${border.width ?? 1}px ${cssStyle} ${border.color ?? '#000000'}`;
 }
 
+/** 将 OOXML 边框线型限制到预览器支持的稳定枚举。 */
+function normalizeDiagonalLineStyle(
+  value: string,
+): SpreadsheetDiagonalBorder['lineStyle'] {
+  return value === 'hair' ||
+    value === 'thin' ||
+    value === 'medium' ||
+    value === 'thick' ||
+    value === 'double' ||
+    value === 'dotted' ||
+    value === 'dashed' ||
+    value === 'dashDot' ||
+    value === 'dashDotDot' ||
+    value === 'slantDashDot'
+    ? value
+    : 'thin';
+}
+
 /** 执行 `pointToCssPx` 封装的 XLSX 解析处理步骤。 */
 function pointToCssPx(point?: number) {
   if (!point || !Number.isFinite(point)) return undefined;
@@ -399,7 +419,7 @@ function pointToCssPx(point?: number) {
 }
 
 /** 解析 `parseStyles` 接收的数据，并返回 XLSX 解析结果。 */
-function parseStyles(xml: string, theme: OfficeTheme): StyleBook {
+export function parseStyles(xml: string, theme: OfficeTheme): StyleBook {
   if (!xml) return { fonts: [], fills: [], borders: [], styles: [] };
   const doc = parseXml(xml);
   const styleSheet = doc.documentElement;
@@ -446,6 +466,16 @@ function parseStyles(xml: string, theme: OfficeTheme): StyleBook {
         childByLocalName(borderNode, 'bottom'),
         theme,
       );
+      const diagonal = parseBorderStyle(
+        childByLocalName(borderNode, 'diagonal'),
+        theme,
+      );
+      const diagonalUp =
+        attr(borderNode, 'diagonalUp') === '1' ||
+        attr(borderNode, 'diagonalUp') === 'true';
+      const diagonalDown =
+        attr(borderNode, 'diagonalDown') === '1' ||
+        attr(borderNode, 'diagonalDown') === 'true';
       const color = left?.color ?? right?.color ?? top?.color ?? bottom?.color;
       const width = left?.width ?? right?.width ?? top?.width ?? bottom?.width;
       return {
@@ -456,6 +486,16 @@ function parseStyles(xml: string, theme: OfficeTheme): StyleBook {
         borderLeft: borderToCss(left),
         borderColor: color,
         borderWidth: width,
+        diagonalBorder:
+          diagonal && (diagonalUp || diagonalDown)
+            ? {
+                up: diagonalUp,
+                down: diagonalDown,
+                color: diagonal.color ?? '#000000',
+                width: diagonal.width ?? 1,
+                lineStyle: normalizeDiagonalLineStyle(diagonal.style),
+              }
+            : undefined,
       };
     },
   );
@@ -497,7 +537,7 @@ function parseStyles(xml: string, theme: OfficeTheme): StyleBook {
 }
 
 /** 解析并确定 `resolveStyle` 对应的引用或配置。 */
-function resolveStyle(
+export function resolveStyle(
   styleId: number | undefined,
   styleBook: StyleBook,
 ): XlsxCellStyle | undefined {
@@ -520,13 +560,16 @@ function resolveStyle(
 }
 
 /** 执行 `excelWidthToPx` 封装的 XLSX 解析处理步骤。 */
-function excelWidthToPx(width?: number, fallback = DEFAULT_COLUMN_WIDTH) {
+export function excelWidthToPx(
+  width?: number,
+  fallback = DEFAULT_COLUMN_WIDTH,
+) {
   if (!width || !Number.isFinite(width)) return fallback;
   return Math.max(40, Math.round(width * 7 + 5));
 }
 
 /** 执行 `pointToPx` 封装的 XLSX 解析处理步骤。 */
-function pointToPx(point?: number, fallback = DEFAULT_ROW_HEIGHT) {
+export function pointToPx(point?: number, fallback = DEFAULT_ROW_HEIGHT) {
   if (!point || !Number.isFinite(point)) return fallback;
   return Math.max(1, Math.round(point * (96 / 72)));
 }
@@ -1016,10 +1059,31 @@ function readSheet(
   };
 }
 
+function throwIfXlsxParseAborted(signal?: AbortSignal) {
+  if (!signal?.aborted) return;
+  const error = new Error('XLSX 解析已取消');
+  error.name = 'AbortError';
+  throw error;
+}
+
+/** 在工作表边界让出主线程，使大工作簿切换或卸载可以及时取消。 */
+async function xlsxParseCheckpoint(signal?: AbortSignal) {
+  throwIfXlsxParseAborted(signal);
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, 0);
+  });
+  throwIfXlsxParseAborted(signal);
+}
+
 /** 解析 `parseXlsx` 接收的数据，并返回 XLSX 解析结果。 */
-export async function parseXlsx(file: File): Promise<XlsxWorkbook> {
+export async function parseXlsx(
+  file: File,
+  signal?: AbortSignal,
+): Promise<XlsxWorkbook> {
   // sharedStrings 和 styles 是全工作簿共享数据，先解析后再逐个 sheet 套用。
-  const entries = await loadXlsxEntries(file);
+  throwIfXlsxParseAborted(signal);
+  const entries = await loadXlsxEntries(file, { signal });
+  await xlsxParseCheckpoint(signal);
   const packageState = buildPackageState(entries);
   const workbookXml = readXml(entries, 'xl/workbook.xml');
   const workbookRels =
@@ -1032,25 +1096,32 @@ export async function parseXlsx(file: File): Promise<XlsxWorkbook> {
     packageState.theme,
   );
   const workbookDoc = parseXml(workbookXml);
-  const sheets = childrenByLocalName(
+  const sheetNodes = childrenByLocalName(
     childByLocalName(workbookDoc.documentElement, 'sheets'),
     'sheet',
-  ).map((sheetNode, index) => {
+  );
+  const sheets: XlsxSheet[] = [];
+  for (let index = 0; index < sheetNodes.length; index += 1) {
+    await xlsxParseCheckpoint(signal);
+    const sheetNode = sheetNodes[index];
     const relId = attr(sheetNode, 'r:id') ?? attr(sheetNode, 'id') ?? '';
     const rel = workbookRels[relId];
     const path = rel?.target ?? `xl/worksheets/sheet${index + 1}.xml`;
-    return readSheet(
-      readXml(entries, path),
-      {
-        id: attr(sheetNode, 'sheetId') ?? String(index + 1),
-        name: decodeMojibake(attr(sheetNode, 'name') ?? `Sheet ${index + 1}`),
-        path,
-      },
-      sharedStrings,
-      styleBook,
-      packageState,
+    sheets.push(
+      readSheet(
+        readXml(entries, path),
+        {
+          id: attr(sheetNode, 'sheetId') ?? String(index + 1),
+          name: decodeMojibake(attr(sheetNode, 'name') ?? `Sheet ${index + 1}`),
+          path,
+        },
+        sharedStrings,
+        styleBook,
+        packageState,
+      ),
     );
-  });
+  }
 
+  throwIfXlsxParseAborted(signal);
   return { sheets };
 }

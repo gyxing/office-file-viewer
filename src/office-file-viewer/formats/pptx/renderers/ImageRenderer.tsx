@@ -1,6 +1,10 @@
 // ImageRenderer 渲染 PPTX 图片元素，并处理裁剪、旋转和翻转。
 import React, { memo } from 'react';
 import type { ImageElement } from '../../../services/pptx/types';
+import {
+  useOfficeResourceUrl,
+  type OfficeResourceSource,
+} from '../../../services/resource-store';
 
 /** 定义 ImageRenderer 组件可接收的属性。 */
 type ImageRendererProps = {
@@ -10,6 +14,11 @@ type ImageRendererProps = {
 
 /** 渲染 ImageRendererComponent 组件。 */
 function ImageRendererComponent({ element }: ImageRendererProps) {
+  const source: OfficeResourceSource =
+    typeof element.src === 'string'
+      ? { kind: 'url', url: element.src }
+      : element.src;
+  const resource = useOfficeResourceUrl(source);
   const left = element.crop?.left ?? 0;
   const top = element.crop?.top ?? 0;
   const right = element.crop?.right ?? 0;
@@ -39,7 +48,9 @@ function ImageRendererComponent({ element }: ImageRendererProps) {
     >
       <img
         alt={element.alt ?? ''}
-        src={element.src}
+        src={resource.url}
+        loading="lazy"
+        decoding="async"
         style={{
           position: 'absolute',
           left: `${-(left / visibleWidth) * 100}%`,

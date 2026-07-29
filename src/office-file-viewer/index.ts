@@ -19,6 +19,7 @@ export type {
 export { parsePpt } from './services/ppt';
 export { disposePresentationDocument } from './services/presentation/dispose';
 export type { PresentationDocument } from './services/presentation/types';
+export { disposeParsedOfficeFile } from './services/preview';
 export type { ParsedOfficeFile, PreviewKind } from './services/preview';
 export { disposeSpreadsheetWorkbook } from './services/spreadsheet/types';
 export type {

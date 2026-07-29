@@ -1,4 +1,4 @@
-import { CFB_SIGNATURE, parseCfb, type CfbFile } from '../../shared/binary/cfb';
+import { CFB_SIGNATURE, parseCfb } from '../../shared/binary/cfb';
 import { createResourceReference } from '../parsing/assembly/resourceReferences';
 import type {
   PortableDocMetadata,
@@ -192,6 +192,16 @@ export type DocCoreResult = {
   document: DocDocument;
   /** DocCoreResult 持有的图片、字体或对象 URL 等资源；文档释放时需同步清理。 */
   resources: PortableResource[];
+};
+
+/** 提供已经由随机 CFB Reader 读取的 DOC 核心流。 */
+export type DocCoreStreamsInput = {
+  /** WordDocument 主流。 */
+  wordDocument: Uint8Array;
+  /** FIB 指定的 0Table 或 1Table 流。 */
+  tableStream: Uint8Array;
+  /** 仅用于提取图片资源的相关流，通常为 WordDocument、Table 和 Data。 */
+  imageStreams: Iterable<readonly [string, Uint8Array]>;
 };
 
 /** 定义DOC 二进制解析的可选配置。 */
@@ -2183,12 +2193,27 @@ function extractDocImagesFromStream(bytes: Uint8Array, streamName: string) {
 }
 
 /** 提取并汇总 `extractDocImages` 返回的数据。 */
-function extractDocImages(cfb: CfbFile, resources: PortableResource[]) {
-  const candidates = Array.from(cfb.streams.entries()).flatMap(
-    ([streamName, stream]) => extractDocImagesFromStream(stream, streamName),
+function extractDocImages(
+  streams: Iterable<readonly [string, Uint8Array]>,
+  resources: PortableResource[],
+) {
+  const candidates = Array.from(streams).flatMap(([streamName, stream]) =>
+    extractDocImagesFromStream(stream, streamName),
   );
 
   return normalizeImageCandidates(candidates, resources);
+}
+
+/** 判断输入是否为随机 CFB Reader 提供的 DOC 核心流。 */
+function isDocCoreStreamsInput(
+  input: ArrayBuffer | Uint8Array | DocCoreStreamsInput,
+): input is DocCoreStreamsInput {
+  return (
+    typeof input === 'object' &&
+    input !== null &&
+    'wordDocument' in input &&
+    'tableStream' in input
+  );
 }
 
 /** 解析 `parsePlainLikeDoc` 接收的数据，并返回DOC 二进制解析结果。 */
@@ -2268,15 +2293,20 @@ async function flushDocResources(
 
 /** 解析 DOC/WPS 二进制，并返回环境无关的文档与图片资源。 */
 export async function parseDocCore(
-  input: ArrayBuffer | Uint8Array,
+  input: ArrayBuffer | Uint8Array | DocCoreStreamsInput,
   context: DocCoreContext,
 ): Promise<DocCoreResult> {
   // 非 OLE 文件按纯文本降级处理；OLE DOC 则解析 CFB、FIB、piece table 和样式 run。
-  const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
+  const streamsInput = isDocCoreStreamsInput(input) ? input : undefined;
+  const bytes = streamsInput
+    ? undefined
+    : input instanceof Uint8Array
+    ? input
+    : new Uint8Array(input as ArrayBuffer);
   const warnings: string[] = [];
   const resources: PortableResource[] = [];
 
-  if (!isOleDoc(bytes)) {
+  if (bytes && !isOleDoc(bytes)) {
     await context.checkpoint({
       stage: 'content',
       percent: 0.8,
@@ -2304,11 +2334,14 @@ export async function parseDocCore(
     percent: 0.05,
     message: '正在读取 DOC 复合文档',
   });
-  const cfb = await parseCfb(bytes, {
-    yieldIfNeeded: () => context.checkpoint(),
-    allowPartialFinalSector: true,
-  });
-  const wordDocument = cfb.getStream('WordDocument');
+  const cfb = bytes
+    ? await parseCfb(bytes, {
+        yieldIfNeeded: () => context.checkpoint(),
+        allowPartialFinalSector: true,
+      })
+    : undefined;
+  const wordDocument =
+    streamsInput?.wordDocument ?? cfb?.getStream('WordDocument');
 
   if (!wordDocument) {
     throw new Error(
@@ -2317,7 +2350,8 @@ export async function parseDocCore(
   }
 
   const fib = parseFib(wordDocument);
-  const tableStream = cfb.getStream(fib.tableStreamName);
+  const tableStream =
+    streamsInput?.tableStream ?? cfb?.getStream(fib.tableStreamName);
 
   if (!tableStream) {
     throw new Error(
@@ -2361,7 +2395,10 @@ export async function parseDocCore(
     percent: 0.5,
     message: '正在解析 DOC 图片资源',
   });
-  const images = extractDocImages(cfb, resources);
+  const images = extractDocImages(
+    streamsInput?.imageStreams ?? cfb!.streams,
+    resources,
+  );
   const headerStart = fib.ccpText + fib.ccpFtn;
   const headerPieces = slicePiecesByCharacterRange(
     pieces,

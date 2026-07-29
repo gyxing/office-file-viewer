@@ -226,7 +226,9 @@ export function parseBiff8ChartSeries(
     return {
       name:
         inlineName ||
-        (referencedName == null ? `系列 ${index + 1}` : String(referencedName)),
+        (referencedName === null || referencedName === undefined
+          ? `系列 ${index + 1}`
+          : String(referencedName)),
       groupIndex,
       // BIFF8 图表缓存仅在源引用不可用时兜底，正常情况下工作表值才是权威数据。
       categories: (referencedCategories.length

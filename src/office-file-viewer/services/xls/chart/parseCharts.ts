@@ -104,7 +104,8 @@ export function parseBiff8Charts(
         descriptor,
         chartIndex,
         anchor: shape?.anchor,
-        previewImageSrc: preview?.src,
+        previewImageSrc:
+          typeof preview?.src === 'string' ? preview.src : undefined,
       });
       const adapted = adaptBiff8Chart(parsed);
       results.push({
@@ -134,7 +135,8 @@ export function parseBiff8Charts(
           categories: [],
           series: [],
           renderMode: 'snapshot',
-          snapshotSrc: preview?.src,
+          snapshotSrc:
+            typeof preview?.src === 'string' ? preview.src : undefined,
           degradedFrom: '损坏的 BIFF8 图表',
         },
         anchor: shape?.anchor ?? {

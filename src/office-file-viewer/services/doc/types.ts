@@ -73,6 +73,8 @@ export type DocBlock = DocParagraphBlock | DocTableBlock | DocListBlock;
 export type DocParagraphBlock = {
   /** DocParagraphBlock 在所属文档或任务中的唯一标识。 */
   id: string;
+  /** 分页拆分后仍指向原始正文块的稳定 ID。 */
+  sourceBlockId?: string;
   /** 用于区分 DocParagraphBlock 不同结构分支的类型标识。 */
   type: 'paragraph';
   /** DocParagraphBlock 携带或渲染的文本内容。 */
@@ -93,6 +95,8 @@ export type DocParagraphBlock = {
 export type DocTableBlock = {
   /** DocTableBlock 在所属文档或任务中的唯一标识。 */
   id: string;
+  /** 分页拆分后仍指向原始正文块的稳定 ID。 */
+  sourceBlockId?: string;
   /** 用于区分 DocTableBlock 不同结构分支的类型标识。 */
   type: 'table';
   /** DocTableBlock 包含的 rows 有序集合。 */
@@ -147,6 +151,8 @@ export type DocTableCell = {
 export type DocListBlock = {
   /** DocListBlock 在所属文档或任务中的唯一标识。 */
   id: string;
+  /** 分页拆分后仍指向原始正文块的稳定 ID。 */
+  sourceBlockId?: string;
   /** 用于区分 DocListBlock 不同结构分支的类型标识。 */
   type: 'list';
   /** 是否按有序列表渲染；false 表示无序列表。 */

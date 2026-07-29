@@ -1,56 +1,69 @@
-import JSZip from 'jszip';
+import type {
+  OfficeArchiveOpenOptions,
+  OfficeArchiveReader,
+} from './OfficeArchiveReader';
+import { createZipJsOfficeArchiveReader } from './ZipJsOfficeArchiveReader';
+
+export type {
+  OfficeArchiveEntry,
+  OfficeArchiveOpenOptions,
+  OfficeArchiveReader,
+} from './OfficeArchiveReader';
 
 /** 描述 OfficeZipInput 在 OOXML 公共解析中的数据结构。 */
 export type OfficeZipInput = File | Blob | ArrayBuffer | Uint8Array;
 /** 描述 OfficeEntryMap 在 OOXML 公共解析中的数据结构。 */
 export type OfficeEntryMap = Map<string, string | Uint8Array>;
 
-const OFFICE_ENTRY_READ_CONCURRENCY = 4;
+/** 检测浏览器是否真正支持 zip.js native 核心需要的 deflate-raw。 */
+function supportsNativeZipCore() {
+  if (
+    typeof document === 'undefined' ||
+    typeof DecompressionStream === 'undefined'
+  ) {
+    return false;
+  }
+  try {
+    new DecompressionStream('deflate-raw');
+    return true;
+  } catch {
+    return false;
+  }
+}
 
-/** 描述 OOXML 公共解析产生的处理结果。 */
-type OfficeEntryResult = readonly [path: string, data: string | Uint8Array];
+/**
+ * 动态加载匹配当前浏览器能力的 zip.js 核心，并打开 OOXML 归档。
+ */
+export async function openOfficeArchive(
+  file: OfficeZipInput,
+  options: OfficeArchiveOpenOptions = {},
+): Promise<OfficeArchiveReader> {
+  // zip.js 2.8.34 仅在该选项为 false 时才会先初始化当前上下文中的 WASM 解压流。
+  const useCompressionStream = supportsNativeZipCore();
+  const zipModule = useCompressionStream
+    ? await import('@zip.js/zip.js/lib/zip-core-native.js')
+    : await import('@zip.js/zip.js/lib/zip-core.js');
+  return createZipJsOfficeArchiveReader(
+    file,
+    zipModule,
+    useCompressionStream,
+    options.signal,
+  );
+}
 
 /**
  * 读取 Office ZIP 包中的全部文件，并限制同时解压的条目数量以降低瞬时资源峰值。
  */
 export async function loadOfficeEntries(
   file: OfficeZipInput,
+  options: OfficeArchiveOpenOptions = {},
 ): Promise<OfficeEntryMap> {
-  const source =
-    typeof Blob !== 'undefined' && file instanceof Blob
-      ? await file.arrayBuffer()
-      : file;
-  const zip = await JSZip.loadAsync(source);
-  const archiveEntries = Object.entries(zip.files).filter(
-    ([, entry]) => !entry.dir,
-  );
-  const results = new Array<OfficeEntryResult>(archiveEntries.length);
-  let nextIndex = 0;
-
-  async function readNextEntry(): Promise<void> {
-    while (nextIndex < archiveEntries.length) {
-      const entryIndex = nextIndex;
-      nextIndex += 1;
-      const [path, entry] = archiveEntries[entryIndex];
-
-      try {
-        const isXml = /\.xml$/i.test(path) || /\.rels$/i.test(path);
-        const data = await entry.async(isXml ? 'text' : 'uint8array');
-        results[entryIndex] = [path, data];
-      } catch (error) {
-        const message = error instanceof Error ? error.message : '未知错误';
-        throw new Error(`Office 包条目解压失败（${path}）：${message}`);
-      }
-    }
+  const reader = await openOfficeArchive(file, options);
+  try {
+    return await reader.materialize(options.signal);
+  } finally {
+    await reader.close();
   }
-
-  const workerCount = Math.min(
-    OFFICE_ENTRY_READ_CONCURRENCY,
-    archiveEntries.length,
-  );
-  await Promise.all(Array.from({ length: workerCount }, () => readNextEntry()));
-
-  return new Map(results);
 }
 
 /** 读取 `readXml` 所需的源数据，供 OOXML 公共解析使用。 */

@@ -47,6 +47,14 @@ export type Biff8BorderStyle = {
   colorIndex: number;
 };
 
+/** 描述 BIFF8 XF 中独立保存的对角边框位和线型。 */
+export type Biff8DiagonalBorderStyle = Biff8BorderStyle & {
+  /** 是否绘制左下到右上的对角线。 */
+  up: boolean;
+  /** 是否绘制左上到右下的对角线。 */
+  down: boolean;
+};
+
 /** 描述 Biff8CellFormat 在 XLS/BIFF8 解析中的数据结构。 */
 export type Biff8CellFormat = {
   /** 当前字段引用的工作簿样式表索引，具体目标由属性名确定。 */
@@ -77,6 +85,8 @@ export type Biff8CellFormat = {
   topBorder?: Biff8BorderStyle;
   /** Biff8CellFormat 关联的 bottomBorder 结构；字段形状由 Biff8BorderStyle 定义；未提供时使用来源格式或渲染器的默认行为。 */
   bottomBorder?: Biff8BorderStyle;
+  /** XF 中的对角线方向、线型和调色板颜色。 */
+  diagonalBorder?: Biff8DiagonalBorderStyle;
 };
 
 /** 描述 Biff8DefinedName 在 XLS/BIFF8 解析中的数据结构。 */

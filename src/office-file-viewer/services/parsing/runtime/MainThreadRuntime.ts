@@ -1,25 +1,28 @@
-import { parseDocCore } from '../../doc/parseDocCore';
+import { parseDocCore, type DocCoreContext } from '../../doc/parseDocCore';
+import { parseDocRandomAccess } from '../../doc/parseDocRandomAccess';
+import { OFFICE_LARGE_FILE_THRESHOLDS } from '../../performance/officePerformanceThresholds';
 import { parsePptCore } from '../../ppt/parsePptCore';
 import type { ParsedOfficeFile, PreviewKind } from '../../preview';
 import { parseXlsCore } from '../../xls/parseXlsCore';
-import type { RuntimeSink } from './types';
+import type { RuntimeContext, RuntimeSink } from './types';
 import { createParseAbortError } from './types';
 
 /** 解析 `parseExistingFormat` 接收的数据，并返回解析运行时结果。 */
 async function parseExistingFormat(
   file: File,
   kind: Exclude<PreviewKind, 'xls' | 'ppt' | 'doc'>,
+  signal: AbortSignal,
 ): Promise<ParsedOfficeFile> {
   if (kind === 'xlsx') {
     const { parseXlsx } = await import('../../xlsx/parseXlsx');
-    return { kind, workbook: await parseXlsx(file) };
+    return { kind, workbook: await parseXlsx(file, signal) };
   }
   if (kind === 'docx') {
     const { parseDocx } = await import('../../docx/parseDocx');
-    return { kind, document: await parseDocx(file) };
+    return { kind, document: await parseDocx(file, signal) };
   }
   const { parsePptx } = await import('../../pptx/parsePptx');
-  return { kind, document: await parsePptx(file) };
+  return { kind, document: await parsePptx(file, signal) };
 }
 
 /** 执行 `ensureNotAborted` 封装的解析运行时处理步骤。 */
@@ -34,7 +37,9 @@ function createDocCheckpoint(signal: AbortSignal, sink: RuntimeSink) {
     ensureNotAborted(signal);
     if (progress) sink.progress(progress);
     if (Date.now() < deadline) return;
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
     ensureNotAborted(signal);
     deadline = Date.now() + 12;
   };
@@ -45,9 +50,10 @@ export class MainThreadRuntime {
   async run(
     file: File,
     kind: PreviewKind,
-    signal: AbortSignal,
+    context: RuntimeContext,
     sink: RuntimeSink,
   ) {
+    const { signal } = context;
     try {
       ensureNotAborted(signal);
       if (kind !== 'xls' && kind !== 'ppt' && kind !== 'doc') {
@@ -56,10 +62,10 @@ export class MainThreadRuntime {
           percent: 0.05,
           message: '正在解析文件',
         });
-        const parsed = await parseExistingFormat(file, kind);
+        const parsed = await parseExistingFormat(file, kind, signal);
         ensureNotAborted(signal);
         await sink.parsed(parsed);
-        sink.complete();
+        await sink.complete();
         return;
       }
 
@@ -69,10 +75,8 @@ export class MainThreadRuntime {
           percent: 0.01,
           message: '正在读取 DOC/WPS 文件',
         });
-        const input = await file.arrayBuffer();
-        ensureNotAborted(signal);
         const checkpoint = createDocCheckpoint(signal, sink);
-        await parseDocCore(input, {
+        const parseContext: DocCoreContext = {
           fileName: file.name,
           checkpoint,
           output: {
@@ -89,8 +93,15 @@ export class MainThreadRuntime {
               await sink.documentBlocks(startIndex, blocks);
             },
           },
-        });
-        sink.complete();
+        };
+        if (file.size >= OFFICE_LARGE_FILE_THRESHOLDS.cfbFileBytes) {
+          await parseDocRandomAccess(file, parseContext, signal);
+        } else {
+          const input = await file.arrayBuffer();
+          ensureNotAborted(signal);
+          await parseDocCore(input, parseContext);
+        }
+        await sink.complete();
         return;
       }
 
@@ -122,7 +133,7 @@ export class MainThreadRuntime {
             },
           },
         });
-        sink.complete();
+        await sink.complete();
         return;
       }
 
@@ -149,7 +160,7 @@ export class MainThreadRuntime {
           },
         },
       });
-      sink.complete(result.workbook.warnings);
+      await sink.complete(result.workbook.warnings);
     } catch (error) {
       sink.error(error);
       throw error;

@@ -32,6 +32,14 @@ export type OfficeFileViewerMessages = {
   empty: Record<PreviewKind, string>;
   loading: { parsing: string };
   error: { previewFailed: string };
+  lazyContent: {
+    loading: string;
+    retry: string;
+    pageLoadFailed: string;
+    slideLoadFailed: string;
+    sheetLoadFailed: string;
+    resourceLoadFailed: string;
+  };
   progress: {
     stages: Record<ParseStage, string>;
     partialTitle: string;

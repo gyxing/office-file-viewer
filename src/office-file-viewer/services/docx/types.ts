@@ -1,3 +1,4 @@
+import type { OfficeResourceSource } from '../resource-store/types';
 import type { WordOutlineItem } from '../word/types';
 
 /** 描述 DOCX 解析生成的标准化文档模型。 */
@@ -118,6 +119,8 @@ export type DocxBlock = DocxParagraphBlock | DocxTableBlock | DocxChartBlock;
 export type DocxParagraphBlock = {
   /** DocxParagraphBlock 在所属文档或任务中的唯一标识。 */
   id: string;
+  /** 分页拆分后仍指向原始正文块的稳定 ID。 */
+  sourceBlockId?: string;
   /** 用于区分 DocxParagraphBlock 不同结构分支的类型标识。 */
   type: 'paragraph';
   /** DocxParagraphBlock 包含的 inlines 有序集合。 */
@@ -176,6 +179,8 @@ export type DocxParagraphBlock = {
 export type DocxTableBlock = {
   /** DocxTableBlock 在所属文档或任务中的唯一标识。 */
   id: string;
+  /** 分页拆分后仍指向原始正文块的稳定 ID。 */
+  sourceBlockId?: string;
   /** 用于区分 DocxTableBlock 不同结构分支的类型标识。 */
   type: 'table';
   /** DocxTableBlock 包含的 rows 有序集合。 */
@@ -200,10 +205,14 @@ export type DocxTableBlock = {
 export type DocxChartBlock = {
   /** DocxChartBlock 在所属文档或任务中的唯一标识。 */
   id: string;
+  /** 分页拆分后仍指向原始正文块的稳定 ID。 */
+  sourceBlockId?: string;
   /** 用于区分 DocxChartBlock 不同结构分支的类型标识。 */
   type: 'chart';
   /** DocxChartBlock 当前关联的图表模型。 */
   chart: import('../../shared/ooxml/charts').OfficeChartModel;
+  /** WPS 静态图表快照可在页面挂载后按需读取。 */
+  snapshotSource?: OfficeResourceSource;
   /** DocxChartBlock 的 width 尺寸或坐标，单位为标准化渲染像素。 */
   width: number;
   /** DocxChartBlock 的 height 尺寸或坐标，单位为标准化渲染像素。 */
@@ -358,8 +367,8 @@ export type DocxShapeItem = {
   viewBox?: string;
   /** DocxShapeItem 的 fillColor 文本值。 */
   fillColor?: string;
-  /** DocxShapeItem 的 imageSrc 文本值。 */
-  imageSrc?: string;
+  /** 形状背景图可直接使用 URL，也可在页面挂载后按需读取。 */
+  imageSrc?: OfficeResourceSource;
   /** DocxShapeItem 的 border 文本值。 */
   border?: string;
   /** DocxShapeItem 的 strokeColor 文本值。 */
@@ -390,8 +399,8 @@ export type DocxImage = {
   name?: string;
   /** DocxImage 的 alt 文本值。 */
   alt?: string;
-  /** DocxImage 的 src 文本值。 */
-  src: string;
+  /** 图片可直接使用 URL，也可在页面挂载后按需读取。 */
+  src: OfficeResourceSource;
   /** DocxImage 的 width 尺寸或坐标，单位为标准化渲染像素。 */
   width: number;
   /** DocxImage 的 height 尺寸或坐标，单位为标准化渲染像素。 */

@@ -4,6 +4,7 @@ import React, { memo, useMemo } from 'react';
 import type { XlsxSheet } from '../../services/xlsx/types';
 import { buildXlsxCellStyle, isHighlightedXlsxCell } from './sheetRenderUtils';
 import { buildXlsxVisibleTableModel } from './sheetTableUtils';
+import { SpreadsheetCellRenderer } from './SpreadsheetCellRenderer';
 
 /** 定义 XlsxSheetTable 组件可接收的属性。 */
 type XlsxSheetTableProps = {
@@ -106,16 +107,11 @@ function XlsxSheetTableComponent({
                     borderLeft: style.borderLeft ?? fallbackBorder,
                   }}
                 >
-                  <div
-                    className={`office-file-xlsx-sheet-table__cell-content${
-                      style.wrapText || colSpan || rowSpan
-                        ? ' office-file-xlsx-sheet-table__cell-content--clipped'
-                        : ''
-                    }`}
-                    style={{ maxHeight: contentHeight }}
-                  >
-                    {cell.value}
-                  </div>
+                  <SpreadsheetCellRenderer
+                    cell={cell}
+                    contentHeight={contentHeight}
+                    clipped={Boolean(style.wrapText || colSpan || rowSpan)}
+                  />
                 </td>
               );
             })}

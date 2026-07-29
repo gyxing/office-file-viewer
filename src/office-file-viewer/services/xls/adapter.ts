@@ -3,6 +3,7 @@ import type {
   SpreadsheetCell,
   SpreadsheetCellStyle,
   SpreadsheetColumn,
+  SpreadsheetDiagonalBorder,
   SpreadsheetMerge,
   SpreadsheetSheet,
   SpreadsheetWorkbook,
@@ -97,6 +98,54 @@ function borderToCss(border: Biff8BorderStyle | undefined, palette: string[]) {
   }`;
 }
 
+/** 将 BIFF8 线型编号标准化为渲染层共享的对角边框语义。 */
+function diagonalBorderToStyle(
+  border: Biff8CellFormat['diagonalBorder'],
+  palette: string[],
+): SpreadsheetDiagonalBorder | undefined {
+  if (!border?.style || (!border.up && !border.down)) return undefined;
+  const lineStyle: SpreadsheetDiagonalBorder['lineStyle'] =
+    border.style === 7
+      ? 'hair'
+      : border.style === 2
+      ? 'medium'
+      : border.style === 5
+      ? 'thick'
+      : border.style === 6
+      ? 'double'
+      : border.style === 3 || border.style === 8
+      ? 'dashed'
+      : border.style === 4
+      ? 'dotted'
+      : border.style === 9 || border.style === 10
+      ? 'dashDot'
+      : border.style === 11 || border.style === 12
+      ? 'dashDotDot'
+      : border.style === 13
+      ? 'slantDashDot'
+      : 'thin';
+  const width =
+    border.style === 7
+      ? 0.5
+      : border.style === 2 ||
+        border.style === 8 ||
+        border.style === 10 ||
+        border.style === 12
+      ? 2
+      : border.style === 5
+      ? 3
+      : border.style === 6
+      ? 2
+      : 1;
+  return {
+    up: border.up,
+    down: border.down,
+    color: resolveColor(border.colorIndex, palette) ?? '#000000',
+    width,
+    lineStyle,
+  };
+}
+
 /** 执行 `alignmentFromValue` 封装的XLS/BIFF8 解析处理步骤。 */
 function alignmentFromValue(value: number | undefined) {
   if (value === 1) return 'left' as const;
@@ -144,6 +193,7 @@ function resolveCellStyle(
     borderRight,
     borderBottom,
     borderLeft,
+    diagonalBorder: diagonalBorderToStyle(xf.diagonalBorder, globals.palette),
   };
   return Object.fromEntries(
     Object.entries(style).filter(([, value]) => value !== undefined),
@@ -177,7 +227,7 @@ function findColumnInfo(sheet: Biff8Worksheet, column: number) {
 }
 
 /** 把源数据适配为 `adaptCell` 返回的标准模型。 */
-function adaptCell(
+export function adaptBiff8Cell(
   source: Biff8Cell | undefined,
   row: number,
   column: number,
@@ -270,7 +320,7 @@ function adaptWorksheet(
     const rowInfo = rowInfoByIndex.get(row);
     const rowCells = Array.from({ length: maxColumn + 1 }, (_, column) => {
       const columnInfo = findColumnInfo(sheet, column);
-      const cell = adaptCell(
+      const cell = adaptBiff8Cell(
         sourceCells.get(`${row}:${column}`),
         row,
         column,
@@ -352,6 +402,82 @@ export function adaptBiff8Sheet(
   if (worksheet) return adaptWorksheet(worksheet, source);
   if (descriptor.type !== 'chart') return undefined;
   return createChartSheetPlaceholder(descriptor);
+}
+
+/** 把大型 BIFF8 Worksheet 转为稀疏标准模型，不创建完整空矩阵。 */
+export function adaptBiff8WorksheetSparse(
+  workbook: Biff8Workbook,
+  sheet: Biff8Worksheet,
+) {
+  const { maxRow, maxColumn } = computeUsedRange(sheet);
+  const rowCount = maxRow + 1;
+  const columnCount = maxColumn + 1;
+  const defaultColumnWidth = columnWidthToPixels(sheet.defaultColumnWidth);
+  const defaultRowHeight = sheet.defaultRowHeightTwips
+    ? twipsToPixels(sheet.defaultRowHeightTwips)
+    : DEFAULT_ROW_PIXELS;
+  const columnMetrics = new Map<
+    number,
+    { index: number; width: number; hidden: boolean }
+  >();
+  sheet.columns.forEach((column) => {
+    for (
+      let index = column.firstColumn;
+      index <= Math.min(column.lastColumn, maxColumn);
+      index += 1
+    ) {
+      columnMetrics.set(index + 1, {
+        index: index + 1,
+        width: columnWidthToPixels(column.widthCharacters),
+        hidden: Boolean(column.hidden),
+      });
+    }
+  });
+  const cells = sheet.cells.map((cell) =>
+    adaptBiff8Cell(cell, cell.row, cell.column, undefined, workbook),
+  );
+  const cellByRef = new Map(cells.map((cell) => [cell.ref, cell]));
+  const merges = sheet.merges.map((merge) => {
+    const ref = cellRef(merge.startRow, merge.startColumn);
+    let root = cellByRef.get(ref);
+    if (!root) {
+      const columnInfo = findColumnInfo(sheet, merge.startColumn);
+      root = adaptBiff8Cell(
+        undefined,
+        merge.startRow,
+        merge.startColumn,
+        columnInfo?.xfIndex,
+        workbook,
+      );
+      cells.push(root);
+      cellByRef.set(ref, root);
+    }
+    root.rowSpan = merge.endRow - merge.startRow + 1;
+    root.colSpan = merge.endColumn - merge.startColumn + 1;
+    return {
+      ref: `${ref}:${cellRef(merge.endRow, merge.endColumn)}`,
+      startRow: merge.startRow + 1,
+      startColumn: merge.startColumn + 1,
+      endRow: merge.endRow + 1,
+      endColumn: merge.endColumn + 1,
+    };
+  });
+  return {
+    rowCount,
+    columnCount,
+    defaultColumnWidth,
+    defaultRowHeight,
+    rows: sheet.rows.map((row) => ({
+      index: row.index + 1,
+      height: row.heightTwips
+        ? twipsToPixels(row.heightTwips)
+        : defaultRowHeight,
+      hidden: Boolean(row.hidden),
+    })),
+    columns: [...columnMetrics.values()],
+    cells,
+    merges,
+  };
 }
 
 /** 将 BIFF8 中间模型适配为 XLSX 预览器复用的通用工作簿。 */

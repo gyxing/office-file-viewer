@@ -1,12 +1,24 @@
 // OfficePreviewStage 根据当前文件格式切换到对应预览组件，并统一处理加载和错误态。
 import React, { lazy, memo, Suspense } from 'react';
+import type {
+  DocWordPageSource,
+  DocWordPreviewSummary,
+} from '../services/doc/DocWordPageSource';
 import type { DocDocument } from '../services/doc/types';
+import type {
+  DocxWordPageSource,
+  DocxWordPreviewSummary,
+} from '../services/docx/DocxWordPageSource';
 import type { DocxDocument } from '../services/docx/types';
-import type { PresentationDocument } from '../services/presentation/types';
+import type {
+  PresentationDocument,
+  PresentationSource,
+} from '../services/presentation/types';
 import {
   isSpreadsheetPreviewKind,
   type PreviewKind,
 } from '../services/preview';
+import type { SpreadsheetSource } from '../services/spreadsheet/SpreadsheetSource';
 import type { SpreadsheetWorkbook } from '../services/spreadsheet/types';
 import { OfficeError } from './Error';
 import { OfficeLoading } from './Loading';
@@ -44,14 +56,28 @@ type OfficePreviewStageProps = {
   error?: string;
   /** 当前文件识别出的预览格式。 */
   previewKind: PreviewKind;
+  /** 当前文件解析 Session，用于隔离格式内部的渐进状态。 */
+  documentSessionId?: string;
   /** 已标准化的 PPTX 演示文稿模型；未提供时使用来源格式或渲染器的默认行为。 */
   pptxDocument?: PresentationDocument;
+  /** 大型 PPT/PPTX 使用的按页读取数据源。 */
+  presentationPreviewSource?: PresentationSource;
   /** 已标准化的 XLS/XLSX 工作簿模型；未提供时使用来源格式或渲染器的默认行为。 */
   spreadsheetWorkbook?: SpreadsheetWorkbook;
+  /** 大型 XLS/XLSX 使用的按 Sheet 数据源。 */
+  spreadsheetPreviewSource?: SpreadsheetSource;
   /** 已标准化的 DOCX 文档模型；未提供时使用来源格式或渲染器的默认行为。 */
   docxDocument?: DocxDocument;
+  /** 大型 DOCX 使用的流式页面来源。 */
+  docxPreviewSource?: DocxWordPageSource;
+  /** 大型 DOCX 不含完整 blocks/pages 的轻量摘要。 */
+  docxPreviewSummary?: DocxWordPreviewSummary;
   /** 已标准化的 DOC/WPS 文档模型；未提供时使用来源格式或渲染器的默认行为。 */
   docDocument?: DocDocument;
+  /** 大型 DOC/WPS 使用的渐进页面来源。 */
+  docPreviewSource?: DocWordPageSource;
+  /** 大型 DOC/WPS 不含完整正文的轻量摘要。 */
+  docPreviewSummary?: DocWordPreviewSummary;
   /** 当前选中项在所属集合中的索引。 */
   activeIndex: number;
   /** OfficePreviewStageProps 的 activeSheetId 文本值。 */
@@ -73,10 +99,17 @@ function OfficePreviewStageComponent({
   hasRenderableContent,
   error,
   previewKind,
+  documentSessionId,
   pptxDocument,
+  presentationPreviewSource,
   spreadsheetWorkbook,
+  spreadsheetPreviewSource,
   docxDocument,
+  docxPreviewSource,
+  docxPreviewSummary,
   docDocument,
+  docPreviewSource,
+  docPreviewSummary,
   activeIndex,
   activeSheetId,
   zoom,
@@ -95,18 +128,32 @@ function OfficePreviewStageComponent({
       {isSpreadsheetPreviewKind(previewKind) ? (
         <LazyXlsxViewer
           workbook={spreadsheetWorkbook}
+          source={spreadsheetPreviewSource}
           kind={previewKind}
           activeSheetId={activeSheetId}
           zoom={zoom}
           onSelectSheet={onSelectSheet}
         />
       ) : previewKind === 'docx' ? (
-        <LazyDocxViewer document={docxDocument} zoom={zoom} />
+        <LazyDocxViewer
+          document={docxDocument}
+          source={docxPreviewSource}
+          summary={docxPreviewSummary}
+          zoom={zoom}
+          documentSessionId={documentSessionId ?? 'word-unloaded'}
+        />
       ) : previewKind === 'doc' ? (
-        <LazyDocViewer document={docDocument} zoom={zoom} />
+        <LazyDocViewer
+          document={docDocument}
+          source={docPreviewSource}
+          summary={docPreviewSummary}
+          zoom={zoom}
+          documentSessionId={documentSessionId ?? 'word-unloaded'}
+        />
       ) : (
         <LazyPptxViewer
           document={pptxDocument}
+          source={presentationPreviewSource}
           activeIndex={activeIndex}
           zoom={zoom}
           showSpeakerNotes={showSpeakerNotes}

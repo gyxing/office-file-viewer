@@ -1,10 +1,8 @@
 // DocxShape 渲染 DOCX 行内形状，支持矩形、椭圆、线条、自定义路径和形状内文字。
 import type { CSSProperties } from 'react';
-import React, { memo, useCallback, useMemo } from 'react';
+import React, { memo, useMemo } from 'react';
 import type { DocxInline } from '../../services/docx/types';
-import { OfficeChartView } from '../../shared/chart/OfficeChartView';
-import { DocxParagraph } from './DocxParagraph';
-import { DocxTableBlock } from './DocxTableBlock';
+import { DocxShapeItemRenderer } from './DocxShapeItemRenderer';
 import { calculatePositionStyle } from './positionUtils';
 
 /** 定义 DocxShape 组件可接收的属性。 */
@@ -42,106 +40,11 @@ function DocxShapeComponent({ inline }: DocxShapeProps) {
       margin: shape.position ? 0 : undefined,
     };
   }, [positionStyle, shape.height, shape.position, shape.width]);
-  const justifyContent = useCallback(
-    (align?: 'top' | 'middle' | 'bottom') =>
-      align === 'middle'
-        ? 'center'
-        : align === 'bottom'
-        ? 'flex-end'
-        : 'flex-start',
-    [],
-  );
-  const shapePath = useCallback((item: (typeof shape.items)[number]) => {
-    if (item.path) return item.path;
-    if (item.kind === 'ellipse') {
-      return `M ${item.width / 2} 0 A ${item.width / 2} ${
-        item.height / 2
-      } 0 1 0 ${item.width / 2} ${item.height} A ${item.width / 2} ${
-        item.height / 2
-      } 0 1 0 ${item.width / 2} 0`;
-    }
-    return undefined;
-  }, []);
-
   return (
     <span className="office-file-docx-shape" style={shapeStyle}>
-      {shape.items.map((item) => {
-        const path = shapePath(item);
-        const drawAsSvg = Boolean(path) || item.kind === 'line';
-
-        return (
-          <div
-            key={item.id}
-            className="office-file-docx-shape__item"
-            style={{
-              left: item.left,
-              top: item.top,
-              ...(item.fitShapeToText
-                ? { minWidth: item.width, minHeight: item.height }
-                : { width: item.width, height: item.height }),
-              justifyContent: justifyContent(item.textVerticalAlign),
-              background: drawAsSvg ? undefined : item.fillColor,
-              backgroundImage: item.imageSrc
-                ? `url(${item.imageSrc})`
-                : undefined,
-              backgroundSize: item.imageSrc ? '100% 100%' : undefined,
-              backgroundRepeat: item.imageSrc ? 'no-repeat' : undefined,
-              border: drawAsSvg ? undefined : item.border,
-              borderRadius: item.borderRadius,
-              paddingTop: item.paddingTop,
-              paddingRight: item.paddingRight,
-              paddingBottom: item.paddingBottom,
-              paddingLeft: item.paddingLeft,
-              whiteSpace: item.noWrap ? 'nowrap' : undefined,
-              overflowWrap: item.noWrap ? 'normal' : undefined,
-              wordBreak: item.noWrap ? 'normal' : undefined,
-            }}
-          >
-            {path ? (
-              <svg
-                className="office-file-docx-shape__svg"
-                viewBox={
-                  item.viewBox ??
-                  `0 0 ${Math.max(1, item.width)} ${Math.max(1, item.height)}`
-                }
-                preserveAspectRatio="none"
-              >
-                <path
-                  d={path}
-                  fill={item.fillColor ?? 'none'}
-                  stroke={item.strokeColor ?? 'none'}
-                  strokeWidth={item.strokeWidth}
-                  strokeDasharray={item.strokeDasharray}
-                  vectorEffect="non-scaling-stroke"
-                />
-              </svg>
-            ) : null}
-            {(item.blocks ?? item.paragraphs)?.map((block) =>
-              block.type === 'table' ? (
-                <DocxTableBlock
-                  key={block.id}
-                  block={block}
-                  availableWidth={item.width}
-                />
-              ) : block.type === 'chart' ? (
-                <div
-                  key={block.id}
-                  className="office-file-docx-table-block__chart"
-                >
-                  <OfficeChartView
-                    chart={block.chart}
-                    width={block.width}
-                    height={block.height}
-                    zoom={100}
-                  />
-                </div>
-              ) : (
-                <DocxParagraph key={block.id} block={block} compact asDiv />
-              ),
-            )}
-          </div>
-        );
-      })}
+      {shape.items.map((item) => (
+        <DocxShapeItemRenderer key={item.id} item={item} />
+      ))}
     </span>
   );
 }

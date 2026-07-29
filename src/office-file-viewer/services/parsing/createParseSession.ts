@@ -1,4 +1,24 @@
+import { DocWordPageSource } from '../doc/DocWordPageSource';
+import { profileDocxArchive } from '../docx/docxArchiveProfile';
+import { DocxWordPageSource } from '../docx/DocxWordPageSource';
+import { parseDocxSource } from '../docx/parseDocxSource';
+import { OFFICE_LARGE_FILE_THRESHOLDS } from '../performance/officePerformanceThresholds';
+import { createPptPresentationSourceFromArchive } from '../ppt/PptPresentationSource';
+import { profilePptArchive } from '../ppt/readPptStructure';
+import { createPptxPresentationSourceFromArchive } from '../pptx/PptxPresentationSource';
+import { profilePptxArchive } from '../pptx/readPptxStructure';
+import type { PresentationSource } from '../presentation/PresentationSource';
 import type { ParsedOfficeFile } from '../preview';
+import {
+  createOfficeDocumentSession,
+  disposeDocumentSession,
+  type OfficeDocumentSession,
+} from '../session';
+import type { SpreadsheetSource } from '../spreadsheet/SpreadsheetSource';
+import { profileXlsArchive } from '../xls/readXlsStructure';
+import { createXlsSpreadsheetSourceFromArchive } from '../xls/XlsSpreadsheetSource';
+import { profileXlsxArchive } from '../xlsx/readXlsxStructure';
+import { createXlsxSpreadsheetSourceFromArchive } from '../xlsx/XlsxSpreadsheetSource';
 import {
   DocDocumentAssembler,
   PptDocumentAssembler,
@@ -6,7 +26,11 @@ import {
 } from './assembly/DocumentAssembler';
 import { ResourceRegistry } from './assembly/ResourceRegistry';
 import { detectPreviewKind } from './detectPreviewKind';
-import type { OfficeFileViewerParseSession } from './internalTypes';
+import type {
+  OfficeFileViewerParseSession,
+  OfficeFileViewerPreviewHandle,
+  OfficeFileViewerPreviewState,
+} from './internalTypes';
 import { createRuntime } from './runtime/createRuntime';
 import { MainThreadRuntime } from './runtime/MainThreadRuntime';
 import type { RuntimeSink } from './runtime/types';
@@ -23,11 +47,17 @@ function createParseSession(
   file: File,
   options: OfficeParseOptions,
   enablePartial: boolean,
+  documentSession: OfficeDocumentSession,
 ): OfficeFileViewerParseSession {
   const kind = detectPreviewKind(file.name);
-  const controller = new AbortController();
   const listeners = new Set<(progress: ParseProgress) => void>();
-  const partialListeners = new Set<(parsed: ParsedOfficeFile) => void>();
+  const partialListeners = new Set<
+    (preview: OfficeFileViewerPreviewState) => void
+  >();
+  const useDocPageSource =
+    enablePartial &&
+    kind === 'doc' &&
+    file.size >= OFFICE_LARGE_FILE_THRESHOLDS.cfbFileBytes;
   const assembler =
     kind === 'xls'
       ? new XlsDocumentAssembler(new ResourceRegistry())
@@ -37,13 +67,99 @@ function createParseSession(
       ? new PptDocumentAssembler(new ResourceRegistry())
       : undefined;
   const documentAssembler =
-    kind === 'doc'
+    kind === 'doc' && !useDocPageSource
       ? new DocDocumentAssembler(new ResourceRegistry())
       : undefined;
+  const docPageSource = useDocPageSource
+    ? new DocWordPageSource({
+        sessionId: documentSession.id,
+        signal: documentSession.signal,
+      })
+    : undefined;
+  let docxPageSource: DocxWordPageSource | undefined;
+  let presentationPageSource: PresentationSource | undefined;
+  let spreadsheetPageSource: SpreadsheetSource | undefined;
   let runtime: MainThreadRuntime | WorkerRuntime | undefined;
   let status: OfficeParseSessionStatus = 'starting';
   let parsedResult: ParsedOfficeFile | undefined;
-  let partialResult: ParsedOfficeFile | undefined;
+  let partialResult: OfficeFileViewerPreviewState | undefined;
+  let ownershipTransferred = false;
+
+  const createMaterializedState = (
+    parsed: ParsedOfficeFile,
+  ): OfficeFileViewerPreviewState => ({
+    sessionId: documentSession.id,
+    previewKind: parsed.kind,
+    mode: 'materialized',
+    model: parsed,
+  });
+
+  const createDocSourceState = (): OfficeFileViewerPreviewState => {
+    if (!docPageSource) throw new Error('DOC PageSource 尚未创建');
+    return {
+      sessionId: documentSession.id,
+      previewKind: 'doc',
+      mode: 'source',
+      source: docPageSource,
+      summary: docPageSource.getSummary(),
+    };
+  };
+
+  const createDocxSourceState = (): OfficeFileViewerPreviewState => {
+    if (!docxPageSource) throw new Error('DOCX PageSource 尚未创建');
+    return {
+      sessionId: documentSession.id,
+      previewKind: 'docx',
+      mode: 'source',
+      source: docxPageSource,
+      summary: docxPageSource.getSummary(),
+    };
+  };
+
+  const createPresentationSourceState = (): OfficeFileViewerPreviewState => {
+    if (!presentationPageSource) {
+      throw new Error('Presentation Source 尚未创建');
+    }
+    return {
+      sessionId: documentSession.id,
+      previewKind: kind === 'ppt' ? 'ppt' : 'pptx',
+      mode: 'source',
+      source: presentationPageSource,
+      summary: presentationPageSource.getSnapshot(),
+    };
+  };
+
+  const createSpreadsheetSourceState = (): OfficeFileViewerPreviewState => {
+    if (!spreadsheetPageSource) {
+      throw new Error('Spreadsheet Source 尚未创建');
+    }
+    return {
+      sessionId: documentSession.id,
+      previewKind: kind === 'xls' ? 'xls' : 'xlsx',
+      mode: 'source',
+      source: spreadsheetPageSource,
+      summary: spreadsheetPageSource.getSnapshot(),
+    };
+  };
+
+  const transferParsedResult = (parsed: ParsedOfficeFile) => {
+    const owner =
+      parsed.kind === 'xls' || parsed.kind === 'xlsx'
+        ? parsed.workbook
+        : parsed.document;
+    documentSession.transferTo(owner);
+    ownershipTransferred = true;
+    return owner;
+  };
+
+  [assembler, presentationAssembler, documentAssembler, docPageSource].forEach(
+    (documentAssemblerResource) => {
+      if (!documentAssemblerResource) return;
+      documentSession.register({
+        dispose: () => documentAssemblerResource.dispose(),
+      });
+    },
+  );
 
   const emitProgress = (progress: ParseProgress) => {
     listeners.forEach((listener) => {
@@ -58,11 +174,66 @@ function createParseSession(
 
   const emitPartial = (parsed: ParsedOfficeFile) => {
     if (!enablePartial) return;
+    const preview = createMaterializedState(parsed);
     partialListeners.forEach((listener) => {
       try {
-        listener(parsed);
+        listener(preview);
       } catch (listenerError) {
         // 调用方的渐进渲染异常不能中断底层文件解析。
+        void listenerError;
+      }
+    });
+  };
+
+  const emitDocSourcePartial = () => {
+    if (!enablePartial || !docPageSource?.hasRenderableContent()) {
+      return;
+    }
+    const preview = createDocSourceState();
+    partialListeners.forEach((listener) => {
+      try {
+        listener(preview);
+      } catch (listenerError) {
+        // Source 的渐进渲染回调同样不能中断底层解析。
+        void listenerError;
+      }
+    });
+  };
+
+  const emitDocxSourcePartial = () => {
+    if (!enablePartial || !docxPageSource?.hasRenderableContent()) return;
+    const preview = createDocxSourceState();
+    partialListeners.forEach((listener) => {
+      try {
+        listener(preview);
+      } catch (listenerError) {
+        // DOCX Source 的渐进回调不能中断流式 XML 和页面测量。
+        void listenerError;
+      }
+    });
+  };
+
+  const emitPresentationSourcePartial = () => {
+    if (!enablePartial || !presentationPageSource) return;
+    const preview = createPresentationSourceState();
+    partialListeners.forEach((listener) => {
+      try {
+        listener(preview);
+      } catch (listenerError) {
+        // Presentation Source 的订阅者异常不能中断结构读取。
+        void listenerError;
+      }
+    });
+  };
+
+  const emitSpreadsheetSourcePartial = () => {
+    if (!enablePartial || !spreadsheetPageSource) return;
+    const preview = createSpreadsheetSourceState();
+    partialListeners.forEach((listener) => {
+      try {
+        listener(preview);
+      } catch (listenerError) {
+        // Spreadsheet Source 的订阅者异常不能中断 Sheet 结构读取。
         void listenerError;
       }
     });
@@ -71,7 +242,11 @@ function createParseSession(
   const sink: RuntimeSink = {
     progress: emitProgress,
     resource: async (resource) => {
-      const target = assembler ?? presentationAssembler ?? documentAssembler;
+      const target =
+        assembler ??
+        presentationAssembler ??
+        documentAssembler ??
+        docPageSource;
       if (!target) throw new Error('当前格式会话收到了资源分块');
       await target.addResource(resource);
     },
@@ -107,6 +282,11 @@ function createParseSession(
       }
     },
     documentMetadata: async (metadata) => {
+      if (docPageSource) {
+        docPageSource.setMetadata(metadata);
+        emitDocSourcePartial();
+        return;
+      }
       if (!documentAssembler) {
         throw new Error('非 DOC 会话收到了文档元数据');
       }
@@ -119,6 +299,11 @@ function createParseSession(
       }
     },
     documentBlocks: async (startIndex, blocks) => {
+      if (docPageSource) {
+        await docPageSource.addBlocks(startIndex, blocks);
+        emitDocSourcePartial();
+        return;
+      }
       if (!documentAssembler) {
         throw new Error('非 DOC 会话收到了正文分块');
       }
@@ -133,7 +318,7 @@ function createParseSession(
     parsed: async (parsed) => {
       parsedResult = parsed;
     },
-    complete: (warnings) => {
+    complete: async (warnings) => {
       if (assembler) {
         assembler.setWarnings(warnings);
         parsedResult = { kind: 'xls', workbook: assembler.complete() };
@@ -147,6 +332,8 @@ function createParseSession(
           kind: 'doc',
           document: documentAssembler.complete(),
         };
+      } else if (docPageSource) {
+        await docPageSource.complete();
       }
     },
     error: () => undefined,
@@ -155,56 +342,323 @@ function createParseSession(
   const run = async () => {
     status = 'running';
     const workerMode = options.worker ?? 'auto';
-    runtime = createRuntime(workerMode, kind, options.workerFactory);
     try {
+      if (enablePartial && kind === 'xls') {
+        emitProgress({
+          stage: 'container',
+          percent: 0.02,
+          message: '正在读取 XLS 复合文档目录',
+        });
+        const profiledArchive = await profileXlsArchive(
+          file,
+          documentSession.signal,
+        );
+        const created = await createXlsSpreadsheetSourceFromArchive(
+          profiledArchive,
+          documentSession.id,
+          documentSession.signal,
+        );
+        if (created.requiresSource) {
+          spreadsheetPageSource = created.source;
+          documentSession.register({
+            dispose: () => spreadsheetPageSource?.dispose(),
+          });
+          partialResult = createSpreadsheetSourceState();
+          emitSpreadsheetSourcePartial();
+          status = 'completed';
+          documentSession.transferTo(spreadsheetPageSource);
+          ownershipTransferred = true;
+          const state = createSpreadsheetSourceState();
+          return {
+            ...state,
+            dispose: () => disposeDocumentSession(spreadsheetPageSource),
+          } satisfies OfficeFileViewerPreviewHandle;
+        }
+        await created.source.dispose();
+      }
+
+      if (enablePartial && kind === 'ppt') {
+        emitProgress({
+          stage: 'container',
+          percent: 0.02,
+          message: '正在读取 PPT 复合文档目录',
+        });
+        const profiledArchive = await profilePptArchive(
+          file,
+          documentSession.signal,
+        );
+        if (profiledArchive.profile.performance.slideMode === 'lazy') {
+          presentationPageSource = await createPptPresentationSourceFromArchive(
+            profiledArchive,
+            documentSession.id,
+            documentSession.signal,
+          );
+          documentSession.register({
+            dispose: () => presentationPageSource?.dispose(),
+          });
+          partialResult = createPresentationSourceState();
+          emitPresentationSourcePartial();
+          status = 'completed';
+          documentSession.transferTo(presentationPageSource);
+          ownershipTransferred = true;
+          const state = createPresentationSourceState();
+          return {
+            ...state,
+            dispose: () => disposeDocumentSession(presentationPageSource),
+          } satisfies OfficeFileViewerPreviewHandle;
+        }
+        await profiledArchive.reader.close();
+      }
+
+      if (enablePartial && kind === 'pptx') {
+        emitProgress({
+          stage: 'container',
+          percent: 0.02,
+          message: '正在读取 PPTX 包目录',
+        });
+        const profiledArchive = await profilePptxArchive(
+          file,
+          documentSession.signal,
+        );
+        if (profiledArchive.profile.performance.slideMode === 'lazy') {
+          presentationPageSource =
+            await createPptxPresentationSourceFromArchive(
+              profiledArchive,
+              documentSession.id,
+              documentSession.signal,
+            );
+          documentSession.register({
+            dispose: () => presentationPageSource?.dispose(),
+          });
+          partialResult = createPresentationSourceState();
+          emitPresentationSourcePartial();
+          status = 'completed';
+          documentSession.transferTo(presentationPageSource);
+          ownershipTransferred = true;
+          const state = createPresentationSourceState();
+          return {
+            ...state,
+            dispose: () => disposeDocumentSession(presentationPageSource),
+          } satisfies OfficeFileViewerPreviewHandle;
+        }
+        await profiledArchive.reader.close();
+      }
+
+      if (enablePartial && kind === 'xlsx') {
+        emitProgress({
+          stage: 'container',
+          percent: 0.02,
+          message: '正在读取 XLSX 包目录',
+        });
+        const profiledArchive = await profileXlsxArchive(
+          file,
+          documentSession.signal,
+        );
+        const created = await createXlsxSpreadsheetSourceFromArchive(
+          profiledArchive,
+          documentSession.id,
+          documentSession.signal,
+        );
+        if (created.profile.requiresSource) {
+          spreadsheetPageSource = created.source;
+          documentSession.register({
+            dispose: () => spreadsheetPageSource?.dispose(),
+          });
+          partialResult = createSpreadsheetSourceState();
+          emitSpreadsheetSourcePartial();
+          status = 'completed';
+          documentSession.transferTo(spreadsheetPageSource);
+          ownershipTransferred = true;
+          const state = createSpreadsheetSourceState();
+          return {
+            ...state,
+            dispose: () => disposeDocumentSession(spreadsheetPageSource),
+          } satisfies OfficeFileViewerPreviewHandle;
+        }
+        await created.source.dispose();
+      }
+
+      if (enablePartial && kind === 'docx') {
+        emitProgress({
+          stage: 'container',
+          percent: 0.02,
+          message: '正在读取 DOCX 包目录',
+        });
+        const profiledArchive = await profileDocxArchive(
+          file,
+          documentSession.signal,
+        );
+        if (profiledArchive.profile.mode === 'lazy') {
+          docxPageSource = new DocxWordPageSource({
+            sessionId: documentSession.id,
+            reader: profiledArchive.reader,
+            signal: documentSession.signal,
+          });
+          documentSession.register({
+            dispose: () => docxPageSource?.dispose(),
+          });
+          await parseDocxSource(
+            profiledArchive.reader,
+            {
+              metadata: (metadata) => {
+                docxPageSource?.setMetadata(metadata);
+                emitDocxSourcePartial();
+              },
+              page: async (page) => {
+                await docxPageSource?.addSourcePage(page);
+                emitDocxSourcePartial();
+              },
+              complete: (result) => {
+                docxPageSource?.finishParsing(result);
+                emitDocxSourcePartial();
+              },
+            },
+            documentSession.signal,
+            documentSession.id,
+          );
+          await docxPageSource.waitForCompletion(documentSession.signal);
+          if (!docxPageSource.getSnapshot().pages.length) {
+            throw new Error('DOCX PageSource 未生成可渲染页面');
+          }
+          status = 'completed';
+          documentSession.transferTo(docxPageSource);
+          ownershipTransferred = true;
+          const state = createDocxSourceState();
+          return {
+            ...state,
+            dispose: () => disposeDocumentSession(docxPageSource),
+          } satisfies OfficeFileViewerPreviewHandle;
+        }
+        await profiledArchive.reader.close();
+      }
+
+      runtime = createRuntime(workerMode, kind, options.workerFactory);
       if (runtime instanceof WorkerRuntime) {
         try {
           if (kind !== 'xls' && kind !== 'ppt' && kind !== 'doc') {
             throw new Error('当前格式尚未启用 Worker');
           }
-          await runtime.run(file, kind, controller.signal, sink);
+          await runtime.run(
+            file,
+            kind,
+            {
+              documentSessionId: documentSession.id,
+              signal: documentSession.signal,
+            },
+            sink,
+          );
         } catch (error) {
           if (workerMode !== 'auto' || !isWorkerStartupError(error))
             throw error;
           runtime.dispose();
           runtime = new MainThreadRuntime();
-          await runtime.run(file, kind, controller.signal, sink);
+          await runtime.run(
+            file,
+            kind,
+            {
+              documentSessionId: documentSession.id,
+              signal: documentSession.signal,
+            },
+            sink,
+          );
         }
       } else {
-        await runtime.run(file, kind, controller.signal, sink);
+        await runtime.run(
+          file,
+          kind,
+          {
+            documentSessionId: documentSession.id,
+            signal: documentSession.signal,
+          },
+          sink,
+        );
+      }
+      if (docPageSource) {
+        if (!docPageSource.hasRenderableContent()) {
+          throw new Error('DOC PageSource 未生成可渲染页面');
+        }
+        status = 'completed';
+        documentSession.transferTo(docPageSource);
+        ownershipTransferred = true;
+        const state = createDocSourceState();
+        const handle: OfficeFileViewerPreviewHandle = {
+          ...state,
+          dispose: () => disposeDocumentSession(docPageSource),
+        };
+        return handle;
       }
       if (!parsedResult) throw new Error('解析运行时未返回文档结果');
       status = 'completed';
-      return parsedResult;
+      const owner = transferParsedResult(parsedResult);
+      const state = createMaterializedState(parsedResult);
+      const handle: OfficeFileViewerPreviewHandle = {
+        ...state,
+        dispose: () => disposeDocumentSession(owner),
+      };
+      return handle;
     } catch (error) {
-      const cancelled = error instanceof Error && error.name === 'AbortError';
+      const cancelled =
+        documentSession.signal.aborted ||
+        (error instanceof Error && error.name === 'AbortError');
       if (cancelled) {
         status = 'cancelled';
       } else {
         status = 'failed';
         if (enablePartial && assembler?.hasRenderableContent()) {
-          partialResult = {
+          const parsed: ParsedOfficeFile = {
             kind: 'xls',
             workbook: assembler.completePartial(),
           };
+          partialResult = createMaterializedState(parsed);
+          transferParsedResult(parsed);
         } else if (
           enablePartial &&
           presentationAssembler?.hasRenderableContent()
         ) {
-          partialResult = {
+          const parsed: ParsedOfficeFile = {
             kind: 'ppt',
             document: presentationAssembler.completePartial(),
           };
+          partialResult = createMaterializedState(parsed);
+          transferParsedResult(parsed);
         } else if (enablePartial && documentAssembler?.hasRenderableContent()) {
-          partialResult = {
+          const parsed: ParsedOfficeFile = {
             kind: 'doc',
             document: documentAssembler.completePartial(),
           };
+          partialResult = createMaterializedState(parsed);
+          transferParsedResult(parsed);
+        } else if (enablePartial && docPageSource?.hasRenderableContent()) {
+          await docPageSource.complete();
+          partialResult = createDocSourceState();
+          documentSession.transferTo(docPageSource);
+          ownershipTransferred = true;
+        } else if (enablePartial && docxPageSource?.hasRenderableContent()) {
+          const currentSummary = docxPageSource.getSummary();
+          docxPageSource.finishParsing({
+            title: currentSummary.title,
+            images: currentSummary.images,
+          });
+          partialResult = createDocxSourceState();
+          documentSession.transferTo(docxPageSource);
+          ownershipTransferred = true;
+        } else if (
+          enablePartial &&
+          presentationPageSource?.getSnapshot().slideCount
+        ) {
+          partialResult = createPresentationSourceState();
+          documentSession.transferTo(presentationPageSource);
+          ownershipTransferred = true;
+        } else if (
+          enablePartial &&
+          spreadsheetPageSource?.getSnapshot().sheets.length
+        ) {
+          partialResult = createSpreadsheetSourceState();
+          documentSession.transferTo(spreadsheetPageSource);
+          ownershipTransferred = true;
         }
       }
-      if (partialResult?.kind !== 'xls') assembler?.dispose();
-      if (partialResult?.kind !== 'ppt') presentationAssembler?.dispose();
-      if (partialResult?.kind !== 'doc') documentAssembler?.dispose();
+      if (!ownershipTransferred) await documentSession.dispose();
       throw error;
     } finally {
       runtime?.dispose();
@@ -237,19 +691,17 @@ function createParseSession(
       ) {
         return;
       }
-      controller.abort();
+      documentSession.abort();
       runtime?.dispose();
     },
     dispose() {
       if (status === 'starting' || status === 'running') {
-        controller.abort();
+        documentSession.abort();
         runtime?.dispose();
+        void documentSession.dispose();
       }
       listeners.clear();
       partialListeners.clear();
-      if (partialResult?.kind !== 'xls') assembler?.dispose();
-      if (partialResult?.kind !== 'ppt') presentationAssembler?.dispose();
-      if (partialResult?.kind !== 'doc') documentAssembler?.dispose();
     },
   };
 }
@@ -259,13 +711,33 @@ export function createOfficeParseSession(
   file: File,
   options: OfficeParseOptions = {},
 ): OfficeParseSession<ParsedOfficeFile> {
-  return createParseSession(file, options, false);
+  const internalSession = createParseSession(
+    file,
+    options,
+    false,
+    createOfficeDocumentSession(),
+  );
+  return {
+    result: internalSession.result.then((preview) => {
+      if (preview.mode !== 'materialized') {
+        throw new Error('公共解析 API 不能返回按需预览源');
+      }
+      return preview.model;
+    }),
+    get status() {
+      return internalSession.status;
+    },
+    subscribe: (listener) => internalSession.subscribe(listener),
+    cancel: () => internalSession.cancel(),
+    dispose: () => internalSession.dispose(),
+  };
 }
 
 /** 创建仅供 OfficeFileViewer 使用的渐进解析会话。 */
 export function createOfficeFileViewerParseSession(
   file: File,
   options: OfficeParseOptions = {},
+  documentSession = createOfficeDocumentSession(),
 ): OfficeFileViewerParseSession {
-  return createParseSession(file, options, true);
+  return createParseSession(file, options, true, documentSession);
 }

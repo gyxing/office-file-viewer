@@ -1,47 +1,6 @@
+import { portableResourceToBlob } from '../../resource-store/portableResourceToBlob';
 import type { PortableResource } from '../protocol/messages';
 import { readResourceReference } from './resourceReferences';
-
-/** 执行 `rgbaToPngBlob` 封装的解析运行时处理步骤。 */
-function rgbaToPngBlob(
-  resource: Extract<
-    PortableResource,
-    {
-      /** 资源在跨线程消息中采用的编码形式。 */ encoding: 'rgba';
-    }
-  >,
-) {
-  if (typeof document === 'undefined') {
-    throw new Error('当前环境没有 Canvas，无法转换 DIB');
-  }
-  const canvas = document.createElement('canvas');
-  canvas.width = resource.width;
-  canvas.height = resource.height;
-  const context = canvas.getContext('2d');
-  if (!context) throw new Error('无法创建 DIB Canvas 上下文');
-  const pixels = new Uint8ClampedArray(resource.buffer);
-  const imageData = context.createImageData(resource.width, resource.height);
-  imageData.data.set(pixels);
-  context.putImageData(imageData, 0, 0);
-  return new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (blob) resolve(blob);
-      else reject(new Error('DIB 转 PNG 失败'));
-    }, 'image/png');
-  });
-}
-
-/** 执行 `resourceToBlob` 封装的解析运行时处理步骤。 */
-async function resourceToBlob(resource: PortableResource) {
-  if (resource.encoding === 'binary') {
-    return new Blob([resource.buffer], { type: resource.mimeType });
-  }
-  if (resource.encoding === 'text') {
-    return new Blob([resource.text], {
-      type: 'image/svg+xml;charset=utf-8',
-    });
-  }
-  return rgbaToPngBlob(resource);
-}
 
 /** 在主线程创建和管理解析资源的 Blob URL。 */
 export class ResourceRegistry {
@@ -57,7 +16,7 @@ export class ResourceRegistry {
     ) {
       throw new Error('当前环境不支持 Blob URL');
     }
-    const url = URL.createObjectURL(await resourceToBlob(resource));
+    const url = URL.createObjectURL(await portableResourceToBlob(resource));
     this.urls.set(resource.id, url);
     this.ownedUrls.add(url);
     return url;

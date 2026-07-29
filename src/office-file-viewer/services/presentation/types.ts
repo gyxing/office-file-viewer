@@ -34,6 +34,12 @@ export type PresentationDocument = {
   resources?: PresentationResources;
 };
 
+export type {
+  PresentationSlideDescriptor,
+  PresentationSource,
+  PresentationSourceSnapshot,
+} from './PresentationSource';
+
 /** 描述演示文稿标准模型使用的标准化模型。 */
 export type ThemeModel = {
   /** 按主题槽名称索引的标准化颜色映射。 */
@@ -97,7 +103,7 @@ export type SlideBackground = {
   /** SlideBackground 填充区域的透明度，取值范围为 0 到 1；未提供时沿用来源格式或渲染器的默认规则。 */
   fillOpacity?: number;
   /** 用作幻灯片背景的媒体资源引用。 */
-  imageRef?: string;
+  imageRef?: string | OfficeResourceSource;
 };
 
 /** 描述演示文稿标准模型使用的样式参数。 */
@@ -281,7 +287,7 @@ export type ImageElement = BaseElement & {
   /** 用于区分 ImageElement 不同结构分支的类型标识。 */
   type: 'image';
   /** ImageElement 的 src 文本值。 */
-  src: string;
+  src: string | OfficeResourceSource;
   /** ImageElement 的 alt 文本值。 */
   alt?: string;
   /** ImageElement 的图片裁剪边界；未提供时使用来源格式或渲染器的默认行为。 */
@@ -395,4 +401,7 @@ export type ChartElement = BaseElement & {
   chartId?: string;
   /** ChartElement 的 chartPath 文本值。 */
   chartPath?: string;
+  /** 图表使用的按需静态快照资源。 */
+  snapshotSource?: OfficeResourceSource;
 };
+import type { OfficeResourceSource } from '../resource-store';

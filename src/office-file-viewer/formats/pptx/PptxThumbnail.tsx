@@ -58,14 +58,6 @@ function PptxThumbnailComponent({ slide, active }: PptxThumbnailProps) {
       slide.width,
     ],
   );
-  const backgroundStyle = useMemo<CSSProperties>(
-    () => ({
-      backgroundImage: slide.background?.imageRef
-        ? `url(${slide.background.imageRef})`
-        : undefined,
-    }),
-    [slide.background?.imageRef],
-  );
   const contentStyle = useMemo<CSSProperties>(
     () => ({
       width: slide.width,
@@ -89,12 +81,6 @@ function PptxThumbnailComponent({ slide, active }: PptxThumbnailProps) {
         className="office-file-pptx-thumbnail__canvas"
         style={canvasStyle}
       >
-        {slide.background?.imageRef ? (
-          <div
-            className="office-file-pptx-thumbnail__background"
-            style={backgroundStyle}
-          />
-        ) : null}
         <div
           className="office-file-pptx-thumbnail__content"
           style={contentStyle}

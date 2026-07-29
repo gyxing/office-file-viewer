@@ -12,6 +12,12 @@ import type {
 } from '../protocol/messages';
 import type { ParseProgress } from '../types';
 
+/** 为同一次解析运行时提供稳定会话标识和统一取消信号。 */
+export type RuntimeContext = {
+  documentSessionId: string;
+  signal: AbortSignal;
+};
+
 /** 定义解析运行时输出分块结果时调用的接收接口。 */
 export type RuntimeSink = {
   /** 接收并转发解析进度。 */
@@ -35,7 +41,7 @@ export type RuntimeSink = {
   /** 接收解析完成的标准化文件结果。 */
   parsed(parsed: ParsedOfficeFile): Promise<void>;
   /** 通知接收方解析任务已经完成。 */
-  complete(warnings?: SpreadsheetWarning[]): void;
+  complete(warnings?: SpreadsheetWarning[]): void | Promise<void>;
   /** 通知接收方解析任务发生错误。 */
   error(error: unknown): void;
 };

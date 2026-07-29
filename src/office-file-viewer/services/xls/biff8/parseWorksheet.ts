@@ -10,8 +10,9 @@ import type {
 import {
   Biff8Reader,
   Biff8RecordCursor,
-  type ParseYieldState,
   yieldToBrowserIfNeeded,
+  type Biff8Record,
+  type ParseYieldState,
 } from './Biff8Reader';
 import { BIFF8_RECORD, BIFF8_SUBSTREAM, BIFF8_VERSION } from './constants';
 import { decodeBiff8Formula } from './formulas';
@@ -56,11 +57,17 @@ function decodeRk(raw: number) {
 }
 
 /** 执行 `validateWorksheetBof` 封装的XLS/BIFF8 解析处理步骤。 */
-function validateWorksheetBof(
-  cursor: Biff8RecordCursor,
+/** 为内存字节和 CFB 随机读取统一 BIFF 记录消费协议。 */
+export interface Biff8AsyncRecordCursor {
+  next(): Promise<Biff8Record | undefined>;
+  peek(): Promise<Biff8Record | undefined>;
+}
+
+async function validateWorksheetBof(
+  cursor: Biff8AsyncRecordCursor,
   descriptor: Biff8SheetDescriptor,
 ) {
-  const record = cursor.next();
+  const record = await cursor.next();
   if (!record || record.id !== BIFF8_RECORD.BOF || record.size < 4) {
     throw new XlsParseError(
       'INVALID_RECORD_DATA',
@@ -197,12 +204,37 @@ export async function parseBiff8Worksheet(
   endOffset: number,
   yieldState: ParseYieldState,
 ): Promise<Biff8Worksheet> {
-  const cursor = new Biff8RecordCursor(
+  const syncCursor = new Biff8RecordCursor(
     workbookStream,
     descriptor.streamOffset,
     endOffset,
   );
-  validateWorksheetBof(cursor, descriptor);
+  const cursor: Biff8AsyncRecordCursor = {
+    async next() {
+      return syncCursor.next();
+    },
+    async peek() {
+      return syncCursor.peek();
+    },
+  };
+  return parseBiff8WorksheetFromCursor(
+    cursor,
+    descriptor,
+    globals,
+    endOffset,
+    yieldState,
+  );
+}
+
+/** 从异步 BIFF 记录游标解析 Worksheet，避免要求完整子流常驻内存。 */
+export async function parseBiff8WorksheetFromCursor(
+  cursor: Biff8AsyncRecordCursor,
+  descriptor: Biff8SheetDescriptor,
+  globals: Biff8WorkbookGlobals,
+  endOffset: number,
+  yieldState: ParseYieldState,
+): Promise<Biff8Worksheet> {
+  await validateWorksheetBof(cursor, descriptor);
   const cells = new Map<string, Biff8Cell>();
   const rows = new Map<number, Biff8Worksheet['rows'][number]>();
   const columns: Biff8Worksheet['columns'] = [];
@@ -219,7 +251,7 @@ export async function parseBiff8Worksheet(
   let reachedEof = false;
   let substreamDepth = 1;
 
-  for (let record = cursor.next(); record; record = cursor.next()) {
+  for (let record = await cursor.next(); record; record = await cursor.next()) {
     if (record.id === BIFF8_RECORD.BOF) {
       const nestedBof = new Biff8Reader(record.data);
       const version = nestedBof.readUint16();
@@ -232,7 +264,7 @@ export async function parseBiff8Worksheet(
         const records = [record];
         let chartDepth = 1;
         while (chartDepth > 0) {
-          const chartRecord = cursor.next();
+          const chartRecord = await cursor.next();
           if (!chartRecord) {
             warnings.push({
               code: 'MISSING_CHART_EOF',
@@ -480,8 +512,8 @@ export async function parseBiff8Worksheet(
         hasDrawingRecords = true;
         {
           const chunks = [record.data];
-          while (cursor.peek()?.id === BIFF8_RECORD.CONTINUE) {
-            chunks.push(cursor.next()!.data);
+          while ((await cursor.peek())?.id === BIFF8_RECORD.CONTINUE) {
+            chunks.push((await cursor.next())!.data);
           }
           drawingRecords.push({
             recordId: record.id,

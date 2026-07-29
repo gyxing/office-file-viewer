@@ -2,6 +2,10 @@
 import type { CSSProperties } from 'react';
 import React, { memo, useMemo } from 'react';
 import type { SlideElement, SlideModel } from '../../services/pptx/types';
+import {
+  useOfficeResourceUrl,
+  type OfficeResourceSource,
+} from '../../services/resource-store';
 import { OfficeChartView } from '../../shared/chart/OfficeChartView';
 import { ImageRenderer } from './renderers/ImageRenderer';
 import { colorWithOpacity } from './renderers/paint';
@@ -31,6 +35,14 @@ const ChartFrame = memo(function ChartFrame({
     }
   >;
 }) {
+  const snapshot = useOfficeResourceUrl(element.snapshotSource);
+  const chart = useMemo(
+    () =>
+      snapshot.url
+        ? { ...element.chart, snapshotSrc: snapshot.url }
+        : element.chart,
+    [element.chart, snapshot.url],
+  );
   const frameStyle = useMemo<CSSProperties>(
     () => ({
       left: element.x,
@@ -44,7 +56,7 @@ const ChartFrame = memo(function ChartFrame({
   return (
     <div className="office-file-pptx-chart-frame" style={frameStyle}>
       <OfficeChartView
-        chart={element.chart}
+        chart={chart}
         width={element.width}
         height={element.height}
       />
@@ -55,6 +67,11 @@ const ChartFrame = memo(function ChartFrame({
 /** 渲染 PptxSlideComponent 组件。 */
 function PptxSlideComponent({ slide, zoom, renderKey }: PptxSlideProps) {
   const scale = zoom / 100;
+  const backgroundSource: OfficeResourceSource | undefined =
+    typeof slide.background?.imageRef === 'string'
+      ? { kind: 'url', url: slide.background.imageRef }
+      : slide.background?.imageRef;
+  const backgroundResource = useOfficeResourceUrl(backgroundSource);
   // renderKey 会参与 SVG 渐变 id，缩略图和主画布同时渲染同一页时必须保持 id 隔离。
   const slideRenderKey = renderKey ?? `slide-${slide.id}`;
   const slideStyle = useMemo<CSSProperties>(
@@ -74,14 +91,14 @@ function PptxSlideComponent({ slide, zoom, renderKey }: PptxSlideProps) {
         slide.background?.fill ?? '#fff',
         slide.background?.fillOpacity,
       ),
-      backgroundImage: slide.background?.imageRef
-        ? `url(${slide.background.imageRef})`
+      backgroundImage: backgroundResource.url
+        ? `url(${backgroundResource.url})`
         : undefined,
     }),
     [
       slide.background?.fill,
       slide.background?.fillOpacity,
-      slide.background?.imageRef,
+      backgroundResource.url,
     ],
   );
 

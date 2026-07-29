@@ -70,13 +70,12 @@ function toExactArrayBuffer(bytes: Uint8Array) {
   return Uint8Array.from(bytes).buffer;
 }
 
-/** 解析 Pictures 流并建立一基序号到可传输资源引用的映射。 */
-export async function readPptPictures(
-  picturesStream: Uint8Array | undefined,
+/** 将已解析的 Pictures 记录追加到一基序号资源映射。 */
+export async function registerPptPictureRecords(
+  records: readonly OfficeArtRecord[],
   context: PptParseContext,
 ) {
-  if (!picturesStream?.length) return context.blipUrls;
-  const records = parseOfficeArtRecords(picturesStream, context.warnings);
+  const startIndex = context.blipUrls.size;
   for (let index = 0; index < records.length; index += 1) {
     const record = records[index];
     const raster = readRaster(record);
@@ -92,8 +91,20 @@ export async function readPptPictures(
       const [title, detail] = fallbackLabel(record.type);
       reference = createPptStaticPreviewCard(title, detail, context);
     }
-    context.blipUrls.set(index + 1, reference);
+    context.blipUrls.set(startIndex + index + 1, reference);
     await context.yieldIfNeeded();
   }
   return context.blipUrls;
+}
+
+/** 解析 Pictures 流并建立一基序号到可传输资源引用的映射。 */
+export async function readPptPictures(
+  picturesStream: Uint8Array | undefined,
+  context: PptParseContext,
+) {
+  if (!picturesStream?.length) return context.blipUrls;
+  return registerPptPictureRecords(
+    parseOfficeArtRecords(picturesStream, context.warnings),
+    context,
+  );
 }

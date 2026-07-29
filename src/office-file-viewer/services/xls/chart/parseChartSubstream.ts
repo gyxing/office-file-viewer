@@ -147,7 +147,7 @@ export function parseChartSubstream(
     hasSecondaryAxis,
     title: formatting.title,
     categories: (categories ?? []).map((value, index) =>
-      value == null ? String(index + 1) : String(value),
+      value === null || value === undefined ? String(index + 1) : String(value),
     ),
     series,
     showLegend: formatting.showLegend,

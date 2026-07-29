@@ -115,6 +115,9 @@ function parseCellFormat(data: Uint8Array): Biff8CellFormat {
   const borderColors = reader.readUint16();
   const borderAndFill = reader.readUint32();
   const fillColors = reader.readUint16();
+  const diagonalUp = Boolean(borderColors & 0x8000);
+  const diagonalDown = Boolean(borderColors & 0x4000);
+  const diagonalStyle = (borderAndFill >>> 21) & 0x0f;
   return {
     fontIndex,
     formatIndex,
@@ -142,6 +145,15 @@ function parseCellFormat(data: Uint8Array): Biff8CellFormat {
       style: (borderStyles >> 12) & 0x0f,
       colorIndex: (borderAndFill >> 7) & 0x7f,
     },
+    diagonalBorder:
+      diagonalStyle && (diagonalUp || diagonalDown)
+        ? {
+            up: diagonalUp,
+            down: diagonalDown,
+            style: diagonalStyle,
+            colorIndex: (borderAndFill >> 14) & 0x7f,
+          }
+        : undefined,
   };
 }
 
@@ -198,12 +210,14 @@ function parseDefinedName(data: Uint8Array, id: number) {
 function validateSheetOffsets(
   workbookStream: Uint8Array,
   sheets: Biff8SheetDescriptor[],
+  streamLength = workbookStream.length,
+  validateBof = true,
 ) {
   const offsets = new Set<number>();
   for (const sheet of sheets) {
     if (
       sheet.streamOffset < 0 ||
-      sheet.streamOffset + 8 > workbookStream.length ||
+      sheet.streamOffset + 8 > streamLength ||
       offsets.has(sheet.streamOffset)
     ) {
       throw new XlsParseError(
@@ -213,6 +227,7 @@ function validateSheetOffsets(
       );
     }
     offsets.add(sheet.streamOffset);
+    if (!validateBof) continue;
     const record = new Biff8RecordCursor(
       workbookStream,
       sheet.streamOffset,
@@ -239,6 +254,12 @@ function validateSheetOffsets(
 export async function parseBiff8Globals(
   workbookStream: Uint8Array,
   yieldState: ParseYieldState,
+  options: {
+    /** Globals 采用分段读取时传入完整 Workbook 流长度。 */
+    streamLength?: number;
+    /** 结构画像阶段可延后到 Sheet 实际读取时校验 BOF。 */
+    validateSheetBof?: boolean;
+  } = {},
 ): Promise<Biff8WorkbookGlobals> {
   const cursor = validateGlobalsBof(workbookStream);
   const sheets: Biff8SheetDescriptor[] = [];
@@ -368,7 +389,12 @@ export async function parseBiff8Globals(
   if (!reachedEof) {
     throw new XlsParseError('TRUNCATED_RECORD', 'Workbook Globals 缺少 EOF');
   }
-  validateSheetOffsets(workbookStream, sheets);
+  validateSheetOffsets(
+    workbookStream,
+    sheets,
+    options.streamLength,
+    options.validateSheetBof ?? true,
+  );
   for (const sheet of sheets) {
     if (sheet.type === 'macro' || sheet.type === 'dialog') {
       warnings.push({

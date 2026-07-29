@@ -25,6 +25,18 @@ export type PptDocumentStructure = Pick<
   'width' | 'height' | 'theme' | 'masters'
 >;
 
+/** 完整解析和按页 Source 共用的文档结构读取结果。 */
+export type PptDocumentReadStructure = PptDocumentStructure & {
+  fonts: Map<number, string>;
+  descriptors: ReturnType<typeof readPptSlideLists>;
+};
+
+/** 根 DocumentContainer 内无需读取独立母版记录的基础结构。 */
+export type PptDocumentBaseStructure = Omit<
+  PptDocumentReadStructure,
+  'masters'
+>;
+
 /** 描述 PptDocumentObserver 在 PPT 二进制解析中的数据结构。 */
 export type PptDocumentObserver = {
   /** 执行 PptDocumentObserver 的 structure 操作。 */
@@ -34,7 +46,7 @@ export type PptDocumentObserver = {
 };
 
 /** 读取 `readDocumentSize` 所需的源数据，供PPT 二进制解析使用。 */
-function readDocumentSize(
+export function readDocumentSize(
   documentStream: Uint8Array,
   documentRecordOffset: number,
 ) {
@@ -62,16 +74,12 @@ function readDocumentSize(
   return { width: DEFAULT_SLIDE_WIDTH, height: DEFAULT_SLIDE_HEIGHT };
 }
 
-/** 从最终 persist 目录恢复文档、母版和正式幻灯片顺序。 */
-export async function readPptBinaryDocument(
+/** 从一个已读取的 DocumentContainer 恢复尺寸、字体、主题和页面引用。 */
+export function readPptDocumentBaseStructure(
   documentStream: Uint8Array,
-  editChain: PptEditChain,
+  documentOffset: number,
   context: PptParseContext,
-  observer?: PptDocumentObserver,
-): Promise<PptBinaryDocument> {
-  const documentOffset = editChain.persistOffsets.get(
-    editChain.documentPersistId,
-  )!;
+): PptDocumentBaseStructure {
   const documentRecord = new PptRecordReader(
     documentStream,
     documentOffset,
@@ -84,7 +92,6 @@ export async function readPptBinaryDocument(
       { offset: documentOffset, recordType: documentRecord?.type },
     );
   }
-
   const { width, height } = readDocumentSize(documentStream, documentOffset);
   const fonts = readPptFonts(documentStream, documentRecord);
   const defaultFont = fonts.get(0) ?? fonts.values().next().value;
@@ -108,6 +115,20 @@ export async function readPptBinaryDocument(
     documentRecord,
     context,
   );
+  return { width, height, theme, fonts, descriptors };
+}
+
+/** 只恢复根文档、字体、页面顺序和母版，不进入 Slide 或备注正文。 */
+export function readPptDocumentStructure(
+  documentStream: Uint8Array,
+  editChain: PptEditChain,
+  context: PptParseContext,
+): PptDocumentReadStructure {
+  const documentOffset = editChain.persistOffsets.get(
+    editChain.documentPersistId,
+  )!;
+  const { width, height, theme, fonts, descriptors } =
+    readPptDocumentBaseStructure(documentStream, documentOffset, context);
   const masters = new Map(
     descriptors.masters
       .map((descriptor) => {
@@ -126,6 +147,18 @@ export async function readPptBinaryDocument(
           Boolean(entry),
       ),
   );
+  return { width, height, theme, masters, fonts, descriptors };
+}
+
+/** 从最终 persist 目录恢复文档、母版和正式幻灯片顺序。 */
+export async function readPptBinaryDocument(
+  documentStream: Uint8Array,
+  editChain: PptEditChain,
+  context: PptParseContext,
+  observer?: PptDocumentObserver,
+): Promise<PptBinaryDocument> {
+  const { width, height, theme, masters, fonts, descriptors } =
+    readPptDocumentStructure(documentStream, editChain, context);
   await observer?.structure({ width, height, theme, masters });
   const speakerNotesBySlideId = new Map<number, SpeakerNotesModel>();
   for (const descriptor of descriptors.notes) {

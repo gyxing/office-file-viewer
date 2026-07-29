@@ -24,7 +24,7 @@ export function buildWordOutlineTree(
       children: [],
     };
     const parent = stack[stack.length - 1];
-    if (parent) parent.children.push(node);
+    if (parent) parent.children?.push(node);
     else roots.push(node);
     stack.push(node);
   });
@@ -41,7 +41,7 @@ export function collectOutlineAncestorKeys(
   const visit = (node: WordOutlineTreeNode, ancestors: string[]) => {
     ancestorsByKey[node.key] = ancestors;
     const nextAncestors = [...ancestors, node.key];
-    node.children.forEach((child) => visit(child, nextAncestors));
+    node.children?.forEach((child) => visit(child, nextAncestors));
   };
 
   nodes.forEach((node) => visit(node, []));

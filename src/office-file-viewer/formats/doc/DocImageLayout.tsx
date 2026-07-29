@@ -65,6 +65,8 @@ function DocImageLayoutComponent({
                   className="office-file-doc-image-layout__img"
                   src={image.src}
                   alt={image.caption ?? image.id}
+                  loading="lazy"
+                  decoding="async"
                 />
               </figure>
             );

@@ -33,6 +33,73 @@
   position: relative;
 }
 
+.office-file-xlsx-grid-placeholder {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 180px;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  color: #536174;
+  background: #e9edf3;
+}
+
+.office-file-xlsx-virtual-grid {
+  position: relative;
+}
+
+.office-file-xlsx-virtual-grid__canvas {
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 10%);
+}
+
+.office-file-xlsx-virtual-grid__cell {
+  z-index: 1;
+  box-sizing: border-box;
+  padding: 0 4px;
+  overflow: visible;
+  color: #1f2937;
+  line-height: 1.2;
+  background-color: #fff;
+}
+
+.office-file-xlsx-virtual-grid__column-header,
+.office-file-xlsx-virtual-grid__row-header,
+.office-file-xlsx-virtual-grid__corner {
+  position: absolute;
+  z-index: 7;
+  box-sizing: border-box;
+  color: #536174;
+  font-weight: 600;
+  font-size: 12px;
+  background: #e5ebf2;
+  border: 1px solid #c5cfdc;
+}
+
+.office-file-xlsx-virtual-grid__column-header,
+.office-file-xlsx-virtual-grid__row-header {
+  display: grid;
+  place-items: center;
+}
+
+.office-file-xlsx-virtual-grid__corner {
+  z-index: 8;
+}
+
+.office-file-xlsx-virtual-grid > .office-file-xlsx-grid-placeholder {
+  position: sticky;
+  z-index: 10;
+  bottom: 16px;
+  left: 16px;
+  width: calc(100% - 32px);
+  min-height: 96px;
+  margin-top: -112px;
+  background: rgba(255, 255, 255, 92%);
+  border: 1px solid #d9e0ea;
+}
+
 .office-file-xlsx-sheet-filler {
   position: absolute;
   top: 0;
@@ -217,15 +284,26 @@
 }
 
 .office-file-xlsx-sheet-table__cell {
+  position: relative;
   padding: 0 4px;
   overflow: visible;
   color: #1f2937;
   line-height: 1.2;
 }
 
+.office-file-xlsx-cell-diagonal {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
 .office-file-xlsx-sheet-table__cell-content {
   position: relative;
-  z-index: 1;
+  z-index: 2;
   width: max-content;
   min-width: 100%;
   overflow: visible;

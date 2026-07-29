@@ -33,6 +33,8 @@ function DocInlineContentComponent({
               className="office-file-doc-inline-image__img"
               src={inline.image.src}
               alt={inline.image.caption ?? inline.image.id}
+              loading="lazy"
+              decoding="async"
               style={{
                 width:
                   inline.image.width && inline.image.width <= 520

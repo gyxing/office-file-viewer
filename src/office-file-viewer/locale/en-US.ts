@@ -39,6 +39,14 @@ export const enUS: OfficeFileViewerMessages = {
   },
   loading: { parsing: 'Parsing file' },
   error: { previewFailed: 'Preview failed' },
+  lazyContent: {
+    loading: 'Loading content',
+    retry: 'Retry',
+    pageLoadFailed: 'Failed to load page',
+    slideLoadFailed: 'Failed to load slide',
+    sheetLoadFailed: 'Failed to load sheet',
+    resourceLoadFailed: 'Failed to load document resource',
+  },
   progress: {
     stages: {
       reading: 'Reading file',

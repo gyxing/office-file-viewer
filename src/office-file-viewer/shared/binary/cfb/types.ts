@@ -41,4 +41,25 @@ export type CfbReadOptions = {
   yieldIfNeeded?: () => Promise<void>;
   /** 兼容省略最后扇区零填充的 CFB 生成器；默认保持严格校验。 */
   allowPartialFinalSector?: boolean;
+  /** 取消 CFB 结构或流读取任务的统一信号。 */
+  signal?: AbortSignal;
 };
+
+/** 提供单个 CFB 流的有界随机读取和兼容物化能力。 */
+export interface CfbStreamReader {
+  readonly entry: CfbDirectoryEntry;
+  read(
+    offset: number,
+    length: number,
+    signal?: AbortSignal,
+  ): Promise<Uint8Array>;
+  materialize(signal?: AbortSignal): Promise<Uint8Array>;
+}
+
+/** 提供 CFB 目录索引和命名流随机读取能力。 */
+export interface CfbRandomAccessReader {
+  readonly entries: readonly CfbDirectoryEntry[];
+  hasEntry(name: string): boolean;
+  openStream(...names: string[]): CfbStreamReader | undefined;
+  close(): Promise<void>;
+}

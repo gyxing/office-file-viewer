@@ -35,6 +35,11 @@
   overflow-y: auto;
 }
 
+.office-file-pptx-viewer__thumbnail-list[data-thumbnail-mode='virtual'] {
+  // 未显式约束 Viewer 高度时仍以当前浏览器视口形成可滚动窗口，避免虚拟列表被内容反向撑高。
+  max-height: calc(100vh - 112px);
+}
+
 .office-file-pptx-viewer__thumbnail-button {
   display: block;
   width: 100%;
@@ -74,6 +79,17 @@
   min-height: 100%;
 }
 
+.office-file-pptx-slide-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  max-width: 100%;
+  background: #fff;
+  border: 1px solid #e5eaf1;
+  color: #667085;
+}
+
 .office-file-pptx-thumbnail {
   padding: 8px;
   background: #fff;
@@ -90,6 +106,21 @@
   position: relative;
   overflow: hidden;
   border-radius: 4px;
+}
+
+.office-file-pptx-thumbnail__placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 8px;
+  background: #f5f7fa;
+  color: #8a94a6;
+  font-size: 12px;
+}
+
+.office-file-pptx-thumbnail__retry {
+  color: #2f6fed;
 }
 
 .office-file-pptx-thumbnail__background {

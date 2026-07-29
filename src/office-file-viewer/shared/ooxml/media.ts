@@ -101,10 +101,10 @@ export function normalizeRelationshipTarget(relsPath: string, target: string) {
 }
 
 /** 解析并确定 `resolvePackageMediaRef` 对应的引用或配置。 */
-export function resolvePackageMediaRef(
+export function resolvePackageMediaRef<T>(
   target: string | undefined,
-  mediaByPath: Record<string, string>,
-  mediaByName: Record<string, string>,
+  mediaByPath: Record<string, T>,
+  mediaByName: Record<string, T>,
   rootDir: string,
 ) {
   if (!target) return undefined;

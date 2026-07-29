@@ -1,4 +1,6 @@
-import { parseDocCore } from '../../../doc/parseDocCore';
+import { parseDocCore, type DocCoreContext } from '../../../doc/parseDocCore';
+import { parseDocRandomAccess } from '../../../doc/parseDocRandomAccess';
+import { OFFICE_LARGE_FILE_THRESHOLDS } from '../../../performance/officePerformanceThresholds';
 import { parsePptCore } from '../../../ppt/parsePptCore';
 import { parseXlsCore } from '../../../xls/parseXlsCore';
 import { serializeParseError } from '../../protocol/errors';
@@ -35,7 +37,9 @@ function resourceTransferList(resource: PortableResource): Transferable[] {
 /** 在独立 Worker 中处理单个 Office 解析任务。 */
 export function runOfficeParserWorker(scope: ParserWorkerScope) {
   let activeTaskId: string | undefined;
+  let activeDocumentSessionId: string | undefined;
   let cancelled = false;
+  let activeAbortController = new AbortController();
   let nextSequence = 1;
   const ackWaiters = new Map<number, () => void>();
 
@@ -106,9 +110,11 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
       }
     >,
   ) {
-    const { taskId } = message;
+    const { documentSessionId, taskId } = message;
     try {
-      const result = await parseXlsCore(message.buffer, {
+      const input = await message.file.arrayBuffer();
+      if (cancelled) throw createParseAbortError();
+      const result = await parseXlsCore(input, {
         checkpoint: async (progress) => {
           if (cancelled) throw createParseAbortError();
           if (progress) {
@@ -116,6 +122,7 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
               type: 'parse-progress',
               version: OFFICE_PARSER_PROTOCOL_VERSION,
               taskId,
+              documentSessionId,
               progress,
             });
           }
@@ -128,6 +135,7 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
                 type: 'parse-resource',
                 version: OFFICE_PARSER_PROTOCOL_VERSION,
                 taskId,
+                documentSessionId,
                 sequence,
                 resource,
               },
@@ -139,6 +147,7 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
               type: 'parse-sheet',
               version: OFFICE_PARSER_PROTOCOL_VERSION,
               taskId,
+              documentSessionId,
               sequence: nextSequence++,
               sheetIndex,
               revision,
@@ -151,6 +160,7 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
         type: 'parse-complete',
         version: OFFICE_PARSER_PROTOCOL_VERSION,
         taskId,
+        documentSessionId,
         warnings: result.workbook.warnings,
       });
     } catch (error) {
@@ -162,12 +172,14 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
           type: 'parse-cancelled',
           version: OFFICE_PARSER_PROTOCOL_VERSION,
           taskId,
+          documentSessionId,
         });
       } else {
         post({
           type: 'parse-error',
           version: OFFICE_PARSER_PROTOCOL_VERSION,
           taskId,
+          documentSessionId,
           error: serializeParseError(error, { format: 'xls' }),
         });
       }
@@ -182,9 +194,11 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
       }
     >,
   ) {
-    const { taskId } = message;
+    const { documentSessionId, taskId } = message;
     try {
-      await parsePptCore(message.buffer, {
+      const input = await message.file.arrayBuffer();
+      if (cancelled) throw createParseAbortError();
+      await parsePptCore(input, {
         checkpoint: async (progress) => {
           if (cancelled) throw createParseAbortError();
           if (progress) {
@@ -192,6 +206,7 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
               type: 'parse-progress',
               version: OFFICE_PARSER_PROTOCOL_VERSION,
               taskId,
+              documentSessionId,
               progress,
             });
           }
@@ -204,6 +219,7 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
                 type: 'parse-resource',
                 version: OFFICE_PARSER_PROTOCOL_VERSION,
                 taskId,
+                documentSessionId,
                 sequence,
                 resource,
               },
@@ -215,6 +231,7 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
               type: 'parse-presentation-meta',
               version: OFFICE_PARSER_PROTOCOL_VERSION,
               taskId,
+              documentSessionId,
               sequence: nextSequence++,
               metadata,
             });
@@ -224,6 +241,7 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
               type: 'parse-slide',
               version: OFFICE_PARSER_PROTOCOL_VERSION,
               taskId,
+              documentSessionId,
               sequence: nextSequence++,
               slideIndex,
               slide,
@@ -235,6 +253,7 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
         type: 'parse-complete',
         version: OFFICE_PARSER_PROTOCOL_VERSION,
         taskId,
+        documentSessionId,
       });
     } catch (error) {
       if (
@@ -245,12 +264,14 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
           type: 'parse-cancelled',
           version: OFFICE_PARSER_PROTOCOL_VERSION,
           taskId,
+          documentSessionId,
         });
       } else {
         post({
           type: 'parse-error',
           version: OFFICE_PARSER_PROTOCOL_VERSION,
           taskId,
+          documentSessionId,
           error: serializeParseError(error, { format: 'ppt' }),
         });
       }
@@ -265,9 +286,9 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
       }
     >,
   ) {
-    const { taskId } = message;
+    const { documentSessionId, taskId } = message;
     try {
-      await parseDocCore(message.buffer, {
+      const parseContext: DocCoreContext = {
         fileName: message.fileName,
         checkpoint: async (progress) => {
           if (cancelled) throw createParseAbortError();
@@ -276,6 +297,7 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
               type: 'parse-progress',
               version: OFFICE_PARSER_PROTOCOL_VERSION,
               taskId,
+              documentSessionId,
               progress,
             });
           }
@@ -288,6 +310,7 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
                 type: 'parse-resource',
                 version: OFFICE_PARSER_PROTOCOL_VERSION,
                 taskId,
+                documentSessionId,
                 sequence,
                 resource,
               },
@@ -299,6 +322,7 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
               type: 'parse-document-meta',
               version: OFFICE_PARSER_PROTOCOL_VERSION,
               taskId,
+              documentSessionId,
               sequence: nextSequence++,
               metadata,
             });
@@ -308,17 +332,30 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
               type: 'parse-document-blocks',
               version: OFFICE_PARSER_PROTOCOL_VERSION,
               taskId,
+              documentSessionId,
               sequence: nextSequence++,
               startIndex,
               blocks,
             });
           },
         },
-      });
+      };
+      if (message.file.size >= OFFICE_LARGE_FILE_THRESHOLDS.cfbFileBytes) {
+        await parseDocRandomAccess(
+          message.file,
+          parseContext,
+          activeAbortController.signal,
+        );
+      } else {
+        const input = await message.file.arrayBuffer();
+        if (cancelled) throw createParseAbortError();
+        await parseDocCore(input, parseContext);
+      }
       post({
         type: 'parse-complete',
         version: OFFICE_PARSER_PROTOCOL_VERSION,
         taskId,
+        documentSessionId,
       });
     } catch (error) {
       if (
@@ -329,12 +366,14 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
           type: 'parse-cancelled',
           version: OFFICE_PARSER_PROTOCOL_VERSION,
           taskId,
+          documentSessionId,
         });
       } else {
         post({
           type: 'parse-error',
           version: OFFICE_PARSER_PROTOCOL_VERSION,
           taskId,
+          documentSessionId,
           error: serializeParseError(error, { format: 'doc' }),
         });
       }
@@ -345,14 +384,27 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
     const message = event.data;
     if (message.version !== OFFICE_PARSER_PROTOCOL_VERSION) return;
     if (message.type === 'parse-ack') {
-      if (message.taskId !== activeTaskId) return;
+      if (
+        message.taskId !== activeTaskId ||
+        message.documentSessionId !== activeDocumentSessionId
+      ) {
+        return;
+      }
       const resolve = ackWaiters.get(message.sequence);
       ackWaiters.delete(message.sequence);
       resolve?.();
       return;
     }
     if (message.type === 'parse-cancel') {
-      if (message.taskId === activeTaskId) cancelled = true;
+      if (
+        message.taskId === activeTaskId &&
+        message.documentSessionId === activeDocumentSessionId
+      ) {
+        cancelled = true;
+        activeAbortController.abort();
+        ackWaiters.forEach((resolve) => resolve());
+        ackWaiters.clear();
+      }
       return;
     }
     if (activeTaskId) {
@@ -360,6 +412,7 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
         type: 'parse-error',
         version: OFFICE_PARSER_PROTOCOL_VERSION,
         taskId: message.taskId,
+        documentSessionId: message.documentSessionId,
         error: {
           code: 'WORKER_BUSY',
           message: '解析 Worker 正在处理其他任务',
@@ -370,7 +423,9 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
       return;
     }
     activeTaskId = message.taskId;
+    activeDocumentSessionId = message.documentSessionId;
     cancelled = false;
+    activeAbortController = new AbortController();
     if (message.kind === 'ppt') void parsePpt(message);
     else if (message.kind === 'doc') void parseDoc(message);
     else void parseXls(message);

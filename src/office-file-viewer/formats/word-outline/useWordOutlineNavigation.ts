@@ -1,24 +1,27 @@
-import type { RefObject } from 'react';
+import type { MutableRefObject, RefObject } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { WordPageSource } from '../../services/word/WordPageSource';
 import type { WordOutlineItem } from '../../services/word/types';
+import type { WordBlockPageIndex } from '../word-pages/WordBlockPageIndex';
+import type { WordPageNavigationController } from '../word-pages/types';
 
 type UseWordOutlineNavigationOptions = {
-  /** 源文档大纲条目。 */
   items: WordOutlineItem[];
-  /** Word 正文唯一的滚动容器。 */
   scrollContainerRef: RefObject<HTMLElement>;
-  /** 缩放、分页等会改变目标位置的布局键。 */
   layoutKey: string;
-  /** 侧栏展开时才启用观察和滚动同步。 */
   enabled: boolean;
+  pageMode: 'normal' | 'windowed';
+  pageSource?: WordPageSource<unknown>;
+  blockPageIndex?: WordBlockPageIndex;
+  pageNavigationControllerRef?: MutableRefObject<
+    WordPageNavigationController | undefined
+  >;
+  documentSessionId: string;
 };
 
 type OutlineTarget = {
-  /** 对应大纲条目的稳定键。 */
   key: string;
-  /** 目标相对滚动内容顶部的位置。 */
   top: number;
-  /** 正文段落元素。 */
   element: HTMLElement;
 };
 
@@ -39,23 +42,42 @@ function findActiveTarget(targets: OutlineTarget[], marker: number) {
   return targets[activeIndex];
 }
 
-/** 管理 Word 大纲定位、滚动高亮和布局缓存。 */
+function findOutlineElement(
+  root: ParentNode,
+  targetBlockId: string,
+): HTMLElement | undefined {
+  return Array.from(
+    root.querySelectorAll<HTMLElement>('[data-office-word-outline-target]'),
+  ).find(
+    (element) => element.dataset.officeWordOutlineTarget === targetBlockId,
+  );
+}
+
+/** 管理普通 DOM 与页面窗口两种模式的大纲定位和滚动高亮。 */
 export function useWordOutlineNavigation({
   items,
   scrollContainerRef,
   layoutKey,
   enabled,
+  pageMode,
+  pageSource,
+  blockPageIndex,
+  pageNavigationControllerRef,
+  documentSessionId,
 }: UseWordOutlineNavigationOptions) {
   const [activeKey, setActiveKey] = useState<string>();
   const targetsRef = useRef<OutlineTarget[]>([]);
   const frameRef = useRef<number>();
+  const navigationAbortRef = useRef<AbortController>();
   const usesInternalScrollRef = useRef(true);
+  const programmaticNavigationRef = useRef(false);
 
   const commitActiveKey = useCallback((key: string | undefined) => {
     setActiveKey((current) => (current === key ? current : key));
   }, []);
 
   const syncFromScroll = useCallback(() => {
+    if (programmaticNavigationRef.current) return;
     const scroller = scrollContainerRef.current;
     const targets = targetsRef.current;
     if (!scroller || !targets.length) return;
@@ -91,7 +113,11 @@ export function useWordOutlineNavigation({
     const scrollEventTarget: HTMLElement | Window = usesInternalScroll
       ? scroller
       : window;
-    const layoutFrame = requestAnimationFrame(() => {
+    let intersectionObserver: IntersectionObserver | undefined;
+    let rebuildFrame: number | undefined;
+
+    const rebuildTargets = () => {
+      rebuildFrame = undefined;
       const scrollerRect = scroller.getBoundingClientRect();
       targetsRef.current = Array.from(
         scroller.querySelectorAll<HTMLElement>(
@@ -114,17 +140,23 @@ export function useWordOutlineNavigation({
           ];
         })
         .sort((left, right) => left.top - right.top);
+      intersectionObserver?.disconnect();
+      targetsRef.current.forEach((target) =>
+        intersectionObserver?.observe(target.element),
+      );
       syncFromScroll();
-    });
+    };
+    const scheduleRebuild = () => {
+      if (rebuildFrame !== undefined) return;
+      rebuildFrame = requestAnimationFrame(rebuildTargets);
+    };
 
-    scrollEventTarget.addEventListener('scroll', scheduleScrollSync, {
-      passive: true,
-    });
-    const observer =
+    intersectionObserver =
       typeof IntersectionObserver === 'undefined'
         ? undefined
         : new IntersectionObserver(
             (entries) => {
+              if (programmaticNavigationRef.current) return;
               const visible = entries
                 .filter((entry) => entry.isIntersecting)
                 .sort(
@@ -143,19 +175,25 @@ export function useWordOutlineNavigation({
               threshold: 0,
             },
           );
-
-    const observeFrame = requestAnimationFrame(() => {
-      targetsRef.current.forEach((target) => observer?.observe(target.element));
+    scheduleRebuild();
+    scrollEventTarget.addEventListener('scroll', scheduleScrollSync, {
+      passive: true,
     });
+    const mutationObserver =
+      pageMode === 'windowed' && typeof MutationObserver !== 'undefined'
+        ? new MutationObserver(scheduleRebuild)
+        : undefined;
+    mutationObserver?.observe(scroller, { childList: true, subtree: true });
+
     return () => {
-      cancelAnimationFrame(layoutFrame);
-      cancelAnimationFrame(observeFrame);
+      if (rebuildFrame !== undefined) cancelAnimationFrame(rebuildFrame);
       if (frameRef.current !== undefined) {
         cancelAnimationFrame(frameRef.current);
         frameRef.current = undefined;
       }
       scrollEventTarget.removeEventListener('scroll', scheduleScrollSync);
-      observer?.disconnect();
+      mutationObserver?.disconnect();
+      intersectionObserver?.disconnect();
       targetsRef.current = [];
     };
   }, [
@@ -163,34 +201,115 @@ export function useWordOutlineNavigation({
     enabled,
     items,
     layoutKey,
+    pageMode,
     scheduleScrollSync,
     scrollContainerRef,
     syncFromScroll,
   ]);
 
-  const selectTarget = useCallback(
-    (item: WordOutlineItem) => {
+  useEffect(
+    () => () => {
+      navigationAbortRef.current?.abort();
+      navigationAbortRef.current = undefined;
+      programmaticNavigationRef.current = false;
+    },
+    [documentSessionId, enabled],
+  );
+
+  const scrollToElement = useCallback(
+    (element: HTMLElement, item: WordOutlineItem) => {
       const scroller = scrollContainerRef.current;
-      const target = targetsRef.current.find(
-        (candidate) => candidate.key === item.id,
-      );
-      if (!scroller || !target) return;
-      commitActiveKey(item.id);
-      // 遵循系统减少动态效果设置，避免强制平滑滚动引发不适。
+      if (!scroller) return;
       const behavior = window.matchMedia?.('(prefers-reduced-motion: reduce)')
         .matches
         ? 'auto'
         : 'smooth';
       if (usesInternalScrollRef.current) {
+        const scrollerRect = scroller.getBoundingClientRect();
+        const targetTop =
+          scroller.scrollTop +
+          element.getBoundingClientRect().top -
+          scrollerRect.top;
         scroller.scrollTo({
-          top: Math.max(0, target.top - 20),
+          top: Math.max(0, targetTop - 20),
           behavior,
         });
       } else {
-        target.element.scrollIntoView({ behavior, block: 'start' });
+        element.scrollIntoView({ behavior, block: 'start' });
       }
+      commitActiveKey(item.id);
+      element.tabIndex = -1;
+      requestAnimationFrame(() => {
+        element.focus({ preventScroll: true });
+        programmaticNavigationRef.current = false;
+      });
     },
     [commitActiveKey, scrollContainerRef],
+  );
+
+  const selectTarget = useCallback(
+    (item: WordOutlineItem) => {
+      navigationAbortRef.current?.abort();
+      const controller = new AbortController();
+      navigationAbortRef.current = controller;
+      programmaticNavigationRef.current = true;
+      commitActiveKey(item.id);
+
+      void (async () => {
+        try {
+          if (
+            pageMode === 'windowed' &&
+            pageSource &&
+            blockPageIndex &&
+            pageNavigationControllerRef?.current
+          ) {
+            const prioritizedPage = await pageSource.prioritizeBlock(
+              item.targetBlockId,
+              controller.signal,
+            );
+            const indexedPage = blockPageIndex.locate(
+              item.targetBlockId,
+            )?.pageIndex;
+            const pageIndex = indexedPage ?? prioritizedPage;
+            if (pageIndex >= 0) {
+              const pageNavigation = pageNavigationControllerRef.current;
+              if (!pageNavigation) return;
+              pageNavigation.scrollToPage(pageIndex);
+              const pageElement = await pageNavigation.ensurePageMounted(
+                pageIndex,
+                controller.signal,
+              );
+              const element = findOutlineElement(
+                pageElement,
+                item.targetBlockId,
+              );
+              if (element) {
+                scrollToElement(element, item);
+                return;
+              }
+            }
+          }
+
+          const cached = targetsRef.current.find(
+            (candidate) => candidate.key === item.id,
+          );
+          if (cached) scrollToElement(cached.element, item);
+          else programmaticNavigationRef.current = false;
+        } catch (error) {
+          if (!(error instanceof Error && error.name === 'AbortError')) {
+            programmaticNavigationRef.current = false;
+          }
+        }
+      })();
+    },
+    [
+      blockPageIndex,
+      commitActiveKey,
+      pageMode,
+      pageNavigationControllerRef,
+      pageSource,
+      scrollToElement,
+    ],
   );
 
   return { activeKey, selectTarget };

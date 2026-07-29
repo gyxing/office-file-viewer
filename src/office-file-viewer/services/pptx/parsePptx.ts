@@ -28,6 +28,17 @@ import {
 } from './colors';
 import { parsePptxSpeakerNotes } from './parseSpeakerNotes';
 import type {
+  LayoutDefinition,
+  MasterDefinition,
+  PptxPackageState as PackageState,
+  PlaceholderStyle,
+  RelationshipMap,
+  TableCellStyle,
+  TableStyleDefinition,
+  TableStyleMap,
+  TableStyleVariantName,
+} from './PptxPackageContext';
+import type {
   ChartElement,
   GradientFill,
   ImageCrop,
@@ -48,131 +59,9 @@ import type {
   UnsupportedElement,
 } from './types';
 
-/** 描述 RelationshipMap 在 PPTX 解析中的数据结构。 */
-type RelationshipMap = Record<string, Record<string, string>>;
-
-/** 枚举PPTX 解析可能处于的状态。 */
-type PackageState = {
-  /** PackageState 按压缩包路径索引的文件条目映射。 */
-  entries: OfficeEntryMap;
-  /** PackageState 解析得到的 OOXML 关系映射。 */
-  relationships: RelationshipMap;
-  /** 按媒体文件名索引的资源映射。 */
-  mediaByName: Record<string, string>;
-  /** 按 OOXML 包内路径索引的媒体资源映射。 */
-  mediaByPath: Record<string, string>;
-};
-
-/** 描述 TableStyleVariantName 在 PPTX 解析中的数据结构。 */
-type TableStyleVariantName =
-  | 'wholeTbl'
-  | 'band1H'
-  | 'band2H'
-  | 'band1V'
-  | 'band2V'
-  | 'firstRow'
-  | 'lastRow'
-  | 'firstCol'
-  | 'lastCol';
-
-/** 描述 PPTX 解析使用的样式参数。 */
-type TableCellStyle = {
-  /** TableCellStyle 携带或渲染的文本内容。 */
-  text?: TextStyle;
-  /** TableCellStyle 的背景颜色，使用 CSS 颜色值；未提供时沿用来源格式或渲染器的默认规则。 */
-  backgroundColor?: string | null;
-  /** TableCellStyle 的透明度，取值范围为 0 到 1。 */
-  backgroundOpacity?: number;
-  /** TableCellStyle 的边框颜色配置；未提供时使用来源格式或渲染器的默认行为。 */
-  borderColor?: string | null;
-  /** TableCellStyle 的透明度，取值范围为 0 到 1。 */
-  borderOpacity?: number;
-  /** TableCellStyle 的 borderWidth 渲染数值，单位为标准化渲染像素。 */
-  borderWidth?: number;
-};
-
-/** 描述 TableStyleDefinition 在 PPTX 解析中的数据结构。 */
-type TableStyleDefinition = {
-  /** TableStyleDefinition 的 styleId 文本值。 */
-  styleId: string;
-  /** TableStyleDefinition 的 styleName 文本值。 */
-  styleName?: string;
-  /** TableStyleDefinition 按表格区域和状态索引的样式变体。 */
-  variants: Partial<Record<TableStyleVariantName, TableCellStyle>>;
-};
-
-/** 描述 TableStyleMap 在 PPTX 解析中的数据结构。 */
-type TableStyleMap = Record<string, TableStyleDefinition>;
-
-/** 描述 LayoutDefinition 在 PPTX 解析中的数据结构。 */
-type LayoutDefinition = {
-  /** LayoutDefinition 在压缩包、复合文档或图形数据中的路径。 */
-  path: string;
-  /** LayoutDefinition 的 masterPath 文本值。 */
-  masterPath: string;
-  /** LayoutDefinition 按占位符类型和索引组织的继承定义。 */
-  placeholders: Record<string, PlaceholderStyle>;
-  /** LayoutDefinition 按占位符层级组织的文本样式预设。 */
-  textPresets: Record<string, PlaceholderStyle>;
-  /** LayoutDefinition 的背景填充模型；未提供时使用来源格式或渲染器的默认行为。 */
-  background?: SlideBackground;
-  /** LayoutDefinition 包含的 elements 有序集合。 */
-  elements: SlideElement[];
-};
-
-/** 描述 MasterDefinition 在 PPTX 解析中的数据结构。 */
-type MasterDefinition = {
-  /** MasterDefinition 在压缩包、复合文档或图形数据中的路径。 */
-  path: string;
-  /** MasterDefinition 按占位符类型和索引组织的继承定义。 */
-  placeholders: Record<string, PlaceholderStyle>;
-  /** MasterDefinition 按占位符层级组织的文本样式预设。 */
-  textPresets: Record<string, PlaceholderStyle>;
-  /** MasterDefinition 的背景填充模型；未提供时使用来源格式或渲染器的默认行为。 */
-  background?: SlideBackground;
-  /** MasterDefinition 包含的 elements 有序集合。 */
-  elements: SlideElement[];
-};
-
-/** 描述 PPTX 解析使用的样式参数。 */
-type PlaceholderStyle = {
-  /** 用于区分 PlaceholderStyle 不同结构分支的类型标识。 */
-  type?: string;
-  /** PlaceholderStyle 的 idx 文本值。 */
-  idx?: string;
-  /** PlaceholderStyle 的 x 尺寸或坐标，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
-  x?: number;
-  /** PlaceholderStyle 的 y 尺寸或坐标，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
-  y?: number;
-  /** PlaceholderStyle 的 width 尺寸或坐标，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
-  width?: number;
-  /** PlaceholderStyle 的 height 尺寸或坐标，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
-  height?: number;
-  /** PlaceholderStyle 的填充颜色、渐变或无填充标记；未提供时沿用来源格式或渲染器的默认规则。 */
-  fill?: string | GradientFill | null;
-  /** PlaceholderStyle 填充区域的透明度，取值范围为 0 到 1；未提供时沿用来源格式或渲染器的默认规则。 */
-  fillOpacity?: number;
-  /** PlaceholderStyle 的轮廓颜色；null 表示明确不绘制轮廓；未提供时沿用来源格式或渲染器的默认规则。 */
-  stroke?: string | null;
-  /** PlaceholderStyle 轮廓的透明度，取值范围为 0 到 1；未提供时沿用来源格式或渲染器的默认规则。 */
-  strokeOpacity?: number;
-  /** PlaceholderStyle 的轮廓宽度，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
-  strokeWidth?: number;
-  /** PlaceholderStyle 的轮廓虚线样式；未提供时沿用来源格式或渲染器的默认规则。 */
-  strokeDash?: string;
-  /** PlaceholderStyle 的阴影样式；未提供时沿用来源格式或渲染器的默认规则。 */
-  shadow?: ShadowStyle;
-  /** PlaceholderStyle 携带或渲染的文本内容。 */
-  text?: TextStyle;
-  /** PlaceholderStyle 关联的 body 结构；字段形状由 TextStyle 定义；未提供时使用来源格式或渲染器的默认行为。 */
-  body?: TextStyle;
-  /** PlaceholderStyle 按业务键索引的 levels 映射；未提供时使用来源格式或渲染器的默认行为。 */
-  levels?: Record<number, TextStyle>;
-};
-
 // PPTX 是 zip 包结构，幻灯片、母版、布局、媒体之间都通过 .rels 关系文件串联。
 /** 执行 `relationshipTargets` 封装的 PPTX 解析处理步骤。 */
-function relationshipTargets(rels: Record<string, OfficeRelationship>) {
+export function relationshipTargets(rels: Record<string, OfficeRelationship>) {
   const map: Record<string, string> = {};
   Object.entries(rels).forEach(([id, rel]) => {
     map[id] = rel.target;
@@ -181,7 +70,10 @@ function relationshipTargets(rels: Record<string, OfficeRelationship>) {
 }
 
 /** 根据输入构建 `buildPackageState` 返回的标准化结果。 */
-function buildPackageState(entries: OfficeEntryMap): PackageState {
+export function buildPptxPackageState(
+  entries: OfficeEntryMap,
+  mediaSources?: Pick<PackageState, 'mediaByName' | 'mediaByPath'>,
+): PackageState {
   const relationships: RelationshipMap = {};
   for (const [path, value] of entries) {
     if (typeof value === 'string' && path.endsWith('.rels')) {
@@ -189,7 +81,9 @@ function buildPackageState(entries: OfficeEntryMap): PackageState {
     }
   }
 
-  const media = collectMedia(entries, 'ppt/media/');
+  const media = mediaSources
+    ? { byName: mediaSources.mediaByName, byPath: mediaSources.mediaByPath }
+    : collectMedia(entries, 'ppt/media/');
 
   return {
     entries,
@@ -201,7 +95,7 @@ function buildPackageState(entries: OfficeEntryMap): PackageState {
 
 /** 执行 `debugPptxPackage` 封装的 PPTX 解析处理步骤。 */
 export function debugPptxPackage(entries: OfficeEntryMap) {
-  const packageState = buildPackageState(entries);
+  const packageState = buildPptxPackageState(entries);
   return {
     relsCount: Object.keys(packageState.relationships).length,
     mediaCount: Object.keys(packageState.mediaByPath).length,
@@ -210,13 +104,13 @@ export function debugPptxPackage(entries: OfficeEntryMap) {
       .map(([path, src]) => ({
         path,
         hasSrc: Boolean(src),
-        prefix: src.slice(0, 30),
+        prefix: typeof src === 'string' ? src.slice(0, 30) : src.kind,
       })),
   };
 }
 
 /** 读取 `readPresentationSize` 所需的源数据，供 PPTX 解析使用。 */
-function readPresentationSize(xml: string) {
+export function readPresentationSize(xml: string) {
   const doc = parseXml(xml);
   const sldSz = descendantByLocalName(doc.documentElement, 'sldSz');
   const cx = Number(attr(sldSz, 'cx') ?? 12800000);
@@ -225,7 +119,7 @@ function readPresentationSize(xml: string) {
 }
 
 /** 读取 `readTheme` 所需的源数据，供 PPTX 解析使用。 */
-function readTheme(xml: string): ThemeModel {
+export function readTheme(xml: string): ThemeModel {
   const doc = parseXml(xml);
   const colorScheme: Record<string, string> = {};
   const fontScheme: Record<string, string> = {};
@@ -613,7 +507,7 @@ function readTableCellStyle(
 }
 
 /** 读取 `readTableStyles` 所需的源数据，供 PPTX 解析使用。 */
-function readTableStyles(xml: string, theme: ThemeModel): TableStyleMap {
+export function readTableStyles(xml: string, theme: ThemeModel): TableStyleMap {
   if (!xml) return {};
   const doc = parseXml(xml);
   const result: TableStyleMap = {};
@@ -1383,7 +1277,7 @@ function readLayout(
 }
 
 /** 读取 `readPresentationLayouts` 所需的源数据，供 PPTX 解析使用。 */
-function readPresentationLayouts(
+export function readPresentationLayouts(
   entries: OfficeEntryMap,
   packageState: PackageState,
   theme: ThemeModel,
@@ -1712,7 +1606,7 @@ function parseWpsWebExtensionChart(
   );
   const chart = parseWpsWebExtensionChartModel(
     doc.documentElement,
-    snapshotSrc,
+    typeof snapshotSrc === 'string' ? snapshotSrc : undefined,
   );
   if (!chart) return undefined;
 
@@ -1726,6 +1620,8 @@ function parseWpsWebExtensionChart(
     chart,
     chartId: relId,
     chartPath: webExtensionPath,
+    snapshotSource:
+      snapshotSrc && typeof snapshotSrc !== 'string' ? snapshotSrc : undefined,
     x: emuValue(off, 'x') ?? 0,
     y: emuValue(off, 'y') ?? 0,
     width: emuValue(ext, 'cx') ?? 0,
@@ -2031,7 +1927,7 @@ function findLayoutForSlide(
 }
 
 /** 解析 `parseSlideXml` 接收的数据，并返回 PPTX 解析结果。 */
-function parseSlideXml(
+export function parseSlideXml(
   xml: string,
   index: number,
   width: number,
@@ -2118,11 +2014,32 @@ function parseSlideXml(
   };
 }
 
+export function throwIfPptxParseAborted(signal?: AbortSignal) {
+  if (!signal?.aborted) return;
+  const error = new Error('PPTX 解析已取消');
+  error.name = 'AbortError';
+  throw error;
+}
+
+/** 在幻灯片边界让出主线程，使大演示文稿切换或卸载可以及时取消。 */
+async function pptxParseCheckpoint(signal?: AbortSignal) {
+  throwIfPptxParseAborted(signal);
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, 0);
+  });
+  throwIfPptxParseAborted(signal);
+}
+
 /** 解析 `parsePptx` 接收的数据，并返回 PPTX 解析结果。 */
-export async function parsePptx(file: File): Promise<PptxDocument> {
+export async function parsePptx(
+  file: File,
+  signal?: AbortSignal,
+): Promise<PptxDocument> {
   // 解析顺序：包资源 -> 主题/表格样式 -> 母版/版式 -> 每页 slide，最终产出前端可直接渲染的模型。
-  const entries = await loadOfficeEntries(file);
-  const packageState = buildPackageState(entries);
+  throwIfPptxParseAborted(signal);
+  const entries = await loadOfficeEntries(file, { signal });
+  await pptxParseCheckpoint(signal);
+  const packageState = buildPptxPackageState(entries);
   const presentationXml = readXml(entries, 'ppt/presentation.xml');
   const presentationDoc = parseXml(presentationXml);
   const themeXml = readXml(entries, 'ppt/theme/theme1.xml');
@@ -2148,7 +2065,9 @@ export async function parsePptx(file: File): Promise<PptxDocument> {
   const layoutDefinitions = Object.values(masterLayoutDefinitions).flat();
   const slides: SlideModel[] = [];
 
-  slideIds.forEach((node, index) => {
+  for (let index = 0; index < slideIds.length; index += 1) {
+    await pptxParseCheckpoint(signal);
+    const node = slideIds[index];
     const relId = attr(node, 'r:id');
     const relTarget = relId ? presentationRels[relId] : undefined;
     const relPath = relTarget
@@ -2173,7 +2092,8 @@ export async function parsePptx(file: File): Promise<PptxDocument> {
         tableStyles,
       ),
     );
-  });
+  }
 
+  throwIfPptxParseAborted(signal);
   return { width: size.width, height: size.height, theme, slides };
 }

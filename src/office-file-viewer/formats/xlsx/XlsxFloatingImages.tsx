@@ -2,6 +2,10 @@
 import type { CSSProperties } from 'react';
 import React, { memo, useMemo } from 'react';
 import { useOfficeFileViewerMessages } from '../../locale';
+import {
+  useOfficeResourceUrl,
+  type OfficeResourceSource,
+} from '../../services/resource-store';
 import type { XlsxImage, XlsxSheet } from '../../services/xlsx/types';
 import {
   getXlsxMeasuredAnchorRect,
@@ -32,6 +36,14 @@ function XlsxFloatingImage({
   columnHeaderHeight: number;
 }) {
   const messages = useOfficeFileViewerMessages();
+  const source = useMemo<OfficeResourceSource>(
+    () =>
+      typeof image.src === 'string'
+        ? { kind: 'url', url: image.src }
+        : image.src,
+    [image.src],
+  );
+  const resource = useOfficeResourceUrl(source);
   const imageStyle = useMemo<CSSProperties>(
     () => ({
       left: XLSX_ROW_HEADER_WIDTH + rect.x,
@@ -45,7 +57,7 @@ function XlsxFloatingImage({
   return (
     <img
       className="office-file-xlsx-sheet-grid__floating-image"
-      src={image.src}
+      src={resource.url}
       alt={image.alt ?? ''}
       title={image.name}
       style={imageStyle}
@@ -56,6 +68,8 @@ function XlsxFloatingImage({
         );
         event.currentTarget.setAttribute('data-load-error', 'true');
       }}
+      aria-busy={resource.loading || undefined}
+      data-load-error={resource.error ? 'true' : undefined}
     />
   );
 }

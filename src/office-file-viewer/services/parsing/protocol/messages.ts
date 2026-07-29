@@ -68,12 +68,14 @@ export type MainToWorkerMessage =
       version: number;
       /** 解析任务的唯一标识，用于过滤其他 Worker 任务的消息。 */
       taskId: string;
+      /** 文档会话标识，用于拒绝旧会话或其他 Viewer 的消息。 */
+      documentSessionId: string;
       /** 标识 MainToWorkerMessage 对应的 Office 文件或数据种类。 */
       kind: 'xls' | 'ppt' | 'doc';
       /** 正在解析的原始文件名，用于格式识别和错误提示。 */
       fileName: string;
-      /** 资源或文件的二进制缓冲区；发送方移交后不再继续使用。 */
-      buffer: ArrayBuffer;
+      /** 交由 Worker 内部读取的原始文件，避免主线程提前物化缓冲区。 */
+      file: File;
     }
   | {
       /** 用于区分 MainToWorkerMessage 不同结构分支的类型标识。 */
@@ -82,6 +84,8 @@ export type MainToWorkerMessage =
       version: number;
       /** 解析任务的唯一标识，用于过滤其他 Worker 任务的消息。 */
       taskId: string;
+      /** 文档会话标识，用于拒绝旧会话或其他 Viewer 的消息。 */
+      documentSessionId: string;
     }
   | {
       /** 用于区分 MainToWorkerMessage 不同结构分支的类型标识。 */
@@ -90,6 +94,8 @@ export type MainToWorkerMessage =
       version: number;
       /** 解析任务的唯一标识，用于过滤其他 Worker 任务的消息。 */
       taskId: string;
+      /** 文档会话标识，用于拒绝旧会话或其他 Viewer 的消息。 */
+      documentSessionId: string;
       /** 分块消息的递增序号，用于 ACK 背压和顺序校验。 */
       sequence: number;
     };
@@ -109,6 +115,8 @@ export type WorkerToMainMessage =
       version: number;
       /** 解析任务的唯一标识，用于过滤其他 Worker 任务的消息。 */
       taskId: string;
+      /** 文档会话标识，用于拒绝旧会话或其他 Viewer 的消息。 */
+      documentSessionId: string;
       /** 当前解析阶段及其完成度信息。 */
       progress: ParseProgress;
     }
@@ -119,6 +127,8 @@ export type WorkerToMainMessage =
       version: number;
       /** 解析任务的唯一标识，用于过滤其他 Worker 任务的消息。 */
       taskId: string;
+      /** 文档会话标识，用于拒绝旧会话或其他 Viewer 的消息。 */
+      documentSessionId: string;
       /** 分块消息的递增序号，用于 ACK 背压和顺序校验。 */
       sequence: number;
       /** 解析器产生并等待主线程确认接收的可移植资源分块。 */
@@ -131,6 +141,8 @@ export type WorkerToMainMessage =
       version: number;
       /** 解析任务的唯一标识，用于过滤其他 Worker 任务的消息。 */
       taskId: string;
+      /** 文档会话标识，用于拒绝旧会话或其他 Viewer 的消息。 */
+      documentSessionId: string;
       /** 分块消息的递增序号，用于 ACK 背压和顺序校验。 */
       sequence: number;
       /** 工作表在工作簿集合中的索引。 */
@@ -147,6 +159,8 @@ export type WorkerToMainMessage =
       version: number;
       /** 解析任务的唯一标识，用于过滤其他 Worker 任务的消息。 */
       taskId: string;
+      /** 文档会话标识，用于拒绝旧会话或其他 Viewer 的消息。 */
+      documentSessionId: string;
       /** 分块消息的递增序号，用于 ACK 背压和顺序校验。 */
       sequence: number;
       /** WorkerToMainMessage 的主体元数据，不包含后续分块传输的大型内容。 */
@@ -159,6 +173,8 @@ export type WorkerToMainMessage =
       version: number;
       /** 解析任务的唯一标识，用于过滤其他 Worker 任务的消息。 */
       taskId: string;
+      /** 文档会话标识，用于拒绝旧会话或其他 Viewer 的消息。 */
+      documentSessionId: string;
       /** 分块消息的递增序号，用于 ACK 背压和顺序校验。 */
       sequence: number;
       /** 幻灯片在演示文稿集合中的索引。 */
@@ -173,6 +189,8 @@ export type WorkerToMainMessage =
       version: number;
       /** 解析任务的唯一标识，用于过滤其他 Worker 任务的消息。 */
       taskId: string;
+      /** 文档会话标识，用于拒绝旧会话或其他 Viewer 的消息。 */
+      documentSessionId: string;
       /** 分块消息的递增序号，用于 ACK 背压和顺序校验。 */
       sequence: number;
       /** WorkerToMainMessage 的主体元数据，不包含后续分块传输的大型内容。 */
@@ -185,6 +203,8 @@ export type WorkerToMainMessage =
       version: number;
       /** 解析任务的唯一标识，用于过滤其他 Worker 任务的消息。 */
       taskId: string;
+      /** 文档会话标识，用于拒绝旧会话或其他 Viewer 的消息。 */
+      documentSessionId: string;
       /** 分块消息的递增序号，用于 ACK 背压和顺序校验。 */
       sequence: number;
       /** WorkerToMainMessage 分块在完整集合中的起始索引。 */
@@ -199,6 +219,8 @@ export type WorkerToMainMessage =
       version: number;
       /** 解析任务的唯一标识，用于过滤其他 Worker 任务的消息。 */
       taskId: string;
+      /** 文档会话标识，用于拒绝旧会话或其他 Viewer 的消息。 */
+      documentSessionId: string;
       /** WorkerToMainMessage 解析时产生但不阻止继续预览的警告集合；未提供时沿用来源格式或渲染器的默认规则。 */
       warnings?: SpreadsheetWarning[];
     }
@@ -209,6 +231,8 @@ export type WorkerToMainMessage =
       version: number;
       /** 解析任务的唯一标识，用于过滤其他 Worker 任务的消息。 */
       taskId: string;
+      /** 文档会话标识，用于拒绝旧会话或其他 Viewer 的消息。 */
+      documentSessionId: string;
       /** WorkerToMainMessage 携带的结构化解析错误。 */
       error: SerializedParseError;
     }
@@ -219,4 +243,6 @@ export type WorkerToMainMessage =
       version: number;
       /** 解析任务的唯一标识，用于过滤其他 Worker 任务的消息。 */
       taskId: string;
+      /** 文档会话标识，用于拒绝旧会话或其他 Viewer 的消息。 */
+      documentSessionId: string;
     };

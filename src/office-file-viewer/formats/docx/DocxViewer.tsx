@@ -1,21 +1,60 @@
-import React, { memo, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  lazy,
+  memo,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
+import type {
+  DocxWordPageSource,
+  DocxWordPreviewSummary,
+} from '../../services/docx/DocxWordPageSource';
 import type {
   DocxDocument,
   DocxPageContent,
   DocxPageRegionVariants,
 } from '../../services/docx/types';
+import { collectWordPerformanceStats } from '../../services/word/collectWordPerformanceStats';
+import { createMaterializedWordPageSource } from '../../services/word/createMaterializedWordPageSource';
+import { createMemoryWordOutlineProvider } from '../../services/word/createMemoryWordOutlineProvider';
 import { OfficeEmpty } from '../../shell/Empty';
 import { WordOutlineSidebar } from '../word-outline/WordOutlineSidebar';
+import type { WordPageNavigationController } from '../word-pages/types';
+import { VirtualWordPageList } from '../word-pages/VirtualWordPageList';
+import { WordBlockPageIndex } from '../word-pages/WordBlockPageIndex';
+import { useWordPerformanceProfile } from '../word-performance/useWordPerformanceProfile';
 import { DocxBlockRenderer } from './DocxBlockRenderer';
 import { DocxPageFrame } from './DocxPageFrame';
+import {
+  paginateMeasuredDocxPage,
+  type DocxMeasuredBlock,
+  type DocxMeasurementBatch,
+} from './docxPagination';
 import './index.less';
+
+const LazyDocxMeasureHost = lazy(() =>
+  import('./DocxMeasureHost').then((module) => ({
+    default: module.DocxMeasureHost,
+  })),
+);
 
 /** 定义 DocxViewer 组件可接收的属性。 */
 type DocxViewerProps = {
   /** DocxViewerProps 当前关联的标准化文档模型。 */
   document?: DocxDocument;
+  /** 大文件路径直接消费的 DOCX 页面 Source。 */
+  source?: DocxWordPageSource;
+  /** 大文件 Source 不复制 blocks/pages 的轻量文档摘要。 */
+  summary?: DocxWordPreviewSummary;
   /** 当前预览缩放比例。 */
   zoom: number;
+  /** 当前文件解析 Session，用于隔离性能升级状态。 */
+  documentSessionId: string;
 };
 
 /** 按物理页序号选择首页、偶数页或默认页眉页脚。 */
@@ -42,6 +81,7 @@ function selectPageRegion<T>(
 function useMeasuredDocxPages(
   sourcePages: DocxPageContent[],
   preserveSectionPagination: boolean,
+  reportPaginationDuration: (durationMs: number) => void,
 ) {
   const measureRef = useRef<HTMLDivElement>(null);
   const [measuredPages, setMeasuredPages] = useState<DocxPageContent[]>();
@@ -55,132 +95,64 @@ function useMeasuredDocxPages(
       ) ?? [],
     );
     if (articles.length !== sourcePages.length) return;
+    const startedAt = performance.now();
 
     const measured: DocxPageContent[] = [];
-    let didSplit = false;
     sourcePages.forEach((sourcePage, sourcePageIndex) => {
       const elements = Array.from(
         articles[sourcePageIndex].children,
       ) as HTMLElement[];
       if (elements.length !== sourcePage.blocks.length) return;
-
-      const contentHeight =
-        sourcePage.page.minHeight -
-        sourcePage.page.marginTop -
-        sourcePage.page.marginBottom;
-      const firstElement = elements[0];
-      const lastElement = elements[elements.length - 1];
-      const measuredContentHeight =
-        firstElement && lastElement
-          ? lastElement.offsetTop +
-            lastElement.offsetHeight -
-            firstElement.offsetTop
-          : 0;
-      if (measuredContentHeight <= contentHeight + 120) {
-        // Word/WPS 允许正文进入页脚预留区；小幅超出不应覆盖源文件保存的分页结果。
-        measured.push(sourcePage);
-        return;
-      }
-
-      let currentBlocks: DocxPageContent['blocks'] = [];
-      let currentHeight = 0;
-      let flowIndex = 0;
-      const pushPage = () => {
-        if (!currentBlocks.length) return;
-        flowIndex += 1;
-        measured.push({
-          ...sourcePage,
-          id: `${sourcePage.id}-flow-${flowIndex}`,
-          blocks: currentBlocks,
-        });
-        currentBlocks = [];
-        currentHeight = 0;
-      };
-      const appendBlock = (
-        block: DocxPageContent['blocks'][number],
-        height: number,
-      ) => {
-        if (
-          currentBlocks.length &&
-          currentHeight + height > contentHeight + 1
-        ) {
-          pushPage();
-          didSplit = true;
-        }
-        currentBlocks.push(block);
-        currentHeight += height;
-      };
-
-      sourcePage.blocks.forEach((block, blockIndex) => {
-        const element = elements[blockIndex];
-        const nextElement = elements[blockIndex + 1];
-        const blockHeight = nextElement
-          ? nextElement.offsetTop - element.offsetTop
-          : element.offsetHeight +
-            Number.parseFloat(
-              window.getComputedStyle(element).marginBottom || '0',
-            );
-        if (block.type !== 'table') {
-          appendBlock(block, blockHeight);
-          return;
-        }
-        if (blockHeight <= contentHeight * 0.6) {
-          // 可完整放入一页的中小表格由 Word 整体换页，避免只在上一页留下少量表头。
-          appendBlock(block, blockHeight);
-          return;
-        }
-
-        const rows = Array.from(
-          element.querySelectorAll<HTMLElement>('tbody > tr'),
-        );
-        if (rows.length !== block.rows.length) {
-          appendBlock(block, blockHeight);
-          return;
-        }
-
-        let rowStart = 0;
-        let rowHeight = 0;
-        const appendTableRows = (rowEnd: number) => {
-          if (rowEnd <= rowStart) return;
-          const tablePart = {
-            ...block,
-            id: `${block.id}-rows-${rowStart + 1}-${rowEnd}`,
-            rows: block.rows.slice(rowStart, rowEnd),
+      const measurements: DocxMeasuredBlock[] = sourcePage.blocks.map(
+        (block, blockIndex) => {
+          const element = elements[blockIndex];
+          const nextElement = elements[blockIndex + 1];
+          const blockHeight = nextElement
+            ? nextElement.offsetTop - element.offsetTop
+            : element.offsetHeight +
+              Number.parseFloat(
+                window.getComputedStyle(element).marginBottom || '0',
+              );
+          const rowHeights =
+            block.type === 'table'
+              ? Array.from(
+                  element.querySelectorAll<HTMLElement>('tbody > tr'),
+                ).map((row) => row.getBoundingClientRect().height)
+              : undefined;
+          return {
+            block,
+            height: blockHeight,
+            rowHeights,
+            originalTableRowCount:
+              block.type === 'table' ? block.rows.length : undefined,
           };
-          appendBlock(tablePart, rowHeight);
-          rowStart = rowEnd;
-          rowHeight = 0;
-        };
-
-        rows.forEach((row, rowIndex) => {
-          const height = row.getBoundingClientRect().height;
-          if (
-            rowIndex > rowStart &&
-            currentHeight + rowHeight + height > contentHeight + 1
-          ) {
-            appendTableRows(rowIndex);
-            pushPage();
-            didSplit = true;
-          }
-          rowHeight += height;
-        });
-        appendTableRows(rows.length);
-      });
-      pushPage();
+        },
+      );
+      measured.push(...paginateMeasuredDocxPage(sourcePage, measurements));
     });
+    const didSplit =
+      measured.length !== sourcePages.length ||
+      measured.some((page, index) => page !== sourcePages[index]);
     if (didSplit) setMeasuredPages(measured);
-  }, [preserveSectionPagination, sourcePages]);
+    reportPaginationDuration(performance.now() - startedAt);
+  }, [preserveSectionPagination, reportPaginationDuration, sourcePages]);
 
   return { measureRef, pages: measuredPages ?? sourcePages };
 }
 
 // DocxViewer 负责 DOCX 页面内容的缩放渲染和滚动布局。
 /** 渲染 DocxViewerComponent 组件。 */
-function DocxViewerComponent({ document, zoom }: DocxViewerProps) {
+function DocxViewerComponent({
+  document,
+  source,
+  summary,
+  zoom,
+  documentSessionId,
+}: DocxViewerProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const sourcePages = useMemo<DocxPageContent[]>(
+  const materializedSourcePages = useMemo<DocxPageContent[]>(
     () =>
-      document
+      document && !source
         ? document.pages?.length
           ? document.pages
           : [
@@ -191,24 +163,90 @@ function DocxViewerComponent({ document, zoom }: DocxViewerProps) {
               },
             ]
         : [],
-    [document],
+    [document, source],
   );
   const preserveSectionPagination = Boolean(
-    document?.preserveSectionPagination,
+    source
+      ? summary?.preserveSectionPagination
+      : document?.preserveSectionPagination,
   );
-  const { measureRef, pages } = useMeasuredDocxPages(
-    sourcePages,
+  const materializedOutlineItems = useMemo(
+    () => (source ? [] : document?.outline ?? []),
+    [document?.outline, source],
+  );
+  const materializedOutlineProvider = useMemo(
+    () => createMemoryWordOutlineProvider(materializedOutlineItems),
+    [materializedOutlineItems],
+  );
+  const materializedPerformanceStats = useMemo(
+    () =>
+      document && !source
+        ? collectWordPerformanceStats(document, {
+            estimatedPageCount: materializedSourcePages.length,
+          })
+        : {
+            estimatedPageCount: 0,
+            outlineCount: 0,
+            paragraphCount: 0,
+            tableRowCount: 0,
+            imageCount: 0,
+            drawingCount: 0,
+            textLength: 0,
+            slowPagination: false,
+          },
+    [document, materializedSourcePages.length, source],
+  );
+  const { profile: materializedProfile, reportPaginationDuration } =
+    useWordPerformanceProfile(documentSessionId, materializedPerformanceStats);
+  const { measureRef, pages: materializedPages } = useMeasuredDocxPages(
+    materializedSourcePages,
     preserveSectionPagination,
+    reportPaginationDuration,
   );
+  const materializedPageSource = useMemo(
+    () =>
+      createMaterializedWordPageSource(materializedPages, {
+        getId: (pageItem) => pageItem.id,
+        getEstimatedContentHeight: (pageItem) => pageItem.page.minHeight,
+        getSourceBlockIds: (pageItem) =>
+          pageItem.blocks.flatMap((block) => [
+            block.id,
+            ...(block.sourceBlockId ? [block.sourceBlockId] : []),
+          ]),
+      }),
+    [materializedPages],
+  );
+  useEffect(
+    () => () => void materializedPageSource.dispose(),
+    [materializedPageSource],
+  );
+  const pageSource = source ?? materializedPageSource;
+  const pageSnapshot = useSyncExternalStore(
+    pageSource.subscribe,
+    pageSource.getSnapshot,
+    pageSource.getSnapshot,
+  );
+  const outlineItems = useMemo(
+    () => (source ? source.getOutlineItems() : materializedOutlineItems),
+    [materializedOutlineItems, pageSnapshot.revision, source],
+  );
+  const outlineProvider = source?.outline ?? materializedOutlineProvider;
+  const profile = source?.getPerformanceProfile() ?? materializedProfile;
+  const blockPageIndex = useMemo(() => {
+    const index = new WordBlockPageIndex();
+    pageSnapshot.pages.forEach((meta) => index.replacePage(meta));
+    return index;
+  }, [pageSnapshot.pages, pageSnapshot.revision]);
+  const pageNavigationControllerRef = useRef<WordPageNavigationController>();
   const layoutKey = useMemo(
-    () => `${zoom}:${pages.map((item) => item.id).join('|')}`,
-    [pages, zoom],
+    () =>
+      source
+        ? `${documentSessionId}:${zoom}:source`
+        : `${zoom}:${materializedPages.map((item) => item.id).join('|')}`,
+    [documentSessionId, materializedPages, source, zoom],
   );
-  if (!document?.blocks.length || !pages.length) {
-    return <OfficeEmpty kind="docx" />;
-  }
 
-  const renderPageBlocks = (pageItem: DocxPageContent) => {
+  const renderPageBlocks = useCallback((pageItem: DocxPageContent) => {
     const contentWidth =
       pageItem.page.width -
       pageItem.page.marginLeft -
@@ -220,17 +258,121 @@ function DocxViewerComponent({ document, zoom }: DocxViewerProps) {
         availableWidth={contentWidth}
       />
     ));
-  };
+  }, []);
+  const renderPage = useCallback(
+    (pageItem: DocxPageContent, pageIndex: number) => {
+      const differentEvenOdd = Boolean(
+        pageItem.headers?.even !== undefined ||
+          pageItem.footerPageNumbers?.even !== undefined,
+      );
+      const firstBodyText = pageItem.blocks.find(
+        (block) => block.type === 'paragraph' && block.text,
+      );
+      // 目录首页在源文档中关闭页眉，后续目录续页恢复默认页眉。
+      const suppressHeader =
+        firstBodyText?.type === 'paragraph' && firstBodyText.text === '目录';
+      const headerBlocks = suppressHeader
+        ? undefined
+        : selectPageRegion<DocxPageContent['blocks']>(
+            pageItem.headers,
+            pageIndex,
+            pageItem.differentFirstPage,
+            differentEvenOdd,
+          );
+      const footerPageNumber = selectPageRegion<boolean>(
+        pageItem.footerPageNumbers,
+        pageIndex,
+        pageItem.differentFirstPage,
+        differentEvenOdd,
+      );
+      return (
+        <DocxPageFrame
+          key={pageItem.id}
+          page={pageItem.page}
+          zoom={zoom}
+          header={
+            headerBlocks?.length
+              ? renderPageBlocks({ ...pageItem, blocks: headerBlocks })
+              : undefined
+          }
+          footer={
+            footerPageNumber && pageIndex > 0 ? (
+              <span className="office-file-docx-page-frame__page-number">
+                - {pageIndex} -
+              </span>
+            ) : undefined
+          }
+        >
+          {renderPageBlocks(pageItem)}
+        </DocxPageFrame>
+      );
+    },
+    [renderPageBlocks, zoom],
+  );
+  const measurementBatch = source?.getMeasurementBatch();
+  const renderMeasurementBlock = useCallback(
+    (block: DocxPageContent['blocks'][number]) => {
+      const page = source?.getMeasurementBatch()?.sourcePage;
+      const availableWidth = page
+        ? page.page.width - page.page.marginLeft - page.page.marginRight
+        : 0;
+      return (
+        <DocxBlockRenderer
+          key={block.id}
+          block={block}
+          availableWidth={availableWidth}
+        />
+      );
+    },
+    [source],
+  );
+  const handleMeasured = useCallback(
+    (
+      batch: DocxMeasurementBatch,
+      blocks: readonly DocxMeasuredBlock[],
+      durationMs: number,
+    ) => {
+      void source
+        ?.commitMeasurement(batch, blocks, durationMs)
+        .catch((error) => source.failMeasurement(batch, error));
+    },
+    [source],
+  );
+  const handleMeasurementError = useCallback(
+    (batch: DocxMeasurementBatch, error: unknown) => {
+      source?.failMeasurement(batch, error);
+    },
+    [source],
+  );
+
+  if (
+    (!source && (!document?.blocks.length || !materializedPages.length)) ||
+    (source && !summary)
+  ) {
+    return <OfficeEmpty kind="docx" />;
+  }
 
   return (
-    <div className="office-file-docx-viewer">
-      {!preserveSectionPagination ? (
+    <div
+      className="office-file-docx-viewer"
+      data-word-source-mode={source ? 'progressive' : 'materialized'}
+    >
+      {source ? (
+        <Suspense fallback={null}>
+          <LazyDocxMeasureHost
+            batch={measurementBatch}
+            renderBlock={renderMeasurementBlock}
+            onMeasured={handleMeasured}
+            onError={handleMeasurementError}
+          />
+        </Suspense>
+      ) : !preserveSectionPagination ? (
         <div
           ref={measureRef}
           className="office-file-docx-viewer__measure"
           aria-hidden="true"
         >
-          {sourcePages.map((pageItem) => (
+          {materializedSourcePages.map((pageItem) => (
             <DocxPageFrame key={pageItem.id} page={pageItem.page} zoom={100}>
               {renderPageBlocks(pageItem)}
             </DocxPageFrame>
@@ -239,63 +381,33 @@ function DocxViewerComponent({ document, zoom }: DocxViewerProps) {
       ) : null}
       <div className="office-file-docx-viewer__body">
         <WordOutlineSidebar
-          items={document.outline ?? []}
+          items={outlineItems}
+          provider={outlineProvider}
+          outlineMode={profile.outlineMode}
+          pageMode={profile.pageMode}
+          pageSource={pageSource}
+          blockPageIndex={blockPageIndex}
+          pageNavigationControllerRef={pageNavigationControllerRef}
           scrollContainerRef={scrollContainerRef}
-          documentIdentity={document}
+          documentSessionId={documentSessionId}
           layoutKey={layoutKey}
         />
         <div
           ref={scrollContainerRef}
           className="office-file-docx-viewer__scroller"
         >
-          {pages.map((pageItem, pageIndex) => {
-            const differentEvenOdd = Boolean(
-              pageItem.headers?.even !== undefined ||
-                pageItem.footerPageNumbers?.even !== undefined,
-            );
-            const firstBodyText = pageItem.blocks.find(
-              (block) => block.type === 'paragraph' && block.text,
-            );
-            // 目录首页在源文档中关闭页眉，后续目录续页恢复默认页眉。
-            const suppressHeader =
-              firstBodyText?.type === 'paragraph' &&
-              firstBodyText.text === '目录';
-            const headerBlocks = suppressHeader
-              ? undefined
-              : selectPageRegion<DocxPageContent['blocks']>(
-                  pageItem.headers,
-                  pageIndex,
-                  pageItem.differentFirstPage,
-                  differentEvenOdd,
-                );
-            const footerPageNumber = selectPageRegion<boolean>(
-              pageItem.footerPageNumbers,
-              pageIndex,
-              pageItem.differentFirstPage,
-              differentEvenOdd,
-            );
-            return (
-              <DocxPageFrame
-                key={pageItem.id}
-                page={pageItem.page}
-                zoom={zoom}
-                header={
-                  headerBlocks?.length
-                    ? renderPageBlocks({ ...pageItem, blocks: headerBlocks })
-                    : undefined
-                }
-                footer={
-                  footerPageNumber && pageIndex > 0 ? (
-                    <span className="office-file-docx-page-frame__page-number">
-                      - {pageIndex} -
-                    </span>
-                  ) : undefined
-                }
-              >
-                {renderPageBlocks(pageItem)}
-              </DocxPageFrame>
-            );
-          })}
+          {profile.pageMode === 'windowed' ? (
+            <VirtualWordPageList
+              source={pageSource}
+              scrollerRef={scrollContainerRef}
+              layoutRevision={layoutKey}
+              zoom={zoom}
+              navigationControllerRef={pageNavigationControllerRef}
+              renderPage={renderPage}
+            />
+          ) : (
+            materializedPages.map(renderPage)
+          )}
         </div>
       </div>
     </div>

@@ -16,24 +16,54 @@ import {
   type OfficeFileViewerLocale,
   type OfficeFileViewerMessages,
 } from './locale';
+import type {
+  DocWordPageSource,
+  DocWordPreviewSummary,
+} from './services/doc/DocWordPageSource';
 import { disposeDocDocument, type DocDocument } from './services/doc/types';
+import type {
+  DocxWordPageSource,
+  DocxWordPreviewSummary,
+} from './services/docx/DocxWordPageSource';
 import type { DocxDocument } from './services/docx/types';
 import {
   type OfficeParseOptions,
   type ParseProgress,
 } from './services/parsing';
 import { createOfficeFileViewerParseSession } from './services/parsing/createParseSession';
-import type { OfficeFileViewerParseSession } from './services/parsing/internalTypes';
+import type {
+  OfficeFileViewerParseSession,
+  OfficeFileViewerPreviewHandle,
+  OfficeFileViewerPreviewState,
+} from './services/parsing/internalTypes';
 import type { PptxDocument } from './services/pptx/types';
 import { disposePresentationDocument } from './services/presentation/dispose';
+import type {
+  PresentationSource,
+  PresentationSourceSnapshot,
+} from './services/presentation/types';
 import {
   detectPreviewKind,
+  disposeParsedOfficeFile,
   isPresentationPreviewKind,
   isSpreadsheetPreviewKind,
   isSupportedOfficeFileName,
   type ParsedOfficeFile,
   type PreviewKind,
 } from './services/preview';
+import {
+  createOfficeResourceStore,
+  OfficeResourceStoreProvider,
+} from './services/resource-store';
+import {
+  createOfficeDocumentSession,
+  disposeDocumentSession,
+  type OfficeDocumentSession,
+} from './services/session';
+import type {
+  SpreadsheetSource,
+  SpreadsheetSourceSnapshot,
+} from './services/spreadsheet/SpreadsheetSource';
 import {
   disposeSpreadsheetWorkbook,
   type SpreadsheetWorkbook,
@@ -54,8 +84,8 @@ const { Content } = Layout;
 type PendingPartialResult = {
   /** 本次加载的递增代次，用于丢弃上一次异步解析产生的过期结果。 */
   loadGeneration: number;
-  /** 当前加载代次产生的部分或完整标准化解析结果。 */
-  parsed: ParsedOfficeFile;
+  /** 当前加载代次产生的部分或完整内部预览状态。 */
+  preview: OfficeFileViewerPreviewState;
 };
 
 /** 定义预览文件来源，可直接传入 File、URL，或返回文件数据的异步加载函数。 */
@@ -246,19 +276,6 @@ async function normalizeOfficeFileUri(
   throw new OfficeFileViewerInputError(messages.file.invalidUri);
 }
 
-/** 释放一个已经取得 Blob URL 所有权的解析结果。 */
-function disposeParsedOfficeFile(parsed: ParsedOfficeFile) {
-  if (isSpreadsheetPreviewKind(parsed.kind)) {
-    disposeSpreadsheetWorkbook(parsed.workbook);
-    return;
-  }
-  if (isPresentationPreviewKind(parsed.kind)) {
-    disposePresentationDocument(parsed.document);
-    return;
-  }
-  if (parsed.kind === 'doc') disposeDocDocument(parsed.document);
-}
-
 /** 实现 Office 文件加载、解析会话、渐进结果和工具栏状态。 */
 function OfficeFileViewerContent({
   uri,
@@ -287,12 +304,32 @@ function OfficeFileViewerContent({
     useState<PreviewKind>(defaultPreviewKind);
   const [pptxDocument, setPptxDocument] = useState<PptxDocument>();
   const presentationDocumentRef = useRef<PptxDocument>();
+  const [presentationPreviewSource, setPresentationPreviewSource] =
+    useState<PresentationSource>();
+  const [presentationPreviewSummary, setPresentationPreviewSummary] =
+    useState<PresentationSourceSnapshot>();
+  const presentationPreviewSourceRef = useRef<PresentationSource>();
   const [spreadsheetWorkbook, setSpreadsheetWorkbook] =
     useState<SpreadsheetWorkbook>();
   const spreadsheetWorkbookRef = useRef<SpreadsheetWorkbook>();
+  const [spreadsheetPreviewSource, setSpreadsheetPreviewSource] =
+    useState<SpreadsheetSource>();
+  const [spreadsheetPreviewSummary, setSpreadsheetPreviewSummary] =
+    useState<SpreadsheetSourceSnapshot>();
+  const spreadsheetPreviewSourceRef = useRef<SpreadsheetSource>();
   const [docxDocument, setDocxDocument] = useState<DocxDocument>();
+  const docxDocumentRef = useRef<DocxDocument>();
+  const [docxPreviewSource, setDocxPreviewSource] =
+    useState<DocxWordPageSource>();
+  const [docxPreviewSummary, setDocxPreviewSummary] =
+    useState<DocxWordPreviewSummary>();
+  const docxPreviewSourceRef = useRef<DocxWordPageSource>();
   const [docDocument, setDocDocument] = useState<DocDocument>();
   const docDocumentRef = useRef<DocDocument>();
+  const [docPreviewSource, setDocPreviewSource] = useState<DocWordPageSource>();
+  const [docPreviewSummary, setDocPreviewSummary] =
+    useState<DocWordPreviewSummary>();
+  const docPreviewSourceRef = useRef<DocWordPageSource>();
   const [activeIndex, setActiveIndex] = useState(0);
   const [activeSheetId, setActiveSheetId] = useState<string>();
   const [zoom, setZoom] = useState(defaultZoom);
@@ -301,7 +338,9 @@ function OfficeFileViewerContent({
     defaultShowSpeakerNotes,
   );
   const viewerRef = useRef<HTMLDivElement | null>(null);
+  const resourceStore = useMemo(() => createOfficeResourceStore(), []);
   const loadGenerationRef = useRef(0);
+  const documentSessionIdRef = useRef<string>();
   const requestControllerRef = useRef<AbortController>();
   const parseSessionRef = useRef<OfficeFileViewerParseSession>();
   const pendingPartialRef = useRef<PendingPartialResult>();
@@ -338,52 +377,115 @@ function OfficeFileViewerContent({
   const clearPreviewDocuments = useCallback(() => {
     // 先移除 React 模型，再释放 refs 中唯一拥有资源的完整或失败冻结模型。
     setPptxDocument(undefined);
+    setPresentationPreviewSource(undefined);
+    setPresentationPreviewSummary(undefined);
     setSpreadsheetWorkbook(undefined);
+    setSpreadsheetPreviewSource(undefined);
+    setSpreadsheetPreviewSummary(undefined);
     setDocxDocument(undefined);
+    setDocxPreviewSource(undefined);
+    setDocxPreviewSummary(undefined);
     setDocDocument(undefined);
+    setDocPreviewSource(undefined);
+    setDocPreviewSummary(undefined);
     setActiveIndex(0);
     setActiveSheetId(undefined);
 
     const spreadsheet = spreadsheetWorkbookRef.current;
     spreadsheetWorkbookRef.current = undefined;
     disposeSpreadsheetWorkbook(spreadsheet);
+    void disposeDocumentSession(spreadsheet);
+    const spreadsheetSource = spreadsheetPreviewSourceRef.current;
+    spreadsheetPreviewSourceRef.current = undefined;
+    void disposeDocumentSession(spreadsheetSource);
     const presentation = presentationDocumentRef.current;
     presentationDocumentRef.current = undefined;
     disposePresentationDocument(presentation);
+    void disposeDocumentSession(presentation);
+    const presentationSource = presentationPreviewSourceRef.current;
+    presentationPreviewSourceRef.current = undefined;
+    void disposeDocumentSession(presentationSource);
+    const docx = docxDocumentRef.current;
+    docxDocumentRef.current = undefined;
+    void disposeDocumentSession(docx);
+    const docxSource = docxPreviewSourceRef.current;
+    docxPreviewSourceRef.current = undefined;
+    void disposeDocumentSession(docxSource);
     const documentModel = docDocumentRef.current;
     docDocumentRef.current = undefined;
     disposeDocDocument(documentModel);
+    void disposeDocumentSession(documentModel);
+    const documentSource = docPreviewSourceRef.current;
+    docPreviewSourceRef.current = undefined;
+    void disposeDocumentSession(documentSource);
   }, []);
 
-  const installPartialSnapshot = useCallback((parsed: ParsedOfficeFile) => {
-    if (parsed.kind === 'xls') {
-      setSpreadsheetWorkbook(parsed.workbook);
-      setActiveSheetId((current) =>
-        current && parsed.workbook.sheets.some((sheet) => sheet.id === current)
-          ? current
-          : parsed.workbook.sheets[0]?.id,
-      );
-      return;
-    }
-    if (parsed.kind === 'ppt') {
-      setPptxDocument(parsed.document);
-      setActiveIndex((current) =>
-        Math.min(current, Math.max(0, parsed.document.slides.length - 1)),
-      );
-      return;
-    }
-    if (parsed.kind === 'doc') {
-      setDocDocument(parsed.document);
-    }
-  }, []);
+  const installPartialSnapshot = useCallback(
+    (preview: OfficeFileViewerPreviewState) => {
+      if (preview.mode === 'source') {
+        if (preview.previewKind === 'doc') {
+          docPreviewSourceRef.current = preview.source;
+          setDocPreviewSource(preview.source);
+          setDocPreviewSummary(preview.summary);
+        } else if (preview.previewKind === 'docx') {
+          docxPreviewSourceRef.current = preview.source;
+          setDocxPreviewSource(preview.source);
+          setDocxPreviewSummary(preview.summary);
+        } else if (isSpreadsheetPreviewKind(preview.previewKind)) {
+          spreadsheetPreviewSourceRef.current = preview.source;
+          setSpreadsheetPreviewSource(preview.source);
+          setSpreadsheetPreviewSummary(preview.summary);
+          setActiveSheetId((current) =>
+            current &&
+            preview.summary.sheets.some((sheet) => sheet.id === current)
+              ? current
+              : preview.summary.sheets[0]?.id,
+          );
+        } else {
+          presentationPreviewSourceRef.current = preview.source;
+          setPresentationPreviewSource(preview.source);
+          setPresentationPreviewSummary(preview.summary);
+          setActiveIndex((current) =>
+            Math.min(current, Math.max(0, preview.summary.slideCount - 1)),
+          );
+        }
+        return;
+      }
+      const parsed = preview.model;
+      if (parsed.kind === 'xls') {
+        setSpreadsheetWorkbook(parsed.workbook);
+        setActiveSheetId((current) =>
+          current &&
+          parsed.workbook.sheets.some((sheet) => sheet.id === current)
+            ? current
+            : parsed.workbook.sheets[0]?.id,
+        );
+        return;
+      }
+      if (parsed.kind === 'ppt') {
+        setPptxDocument(parsed.document);
+        setActiveIndex((current) =>
+          Math.min(current, Math.max(0, parsed.document.slides.length - 1)),
+        );
+        return;
+      }
+      if (parsed.kind === 'doc') {
+        setDocDocument(parsed.document);
+      }
+    },
+    [],
+  );
 
   const schedulePartialSnapshot = useCallback(
-    (parsed: ParsedOfficeFile, loadGeneration: number) => {
-      pendingPartialRef.current = { parsed, loadGeneration };
+    (preview: OfficeFileViewerPreviewState, loadGeneration: number) => {
+      pendingPartialRef.current = { preview, loadGeneration };
       if (partialFrameRef.current !== undefined) return;
       if (typeof window === 'undefined') {
-        if (loadGeneration === loadGenerationRef.current) {
-          installPartialSnapshot(parsed);
+        if (
+          loadGeneration === loadGenerationRef.current &&
+          preview.sessionId === documentSessionIdRef.current
+        ) {
+          installPartialSnapshot(preview);
         }
         pendingPartialRef.current = undefined;
         return;
@@ -392,8 +494,12 @@ function OfficeFileViewerContent({
         partialFrameRef.current = undefined;
         const pending = pendingPartialRef.current;
         pendingPartialRef.current = undefined;
-        if (pending && pending.loadGeneration === loadGenerationRef.current) {
-          installPartialSnapshot(pending.parsed);
+        if (
+          pending &&
+          pending.loadGeneration === loadGenerationRef.current &&
+          pending.preview.sessionId === documentSessionIdRef.current
+        ) {
+          installPartialSnapshot(pending.preview);
         }
       });
     },
@@ -405,6 +511,7 @@ function OfficeFileViewerContent({
       parseSessionRef.current?.cancel();
       parseSessionRef.current?.dispose();
       parseSessionRef.current = undefined;
+      documentSessionIdRef.current = undefined;
       cancelPartialFrame();
       clearPreviewDocuments();
       setLoading(true);
@@ -412,6 +519,7 @@ function OfficeFileViewerContent({
       setParseProgress(undefined);
       setPartialWarning(false);
       let retainedPartial = false;
+      let documentSession: OfficeDocumentSession | undefined;
 
       try {
         ensureSupportedOfficeFile(file, messagesRef.current);
@@ -427,49 +535,112 @@ function OfficeFileViewerContent({
           setInternalShowSpeakerNotes(defaultShowSpeakerNotesRef.current);
         }
 
+        documentSession = createOfficeDocumentSession();
+        documentSessionIdRef.current = documentSession.id;
+        const isCurrentSession = () =>
+          loadGeneration === loadGenerationRef.current &&
+          documentSession?.id === documentSessionIdRef.current;
         const parseSession = createOfficeFileViewerParseSession(
           file,
           parseOptionsRef.current,
+          documentSession,
         );
         parseSessionRef.current = parseSession;
         const unsubscribeProgress = parseSession.subscribe((progress) => {
-          if (loadGeneration !== loadGenerationRef.current) return;
+          if (!isCurrentSession()) return;
           setParseProgress(progress);
           onParseProgressRef.current?.(progress);
         });
         const unsubscribePartial = parseSession.subscribePartial((partial) => {
-          if (loadGeneration !== loadGenerationRef.current) return;
+          if (
+            !isCurrentSession() ||
+            partial.sessionId !== documentSession?.id
+          ) {
+            return;
+          }
           schedulePartialSnapshot(partial, loadGeneration);
         });
-        let parsed: ParsedOfficeFile;
+        let preview: OfficeFileViewerPreviewHandle;
         try {
-          parsed = await parseSession.result;
+          preview = await parseSession.result;
         } catch (nextError) {
           cancelPartialFrame();
           const partial = parseSession.partialResult;
           if (partial) {
-            if (loadGeneration !== loadGenerationRef.current) {
-              disposeParsedOfficeFile(partial);
-            } else if (partial.kind === 'xls') {
-              spreadsheetWorkbookRef.current = partial.workbook;
+            if (
+              !isCurrentSession() ||
+              partial.sessionId !== documentSession.id
+            ) {
+              if (partial.mode === 'materialized') {
+                await disposeParsedOfficeFile(partial.model);
+              } else {
+                await documentSession.dispose();
+              }
+            } else if (
+              partial.mode === 'materialized' &&
+              partial.model.kind === 'xls'
+            ) {
+              spreadsheetWorkbookRef.current = partial.model.workbook;
               installPartialSnapshot(partial);
               setPartialWarning(true);
               setError(undefined);
               retainedPartial = true;
-            } else if (partial.kind === 'ppt') {
-              presentationDocumentRef.current = partial.document;
+            } else if (
+              partial.mode === 'materialized' &&
+              partial.model.kind === 'ppt'
+            ) {
+              presentationDocumentRef.current = partial.model.document;
               installPartialSnapshot(partial);
               setPartialWarning(true);
               setError(undefined);
               retainedPartial = true;
-            } else if (partial.kind === 'doc') {
-              docDocumentRef.current = partial.document;
+            } else if (
+              partial.mode === 'materialized' &&
+              partial.model.kind === 'doc'
+            ) {
+              docDocumentRef.current = partial.model.document;
+              installPartialSnapshot(partial);
+              setPartialWarning(true);
+              setError(undefined);
+              retainedPartial = true;
+            } else if (
+              partial.mode === 'source' &&
+              partial.previewKind === 'doc'
+            ) {
+              docPreviewSourceRef.current = partial.source;
+              installPartialSnapshot(partial);
+              setPartialWarning(true);
+              setError(undefined);
+              retainedPartial = true;
+            } else if (
+              partial.mode === 'source' &&
+              partial.previewKind === 'docx'
+            ) {
+              docxPreviewSourceRef.current = partial.source;
+              installPartialSnapshot(partial);
+              setPartialWarning(true);
+              setError(undefined);
+              retainedPartial = true;
+            } else if (
+              partial.mode === 'source' &&
+              isPresentationPreviewKind(partial.previewKind)
+            ) {
+              presentationPreviewSourceRef.current = partial.source;
+              installPartialSnapshot(partial);
+              setPartialWarning(true);
+              setError(undefined);
+              retainedPartial = true;
+            } else if (
+              partial.mode === 'source' &&
+              isSpreadsheetPreviewKind(partial.previewKind)
+            ) {
+              spreadsheetPreviewSourceRef.current = partial.source;
               installPartialSnapshot(partial);
               setPartialWarning(true);
               setError(undefined);
               retainedPartial = true;
             } else {
-              disposeParsedOfficeFile(partial);
+              await documentSession.dispose();
             }
           }
           throw nextError;
@@ -481,10 +652,52 @@ function OfficeFileViewerContent({
             parseSessionRef.current = undefined;
           }
         }
-        if (loadGeneration !== loadGenerationRef.current) {
-          disposeParsedOfficeFile(parsed);
+        if (!isCurrentSession() || preview.sessionId !== documentSession.id) {
+          if (preview.mode === 'materialized') {
+            await disposeParsedOfficeFile(preview.model);
+          } else {
+            await preview.dispose();
+          }
           return;
         }
+        if (preview.mode === 'source') {
+          cancelPartialFrame();
+          setParseProgress(undefined);
+          setPartialWarning(false);
+          if (preview.previewKind === 'doc') {
+            docPreviewSourceRef.current = preview.source;
+            setDocPreviewSource(preview.source);
+            setDocPreviewSummary(preview.summary);
+            setDocDocument(undefined);
+            docDocumentRef.current = undefined;
+          } else if (preview.previewKind === 'docx') {
+            docxPreviewSourceRef.current = preview.source;
+            setDocxPreviewSource(preview.source);
+            setDocxPreviewSummary(preview.summary);
+            setDocxDocument(undefined);
+            docxDocumentRef.current = undefined;
+          } else if (isSpreadsheetPreviewKind(preview.previewKind)) {
+            spreadsheetPreviewSourceRef.current = preview.source;
+            setSpreadsheetPreviewSource(preview.source);
+            setSpreadsheetPreviewSummary(preview.summary);
+            setSpreadsheetWorkbook(undefined);
+            spreadsheetWorkbookRef.current = undefined;
+            setActiveSheetId((current) =>
+              current &&
+              preview.summary.sheets.some((sheet) => sheet.id === current)
+                ? current
+                : preview.summary.sheets[0]?.id,
+            );
+          } else {
+            presentationPreviewSourceRef.current = preview.source;
+            setPresentationPreviewSource(preview.source);
+            setPresentationPreviewSummary(preview.summary);
+            setPptxDocument(undefined);
+            presentationDocumentRef.current = undefined;
+          }
+          return;
+        }
+        const parsed = preview.model;
 
         cancelPartialFrame();
         setParseProgress(undefined);
@@ -493,18 +706,31 @@ function OfficeFileViewerContent({
           ? parsed.document
           : undefined;
         disposePresentationDocument(presentationDocumentRef.current);
+        void disposeDocumentSession(presentationDocumentRef.current);
         presentationDocumentRef.current = nextPresentationDocument;
         setPptxDocument(nextPresentationDocument);
+        presentationPreviewSourceRef.current = undefined;
+        setPresentationPreviewSource(undefined);
+        setPresentationPreviewSummary(undefined);
         const nextSpreadsheetWorkbook = isSpreadsheetPreviewKind(parsed.kind)
           ? parsed.workbook
           : undefined;
         disposeSpreadsheetWorkbook(spreadsheetWorkbookRef.current);
+        void disposeDocumentSession(spreadsheetWorkbookRef.current);
         spreadsheetWorkbookRef.current = nextSpreadsheetWorkbook;
         setSpreadsheetWorkbook(nextSpreadsheetWorkbook);
-        setDocxDocument(parsed.kind === 'docx' ? parsed.document : undefined);
+        spreadsheetPreviewSourceRef.current = undefined;
+        setSpreadsheetPreviewSource(undefined);
+        setSpreadsheetPreviewSummary(undefined);
+        const nextDocxDocument =
+          parsed.kind === 'docx' ? parsed.document : undefined;
+        void disposeDocumentSession(docxDocumentRef.current);
+        docxDocumentRef.current = nextDocxDocument;
+        setDocxDocument(nextDocxDocument);
         const nextDocDocument =
           parsed.kind === 'doc' ? parsed.document : undefined;
         disposeDocDocument(docDocumentRef.current);
+        void disposeDocumentSession(docDocumentRef.current);
         docDocumentRef.current = nextDocDocument;
         setDocDocument(nextDocDocument);
         setActiveSheetId((current) => {
@@ -516,7 +742,13 @@ function OfficeFileViewerContent({
         });
         onFileParsedRef.current?.(parsed, file);
       } catch (nextError) {
-        if (loadGeneration !== loadGenerationRef.current) return;
+        if (
+          loadGeneration !== loadGenerationRef.current ||
+          (documentSession &&
+            documentSession.id !== documentSessionIdRef.current)
+        ) {
+          return;
+        }
 
         // 界面只展示可本地化的概述，原始解析错误仍通过回调交给调用方诊断。
         const normalizedError =
@@ -525,6 +757,9 @@ function OfficeFileViewerContent({
             : new Error(messagesRef.current.file.parseFailed);
         setParseProgress(undefined);
         if (!retainedPartial) {
+          if (documentSessionIdRef.current === documentSession?.id) {
+            documentSessionIdRef.current = undefined;
+          }
           setError(
             normalizedError instanceof OfficeFileViewerInputError
               ? normalizedError.message
@@ -562,6 +797,7 @@ function OfficeFileViewerContent({
     parseSessionRef.current?.cancel();
     parseSessionRef.current?.dispose();
     parseSessionRef.current = undefined;
+    documentSessionIdRef.current = undefined;
     cancelPartialFrame();
     clearPreviewDocuments();
     setParseProgress(undefined);
@@ -630,38 +866,88 @@ function OfficeFileViewerContent({
       parseSessionRef.current?.cancel();
       parseSessionRef.current?.dispose();
       parseSessionRef.current = undefined;
+      documentSessionIdRef.current = undefined;
       cancelPartialFrame();
       disposeSpreadsheetWorkbook(spreadsheetWorkbookRef.current);
+      void disposeDocumentSession(spreadsheetWorkbookRef.current);
       spreadsheetWorkbookRef.current = undefined;
+      void disposeDocumentSession(spreadsheetPreviewSourceRef.current);
+      spreadsheetPreviewSourceRef.current = undefined;
       disposePresentationDocument(presentationDocumentRef.current);
+      void disposeDocumentSession(presentationDocumentRef.current);
       presentationDocumentRef.current = undefined;
+      void disposeDocumentSession(presentationPreviewSourceRef.current);
+      presentationPreviewSourceRef.current = undefined;
+      void disposeDocumentSession(docxDocumentRef.current);
+      docxDocumentRef.current = undefined;
+      void disposeDocumentSession(docxPreviewSourceRef.current);
+      docxPreviewSourceRef.current = undefined;
       disposeDocDocument(docDocumentRef.current);
+      void disposeDocumentSession(docDocumentRef.current);
       docDocumentRef.current = undefined;
+      void disposeDocumentSession(docPreviewSourceRef.current);
+      docPreviewSourceRef.current = undefined;
     },
     [cancelPartialFrame],
   );
 
+  useEffect(() => () => void resourceStore.dispose(), [resourceStore]);
+
+  useEffect(() => {
+    if (!presentationPreviewSource) return undefined;
+    setPresentationPreviewSummary(presentationPreviewSource.getSnapshot());
+    return presentationPreviewSource.subscribe(() => {
+      setPresentationPreviewSummary(presentationPreviewSource.getSnapshot());
+    });
+  }, [presentationPreviewSource]);
+
+  useEffect(() => {
+    if (!spreadsheetPreviewSource) return undefined;
+    setSpreadsheetPreviewSummary(spreadsheetPreviewSource.getSnapshot());
+    return spreadsheetPreviewSource.subscribe(() => {
+      setSpreadsheetPreviewSummary(spreadsheetPreviewSource.getSnapshot());
+    });
+  }, [spreadsheetPreviewSource]);
+
+  const presentationSlideCount =
+    presentationPreviewSummary?.slideCount ?? pptxDocument?.slides.length ?? 0;
   const hasDocument = useMemo(
     () =>
       // 工具栏的翻页/缩放按钮只依赖“当前格式是否有可渲染内容”，不要耦合到具体 viewer 实现。
       isPresentationPreviewKind(previewKind)
-        ? Boolean(pptxDocument?.slides.length)
+        ? presentationSlideCount > 0
         : isSpreadsheetPreviewKind(previewKind)
-        ? Boolean(spreadsheetWorkbook?.sheets.length)
+        ? Boolean(
+            spreadsheetWorkbook?.sheets.length ||
+              spreadsheetPreviewSummary?.sheets.length,
+          )
         : previewKind === 'docx'
-        ? Boolean(docxDocument?.blocks.length)
-        : Boolean(docDocument?.paragraphs.length),
-    [docDocument, docxDocument, pptxDocument, previewKind, spreadsheetWorkbook],
+        ? Boolean(docxDocument?.blocks.length || docxPreviewSummary)
+        : Boolean(
+            docDocument?.paragraphs.length ||
+              docPreviewSource?.getSnapshot().pages.length,
+          ),
+    [
+      docDocument,
+      docPreviewSource,
+      docxDocument,
+      docxPreviewSummary,
+      pptxDocument,
+      presentationSlideCount,
+      previewKind,
+      spreadsheetWorkbook,
+      spreadsheetPreviewSummary,
+    ],
   );
 
   const canGoPreviousSlide =
     isPresentationPreviewKind(previewKind) &&
-    Boolean(pptxDocument?.slides.length) &&
+    presentationSlideCount > 1 &&
     activeIndex > 0;
   const canGoNextSlide =
     isPresentationPreviewKind(previewKind) &&
-    Boolean(pptxDocument?.slides.length) &&
-    activeIndex < (pptxDocument?.slides.length ?? 1) - 1;
+    presentationSlideCount > 1 &&
+    activeIndex < presentationSlideCount - 1;
 
   const handlePreviousSlide = useCallback(() => {
     setActiveIndex((value) => Math.max(value - 1, 0));
@@ -669,9 +955,9 @@ function OfficeFileViewerContent({
 
   const handleNextSlide = useCallback(() => {
     setActiveIndex((value) =>
-      Math.min(value + 1, (pptxDocument?.slides.length ?? 1) - 1),
+      Math.min(value + 1, Math.max(0, presentationSlideCount - 1)),
     );
-  }, [pptxDocument?.slides.length]);
+  }, [presentationSlideCount]);
 
   const handleZoomOut = useCallback(() => {
     setZoom((value) => Math.max(OFFICE_MIN_ZOOM, value - OFFICE_ZOOM_STEP));
@@ -778,23 +1064,32 @@ function OfficeFileViewerContent({
           onFullscreen={handleFullscreen}
         />
         <Content className="office-file-viewer__content">
-          <OfficePreviewStage
-            loading={loading}
-            loadingTip={loadingTip}
-            hasRenderableContent={hasDocument}
-            error={error}
-            previewKind={previewKind}
-            pptxDocument={pptxDocument}
-            spreadsheetWorkbook={spreadsheetWorkbook}
-            docxDocument={docxDocument}
-            docDocument={docDocument}
-            activeIndex={activeIndex}
-            activeSheetId={activeSheetId}
-            zoom={zoom}
-            showSpeakerNotes={speakerNotesVisible}
-            onSelectSlide={setActiveIndex}
-            onSelectSheet={setActiveSheetId}
-          />
+          <OfficeResourceStoreProvider store={resourceStore}>
+            <OfficePreviewStage
+              loading={loading}
+              loadingTip={loadingTip}
+              hasRenderableContent={hasDocument}
+              error={error}
+              previewKind={previewKind}
+              documentSessionId={documentSessionIdRef.current}
+              pptxDocument={pptxDocument}
+              presentationPreviewSource={presentationPreviewSource}
+              spreadsheetWorkbook={spreadsheetWorkbook}
+              spreadsheetPreviewSource={spreadsheetPreviewSource}
+              docxDocument={docxDocument}
+              docxPreviewSource={docxPreviewSource}
+              docxPreviewSummary={docxPreviewSummary}
+              docDocument={docDocument}
+              docPreviewSource={docPreviewSource}
+              docPreviewSummary={docPreviewSummary}
+              activeIndex={activeIndex}
+              activeSheetId={activeSheetId}
+              zoom={zoom}
+              showSpeakerNotes={speakerNotesVisible}
+              onSelectSlide={setActiveIndex}
+              onSelectSheet={setActiveSheetId}
+            />
+          </OfficeResourceStoreProvider>
           <OfficeParseStatus
             progress={loading && hasDocument ? parseProgress : undefined}
             warning={partialWarning}

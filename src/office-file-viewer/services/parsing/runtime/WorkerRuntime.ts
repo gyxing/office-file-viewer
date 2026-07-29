@@ -4,7 +4,7 @@ import type {
   WorkerToMainMessage,
 } from '../protocol/messages';
 import { OFFICE_PARSER_PROTOCOL_VERSION } from '../protocol/version';
-import type { RuntimeSink } from './types';
+import type { RuntimeContext, RuntimeSink } from './types';
 import { createParseAbortError } from './types';
 
 let taskSequence = 0;
@@ -53,9 +53,10 @@ export class WorkerRuntime {
   run(
     file: File,
     kind: 'xls' | 'ppt' | 'doc',
-    signal: AbortSignal,
+    context: RuntimeContext,
     sink: RuntimeSink,
   ): Promise<void> {
+    const { documentSessionId, signal } = context;
     if (this.worker) {
       return Promise.reject(
         createRuntimeError(
@@ -116,6 +117,7 @@ export class WorkerRuntime {
           type: 'parse-ack',
           version: OFFICE_PARSER_PROTOCOL_VERSION,
           taskId,
+          documentSessionId,
           sequence,
         };
         worker.postMessage(message);
@@ -126,6 +128,7 @@ export class WorkerRuntime {
             type: 'parse-cancel',
             version: OFFICE_PARSER_PROTOCOL_VERSION,
             taskId,
+            documentSessionId,
           };
           worker.postMessage(message);
         }
@@ -155,21 +158,26 @@ export class WorkerRuntime {
           return;
         }
         if (message.type === 'worker-ready') {
-          const buffer = await file.arrayBuffer();
-          if (settled || signal.aborted) return;
+          if (parseStarted || settled || signal.aborted) return;
           const startMessage: MainToWorkerMessage = {
             type: 'parse-start',
             version: OFFICE_PARSER_PROTOCOL_VERSION,
             taskId,
+            documentSessionId,
             kind,
             fileName: file.name,
-            buffer,
+            file,
           };
           parseStarted = true;
-          worker.postMessage(startMessage, [buffer]);
+          worker.postMessage(startMessage);
           return;
         }
-        if (message.taskId !== taskId) return;
+        if (
+          message.taskId !== taskId ||
+          message.documentSessionId !== documentSessionId
+        ) {
+          return;
+        }
         if (message.type === 'parse-progress') {
           sink.progress(message.progress);
           return;
@@ -205,7 +213,7 @@ export class WorkerRuntime {
           return;
         }
         if (message.type === 'parse-complete') {
-          sink.complete(message.warnings);
+          await sink.complete(message.warnings);
           finish();
           return;
         }

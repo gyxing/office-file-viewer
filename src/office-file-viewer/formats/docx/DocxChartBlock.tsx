@@ -1,7 +1,7 @@
 // DocxChartBlock 渲染 DOCX 文档中的独立图表块。
 import React, { memo } from 'react';
 import type { DocxChartBlock as DocxChartBlockModel } from '../../services/docx/types';
-import { OfficeChartView } from '../../shared/chart/OfficeChartView';
+import { DocxChartView } from './DocxChartView';
 
 /** 定义 DocxChartBlock 组件可接收的属性。 */
 type DocxChartBlockProps = {
@@ -15,12 +15,7 @@ type DocxChartBlockProps = {
 function DocxChartBlockComponent({ block, zoom }: DocxChartBlockProps) {
   return (
     <div className="office-file-docx-chart-block">
-      <OfficeChartView
-        chart={block.chart}
-        width={block.width}
-        height={block.height}
-        zoom={zoom}
-      />
+      <DocxChartView block={block} zoom={zoom} />
     </div>
   );
 }
