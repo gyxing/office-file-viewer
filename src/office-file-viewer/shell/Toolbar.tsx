@@ -1,6 +1,7 @@
 // OfficeToolbar 提供选择文件、翻页、缩放、全屏等 OfficeFileViewer 顶部通用操作。
 import { Button, Select, Space, Tooltip, Typography, Upload } from 'antd';
 import React, { memo, useMemo } from 'react';
+import { useOfficeFileViewerMessages } from '../locale';
 import type { PreviewKind } from '../services/preview';
 import {
   isPresentationPreviewKind,
@@ -93,6 +94,7 @@ function OfficeToolbarComponent({
   fullscreenSupported,
   onFullscreen,
 }: OfficeToolbarProps) {
+  const messages = useOfficeFileViewerMessages();
   const zoomOptions = useMemo(
     () => OFFICE_ZOOM_LEVELS.map((value) => ({ value, label: `${value}%` })),
     [],
@@ -102,6 +104,12 @@ function OfficeToolbarComponent({
     isPresentationPreviewKind(previewKind) &&
     hasDocument &&
     (canGoPreviousSlide || canGoNextSlide);
+  const speakerNotesLabel = showSpeakerNotes
+    ? messages.toolbar.hideSpeakerNotes
+    : messages.toolbar.showSpeakerNotes;
+  const fullscreenLabel = isFullscreen
+    ? messages.toolbar.exitFullscreen
+    : messages.toolbar.fullscreen;
 
   return (
     <div className="office-file-toolbar">
@@ -121,21 +129,23 @@ function OfficeToolbarComponent({
             return false;
           }}
         >
-          <Button icon={getPreviewIcon(previewKind)}>选择文件</Button>
+          <Button icon={getPreviewIcon(previewKind)}>
+            {messages.toolbar.selectFile}
+          </Button>
         </Upload>
         {showSlideNavigation ? (
           <>
-            <Tooltip title="上一页">
+            <Tooltip title={messages.toolbar.previousSlide}>
               <Button
-                aria-label="上一页"
+                aria-label={messages.toolbar.previousSlide}
                 icon={<ChevronLeftIcon />}
                 disabled={!canGoPreviousSlide}
                 onClick={onPreviousSlide}
               />
             </Tooltip>
-            <Tooltip title="下一页">
+            <Tooltip title={messages.toolbar.nextSlide}>
               <Button
-                aria-label="下一页"
+                aria-label={messages.toolbar.nextSlide}
                 icon={<ChevronRightIcon />}
                 disabled={!canGoNextSlide}
                 onClick={onNextSlide}
@@ -144,20 +154,16 @@ function OfficeToolbarComponent({
           </>
         ) : null}
         {isPresentationPreviewKind(previewKind) ? (
-          <Tooltip
-            title={showSpeakerNotes ? '隐藏演讲者备注' : '显示演讲者备注'}
-          >
+          <Tooltip title={speakerNotesLabel}>
             <Button
-              aria-label={
-                showSpeakerNotes ? '隐藏演讲者备注' : '显示演讲者备注'
-              }
+              aria-label={speakerNotesLabel}
               aria-pressed={showSpeakerNotes}
               type={showSpeakerNotes ? 'primary' : 'default'}
               icon={<NotesIcon />}
               disabled={!hasDocument}
               onClick={onToggleSpeakerNotes}
             >
-              备注
+              {messages.toolbar.speakerNotes}
             </Button>
           </Tooltip>
         ) : null}
@@ -167,17 +173,17 @@ function OfficeToolbarComponent({
           onChange={onZoomChange}
           options={zoomOptions}
         />
-        <Tooltip title="缩小">
+        <Tooltip title={messages.toolbar.zoomOut}>
           <Button
-            aria-label="缩小"
+            aria-label={messages.toolbar.zoomOut}
             icon={<ZoomOutIcon />}
             disabled={!hasDocument || zoom <= OFFICE_MIN_ZOOM}
             onClick={onZoomOut}
           />
         </Tooltip>
-        <Tooltip title="放大">
+        <Tooltip title={messages.toolbar.zoomIn}>
           <Button
-            aria-label="放大"
+            aria-label={messages.toolbar.zoomIn}
             icon={<ZoomInIcon />}
             disabled={!hasDocument || zoom >= OFFICE_MAX_ZOOM}
             onClick={onZoomIn}
@@ -187,12 +193,12 @@ function OfficeToolbarComponent({
           {OFFICE_DEFAULT_ZOOM}%
         </Button>
         <Button
-          aria-label={isFullscreen ? '退出全屏' : '全屏'}
+          aria-label={fullscreenLabel}
           icon={<FullscreenIcon />}
           disabled={!hasDocument || !fullscreenSupported}
           onClick={onFullscreen}
         >
-          {isFullscreen ? '退出全屏' : '全屏'}
+          {fullscreenLabel}
         </Button>
       </Space>
     </div>

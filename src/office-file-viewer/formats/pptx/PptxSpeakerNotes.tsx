@@ -1,4 +1,5 @@
 import React, { memo } from 'react';
+import { useOfficeFileViewerMessages } from '../../locale';
 import type { SpeakerNotesModel } from '../../services/presentation/types';
 import { useSpeakerNotesResize } from './useSpeakerNotesResize';
 
@@ -15,6 +16,7 @@ function PptxSpeakerNotesComponent({
   slideIndex,
   notes,
 }: PptxSpeakerNotesProps) {
+  const messages = useOfficeFileViewerMessages();
   const { height, maxHeight, panelRef, handleKeyDown, handleMouseDown } =
     useSpeakerNotesResize();
 
@@ -22,13 +24,13 @@ function PptxSpeakerNotesComponent({
     <section
       ref={panelRef}
       className="office-file-pptx-speaker-notes"
-      aria-label="演讲者备注"
+      aria-label={messages.presentation.notesRegion}
       style={{ height }}
     >
       <div
         className="office-file-pptx-speaker-notes__resize-handle"
         role="separator"
-        aria-label="调整演讲者备注高度"
+        aria-label={messages.presentation.resizeNotes}
         aria-orientation="horizontal"
         aria-valuemin={120}
         aria-valuemax={Math.round(maxHeight)}
@@ -67,7 +69,7 @@ function PptxSpeakerNotesComponent({
           })
         ) : (
           <div className="office-file-pptx-speaker-notes__empty">
-            本页无演讲者备注
+            {messages.presentation.emptyNotes}
           </div>
         )}
       </div>

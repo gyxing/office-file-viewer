@@ -1,4 +1,5 @@
 // office-file-viewer 模块的公共入口，业务侧通过这里使用 OfficeFileViewer 及相关类型。
+export type { OfficeFileViewerLocale } from './locale';
 export { OfficeFileViewer } from './OfficeFileViewer';
 export type {
   OfficeFileViewerProps,

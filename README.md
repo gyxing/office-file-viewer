@@ -1,6 +1,6 @@
 # Office File Viewer
 
-English | [简体中文](./README.zh-CN.md)
+English | [简体中文](./README.zh-CN.md) | [Live Demo](https://gyxing.github.io/office-file-viewer/)
 
 > A browser-based React component for offline preview of DOC/DOCX/WPS, XLS/XLSX, and PPT/PPTX files.
 
@@ -78,6 +78,22 @@ export default function OfficePreview() {
 }
 ```
 
+The viewer's own UI defaults to Simplified Chinese. To use English, configure both the viewer and the host Ant Design locale:
+
+```tsx
+import { ConfigProvider } from 'antd';
+import antdEnUS from 'antd/locale/en_US';
+import { OfficeFileViewer } from 'office-file-viewer';
+
+export default function EnglishOfficePreview() {
+  return (
+    <ConfigProvider locale={antdEnUS}>
+      <OfficeFileViewer locale="en-US" />
+    </ConfigProvider>
+  );
+}
+```
+
 Pass a local file or remote URL:
 
 ```tsx
@@ -149,19 +165,20 @@ Consider the following when using remote files:
 
 ## Component props
 
-| Prop                 | Type                                             | Default        | Description                                                            |
-| -------------------- | ------------------------------------------------ | -------------- | ---------------------------------------------------------------------- |
-| `uri`                | `OfficeFileViewerUri`                            | -              | File source to preload; displays the file picker when omitted          |
-| `defaultFileName`    | `string`                                         | `'未加载文件'` | Name displayed when no file is loaded                                  |
-| `defaultPreviewKind` | `PreviewKind`                                    | `'pptx'`       | Empty-state format used when no file is loaded                         |
-| `defaultZoom`        | `number`                                         | `100`          | Initial zoom percentage, clamped to the range from `25` to `300`       |
-| `className`          | `string`                                         | -              | Custom class name for the root container                               |
-| `height`             | `CSSProperties['height']`                        | `100%`         | Viewer height; follows the parent container when omitted               |
-| `style`              | `CSSProperties`                                  | -              | Custom styles for the root container                                   |
-| `parseOptions`       | `OfficeParseOptions`                             | `{}`           | Worker mode and custom Worker factory                                  |
-| `onParseProgress`    | `(progress: ParseProgress) => void`              | -              | Called when the parsing stage or progress changes                      |
-| `onFileParsed`       | `(parsed: ParsedOfficeFile, file: File) => void` | -              | Called once after full parsing; does not receive progressive internals |
-| `onError`            | `(error: Error, file?: File) => void`            | -              | Called when file downloading, parsing, or fullscreen operation fails   |
+| Prop                 | Type                                             | Default        | Description                                                             |
+| -------------------- | ------------------------------------------------ | -------------- | ----------------------------------------------------------------------- |
+| `locale`             | `'zh-CN' \| 'en-US'`                             | `'zh-CN'`      | Viewer UI language; Ant Design locale still comes from `ConfigProvider` |
+| `uri`                | `OfficeFileViewerUri`                            | -              | File source to preload; displays the file picker when omitted           |
+| `defaultFileName`    | `string`                                         | Locale message | Name displayed when no file is loaded                                   |
+| `defaultPreviewKind` | `PreviewKind`                                    | `'pptx'`       | Empty-state format used when no file is loaded                          |
+| `defaultZoom`        | `number`                                         | `100`          | Initial zoom percentage, clamped to the range from `25` to `300`        |
+| `className`          | `string`                                         | -              | Custom class name for the root container                                |
+| `height`             | `CSSProperties['height']`                        | `100%`         | Viewer height; follows the parent container when omitted                |
+| `style`              | `CSSProperties`                                  | -              | Custom styles for the root container                                    |
+| `parseOptions`       | `OfficeParseOptions`                             | `{}`           | Worker mode and custom Worker factory                                   |
+| `onParseProgress`    | `(progress: ParseProgress) => void`              | -              | Called when the parsing stage or progress changes                       |
+| `onFileParsed`       | `(parsed: ParsedOfficeFile, file: File) => void` | -              | Called once after full parsing; does not receive progressive internals  |
+| `onError`            | `(error: Error, file?: File) => void`            | -              | Called when file downloading, parsing, or fullscreen operation fails    |
 
 The available `PreviewKind` values are `'docx' | 'doc' | 'xlsx' | 'xls' | 'pptx' | 'ppt'`. WPS files reuse the `'doc'` preview model.
 
@@ -172,6 +189,7 @@ Common public types:
 ```ts
 import type {
   OfficeFileViewerProps,
+  OfficeFileViewerLocale,
   OfficeFileViewerUri,
   OfficeParseOptions,
   OfficeParseSession,

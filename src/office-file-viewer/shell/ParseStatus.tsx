@@ -1,4 +1,5 @@
 import React, { memo } from 'react';
+import { useOfficeFileViewerMessages } from '../locale';
 import type { ParseProgress } from '../services/parsing';
 import { OfficeNotice } from './Notice';
 
@@ -6,8 +7,8 @@ import { OfficeNotice } from './Notice';
 type OfficeParseStatusProps = {
   /** 当前解析阶段及其完成度信息。 */
   progress?: ParseProgress;
-  /** OfficeParseStatusProps 的 warning 文本值。 */
-  warning?: string;
+  /** 是否正在展示解析失败后保留的部分内容。 */
+  warning?: boolean;
 };
 
 /** 将输入标准化为 `normalizePercent` 返回的结构。 */
@@ -29,13 +30,14 @@ function OfficeParseStatusComponent({
   progress,
   warning,
 }: OfficeParseStatusProps) {
+  const messages = useOfficeFileViewerMessages();
   if (warning) {
     return (
       <div className="office-file-parse-status" role="alert">
         <OfficeNotice
           type="warning"
-          title="文档解析未完成"
-          description={`当前仅展示已成功解析的部分内容。失败原因：${warning}`}
+          title={messages.progress.partialTitle}
+          description={messages.progress.partialDescription}
         />
       </div>
     );
@@ -52,7 +54,9 @@ function OfficeParseStatusComponent({
 
   return (
     <div className="office-file-parse-status" role="status" aria-live="polite">
-      <div className="office-file-parse-status__label">{progress.message}</div>
+      <div className="office-file-parse-status__label">
+        {messages.progress.stages[progress.stage]}
+      </div>
       <div
         className="office-file-parse-status__track"
         role="progressbar"

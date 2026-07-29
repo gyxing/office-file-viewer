@@ -1,6 +1,7 @@
 // XlsxSheetTabs 渲染工作表标签栏，并展示当前工作表范围或行列数量。
 import { Tabs, Typography } from 'antd';
 import React, { memo, useMemo } from 'react';
+import { useOfficeFileViewerMessages } from '../../locale';
 import type { XlsxSheet, XlsxWorkbook } from '../../services/xlsx/types';
 
 /** 定义 XlsxSheetTabs 组件可接收的属性。 */
@@ -25,6 +26,7 @@ function XlsxSheetTabsComponent({
   activeSheet,
   onSelectSheet,
 }: XlsxSheetTabsProps) {
+  const messages = useOfficeFileViewerMessages();
   const tabItems = useMemo(
     () =>
       workbook?.sheets.map((sheet) => ({
@@ -35,7 +37,10 @@ function XlsxSheetTabsComponent({
   );
   const rangeText =
     activeSheet.range ??
-    `${activeSheet.rowCount} 行 x ${activeSheet.columnCount} 列`;
+    messages.spreadsheet.dimensions(
+      activeSheet.rowCount,
+      activeSheet.columnCount,
+    );
 
   return (
     <div className="office-file-xlsx-sheet-tabs">

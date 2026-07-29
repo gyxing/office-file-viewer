@@ -10,6 +10,12 @@ import React, {
   useState,
 } from 'react';
 import './index.less';
+import {
+  OfficeFileViewerLocaleProvider,
+  useOfficeFileViewerMessages,
+  type OfficeFileViewerLocale,
+  type OfficeFileViewerMessages,
+} from './locale';
 import { disposeDocDocument, type DocDocument } from './services/doc/types';
 import type { DocxDocument } from './services/docx/types';
 import {
@@ -60,6 +66,8 @@ export type OfficeFileViewerUri =
 
 /** 定义 OfficeFileViewer 组件可接收的属性。 */
 export type OfficeFileViewerProps = {
+  /** 预览器使用的界面语言，默认使用简体中文。 */
+  locale?: OfficeFileViewerLocale;
   /** 待预览文件的来源，可为本地文件、URL 或异步加载函数。 */
   uri?: OfficeFileViewerUri;
   /** 无法从文件来源推断名称时使用的默认文件名。 */
@@ -138,25 +146,31 @@ function hasFileExtension(fileName: string) {
   return /\.[^./\\]+$/.test(fileName);
 }
 
+/** 标记由预览器输入校验产生、可安全直接展示给用户的错误。 */
+class OfficeFileViewerInputError extends Error {}
+
 /** 校验文件扩展名是否属于当前组件支持的 Office 格式。 */
-function ensureSupportedOfficeFile(file: File) {
+function ensureSupportedOfficeFile(
+  file: File,
+  messages: OfficeFileViewerMessages,
+) {
   if (!isSupportedOfficeFileName(file.name)) {
-    throw new Error(
-      '暂不支持该文件类型，请选择 PPTX、PPT、XLSX、XLS、DOCX、DOC 或 WPS 文件',
-    );
+    throw new OfficeFileViewerInputError(messages.file.unsupported);
   }
 }
 
 /** 根据 Blob、显式文件名或 MIME 类型创建可识别格式的 File。 */
-function createFileFromBlob(blob: Blob, fileName?: string) {
+function createFileFromBlob(
+  blob: Blob,
+  messages: OfficeFileViewerMessages,
+  fileName?: string,
+) {
   if (
     fileName &&
     hasFileExtension(fileName) &&
     !isSupportedOfficeFileName(fileName)
   ) {
-    throw new Error(
-      '无法识别 Office 文件类型，请提供 PPTX、PPT、XLSX、XLS、DOCX、DOC 或 WPS 文件',
-    );
+    throw new OfficeFileViewerInputError(messages.file.unrecognized);
   }
 
   const extension = getExtensionFromMimeType(blob.type);
@@ -168,9 +182,7 @@ function createFileFromBlob(blob: Blob, fileName?: string) {
       : undefined;
 
   if (!inferredFileName) {
-    throw new Error(
-      '无法识别 Office 文件类型，请提供 PPTX、PPT、XLSX、XLS、DOCX、DOC 或 WPS 文件',
-    );
+    throw new OfficeFileViewerInputError(messages.file.unrecognized);
   }
 
   return new File([blob], inferredFileName, { type: blob.type });
@@ -179,10 +191,13 @@ function createFileFromBlob(blob: Blob, fileName?: string) {
 /** 校验下载响应，并将响应体及响应头文件名转换为 File。 */
 async function createFileFromResponse(
   response: Response,
+  messages: OfficeFileViewerMessages,
   fallbackFileName?: string,
 ) {
   if (!response.ok) {
-    throw new Error(`文件下载失败：${response.status} ${response.statusText}`);
+    throw new OfficeFileViewerInputError(
+      messages.file.downloadFailed(response.status, response.statusText),
+    );
   }
 
   const blob = await response.blob();
@@ -190,43 +205,45 @@ async function createFileFromResponse(
     getFileNameFromContentDisposition(
       response.headers.get('Content-Disposition'),
     ) || fallbackFileName;
-  return createFileFromBlob(blob, fileName);
+  return createFileFromBlob(blob, messages, fileName);
 }
 
 /** 下载远程 Office 文件，并沿用 URL 或响应头中可识别的文件名。 */
-async function downloadOfficeFile(url: string, signal?: AbortSignal) {
+async function downloadOfficeFile(
+  url: string,
+  messages: OfficeFileViewerMessages,
+  signal?: AbortSignal,
+) {
   const urlFileName = getFileNameFromUrl(url);
   if (
     urlFileName &&
     hasFileExtension(urlFileName) &&
     !isSupportedOfficeFileName(urlFileName)
   ) {
-    throw new Error(
-      '暂不支持该文件类型，请选择 PPTX、PPT、XLSX、XLS、DOCX、DOC 或 WPS 文件',
-    );
+    throw new OfficeFileViewerInputError(messages.file.unsupported);
   }
 
   const response = await fetch(url, { signal });
-  return createFileFromResponse(response, urlFileName);
+  return createFileFromResponse(response, messages, urlFileName);
 }
 
 /** 将组件支持的各种 URI 输入统一解析为可交给解析层的 File。 */
 async function normalizeOfficeFileUri(
   uri: OfficeFileViewerUri,
+  messages: OfficeFileViewerMessages,
   signal?: AbortSignal,
 ) {
   const resolvedUri = typeof uri === 'function' ? await uri() : uri;
 
   if (resolvedUri instanceof File) return resolvedUri;
   if (resolvedUri instanceof Response)
-    return createFileFromResponse(resolvedUri);
-  if (resolvedUri instanceof Blob) return createFileFromBlob(resolvedUri);
+    return createFileFromResponse(resolvedUri, messages);
+  if (resolvedUri instanceof Blob)
+    return createFileFromBlob(resolvedUri, messages);
   if (typeof resolvedUri === 'string')
-    return downloadOfficeFile(resolvedUri, signal);
+    return downloadOfficeFile(resolvedUri, messages, signal);
 
-  throw new Error(
-    'uri 必须是 File、URL 字符串，或返回 File/Blob/URL/Response 的异步函数',
-  );
+  throw new OfficeFileViewerInputError(messages.file.invalidUri);
 }
 
 /** 释放一个已经取得 Blob URL 所有权的解析结果。 */
@@ -242,10 +259,10 @@ function disposeParsedOfficeFile(parsed: ParsedOfficeFile) {
   if (parsed.kind === 'doc') disposeDocDocument(parsed.document);
 }
 
-/** 渲染 Office 文件预览器，并协调文件加载、解析会话、渐进结果和工具栏状态。 */
-function OfficeFileViewerComponent({
+/** 实现 Office 文件加载、解析会话、渐进结果和工具栏状态。 */
+function OfficeFileViewerContent({
   uri,
-  defaultFileName = '未加载文件',
+  defaultFileName,
   defaultPreviewKind = 'pptx',
   defaultZoom = OFFICE_DEFAULT_ZOOM,
   defaultShowSpeakerNotes = false,
@@ -258,13 +275,14 @@ function OfficeFileViewerComponent({
   onError,
   parseOptions,
   onParseProgress,
-}: OfficeFileViewerProps) {
+}: Omit<OfficeFileViewerProps, 'locale'>) {
+  const messages = useOfficeFileViewerMessages();
   // OfficeFileViewer 是公共组件入口，集中管理“文件状态”和“格式私有状态”，避免使用者再组合多个子组件。
-  const [fileName, setFileName] = useState(defaultFileName);
+  const [fileName, setFileName] = useState<string>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
   const [parseProgress, setParseProgress] = useState<ParseProgress>();
-  const [partialWarning, setPartialWarning] = useState<string>();
+  const [partialWarning, setPartialWarning] = useState(false);
   const [previewKind, setPreviewKind] =
     useState<PreviewKind>(defaultPreviewKind);
   const [pptxDocument, setPptxDocument] = useState<PptxDocument>();
@@ -295,6 +313,7 @@ function OfficeFileViewerComponent({
   const onErrorRef = useRef(onError);
   const parseOptionsRef = useRef(parseOptions);
   const onParseProgressRef = useRef(onParseProgress);
+  const messagesRef = useRef(messages);
 
   defaultZoomRef.current = defaultZoom;
   defaultShowSpeakerNotesRef.current = defaultShowSpeakerNotes;
@@ -303,6 +322,7 @@ function OfficeFileViewerComponent({
   onErrorRef.current = onError;
   parseOptionsRef.current = parseOptions;
   onParseProgressRef.current = onParseProgress;
+  messagesRef.current = messages;
 
   const cancelPartialFrame = useCallback(() => {
     if (
@@ -390,11 +410,11 @@ function OfficeFileViewerComponent({
       setLoading(true);
       setError(undefined);
       setParseProgress(undefined);
-      setPartialWarning(undefined);
+      setPartialWarning(false);
       let retainedPartial = false;
 
       try {
-        ensureSupportedOfficeFile(file);
+        ensureSupportedOfficeFile(file, messagesRef.current);
         if (loadGeneration !== loadGenerationRef.current) return;
 
         // 上传新文件时同步重置所有格式相关状态，防止上一份文档的页码/缩放/工作表残留到新文档。
@@ -431,33 +451,21 @@ function OfficeFileViewerComponent({
             if (loadGeneration !== loadGenerationRef.current) {
               disposeParsedOfficeFile(partial);
             } else if (partial.kind === 'xls') {
-              const normalizedError =
-                nextError instanceof Error
-                  ? nextError
-                  : new Error('文件解析失败');
               spreadsheetWorkbookRef.current = partial.workbook;
               installPartialSnapshot(partial);
-              setPartialWarning(normalizedError.message);
+              setPartialWarning(true);
               setError(undefined);
               retainedPartial = true;
             } else if (partial.kind === 'ppt') {
-              const normalizedError =
-                nextError instanceof Error
-                  ? nextError
-                  : new Error('文件解析失败');
               presentationDocumentRef.current = partial.document;
               installPartialSnapshot(partial);
-              setPartialWarning(normalizedError.message);
+              setPartialWarning(true);
               setError(undefined);
               retainedPartial = true;
             } else if (partial.kind === 'doc') {
-              const normalizedError =
-                nextError instanceof Error
-                  ? nextError
-                  : new Error('文件解析失败');
               docDocumentRef.current = partial.document;
               installPartialSnapshot(partial);
-              setPartialWarning(normalizedError.message);
+              setPartialWarning(true);
               setError(undefined);
               retainedPartial = true;
             } else {
@@ -480,7 +488,7 @@ function OfficeFileViewerComponent({
 
         cancelPartialFrame();
         setParseProgress(undefined);
-        setPartialWarning(undefined);
+        setPartialWarning(false);
         const nextPresentationDocument = isPresentationPreviewKind(parsed.kind)
           ? parsed.document
           : undefined;
@@ -510,11 +518,19 @@ function OfficeFileViewerComponent({
       } catch (nextError) {
         if (loadGeneration !== loadGenerationRef.current) return;
 
-        // 对外回调始终给 Error 实例，组件内部只保存可展示的 message。
+        // 界面只展示可本地化的概述，原始解析错误仍通过回调交给调用方诊断。
         const normalizedError =
-          nextError instanceof Error ? nextError : new Error('文件解析失败');
+          nextError instanceof Error
+            ? nextError
+            : new Error(messagesRef.current.file.parseFailed);
         setParseProgress(undefined);
-        if (!retainedPartial) setError(normalizedError.message);
+        if (!retainedPartial) {
+          setError(
+            normalizedError instanceof OfficeFileViewerInputError
+              ? normalizedError.message
+              : messagesRef.current.file.parseFailed,
+          );
+        }
         onErrorRef.current?.(normalizedError, file);
       } finally {
         if (loadGeneration === loadGenerationRef.current) {
@@ -549,7 +565,7 @@ function OfficeFileViewerComponent({
     cancelPartialFrame();
     clearPreviewDocuments();
     setParseProgress(undefined);
-    setPartialWarning(undefined);
+    setPartialWarning(false);
     // 固化本次 effect 的文件来源，避免异步闭包丢失类型收窄。
     const uriToLoad = uri;
     const loadGeneration = ++loadGenerationRef.current;
@@ -569,6 +585,7 @@ function OfficeFileViewerComponent({
       try {
         file = await normalizeOfficeFileUri(
           uriToLoad,
+          messagesRef.current,
           requestController?.signal,
         );
         if (loadGeneration !== loadGenerationRef.current) return;
@@ -581,8 +598,14 @@ function OfficeFileViewerComponent({
           return;
 
         const normalizedError =
-          nextError instanceof Error ? nextError : new Error('文件加载失败');
-        setError(normalizedError.message);
+          nextError instanceof Error
+            ? nextError
+            : new Error(messagesRef.current.file.loadFailed);
+        setError(
+          normalizedError instanceof OfficeFileViewerInputError
+            ? normalizedError.message
+            : messagesRef.current.file.loadFailed,
+        );
         onErrorRef.current?.(normalizedError, file);
         setLoading(false);
       } finally {
@@ -709,14 +732,23 @@ function OfficeFileViewerComponent({
         await viewer.requestFullscreen();
       }
     } catch (nextError) {
-      const message =
-        nextError instanceof Error ? nextError.message : '浏览器拒绝了全屏请求';
-      onErrorRef.current?.(new Error(`全屏操作失败：${message}`));
+      const reason =
+        nextError instanceof Error
+          ? nextError.message
+          : messagesRef.current.file.fullscreenRejected;
+      onErrorRef.current?.(
+        new Error(messagesRef.current.file.fullscreenFailed(reason)),
+      );
     }
   }, []);
 
   // 专用 height 配置优先于 style.height，避免两个入口同时传值时结果不确定。
   const viewerStyle = height === undefined ? style : { ...style, height };
+  const displayedFileName =
+    fileName ?? defaultFileName ?? messages.file.unloaded;
+  const loadingTip = parseProgress
+    ? messages.progress.stages[parseProgress.stage]
+    : undefined;
 
   return (
     <div
@@ -726,7 +758,7 @@ function OfficeFileViewerComponent({
     >
       <Layout className="office-file-viewer__layout">
         <OfficeToolbar
-          fileName={fileName}
+          fileName={displayedFileName}
           previewKind={previewKind}
           zoom={zoom}
           hasDocument={hasDocument}
@@ -748,7 +780,7 @@ function OfficeFileViewerComponent({
         <Content className="office-file-viewer__content">
           <OfficePreviewStage
             loading={loading}
-            loadingTip={parseProgress?.message}
+            loadingTip={loadingTip}
             hasRenderableContent={hasDocument}
             error={error}
             previewKind={previewKind}
@@ -770,6 +802,18 @@ function OfficeFileViewerComponent({
         </Content>
       </Layout>
     </div>
+  );
+}
+
+/** 渲染 Office 文件预览器，并为当前实例提供独立的界面语言。 */
+function OfficeFileViewerComponent({
+  locale = 'zh-CN',
+  ...props
+}: OfficeFileViewerProps) {
+  return (
+    <OfficeFileViewerLocaleProvider locale={locale}>
+      <OfficeFileViewerContent {...props} />
+    </OfficeFileViewerLocaleProvider>
   );
 }
 

@@ -1,6 +1,7 @@
 // PptxThumbnail 复用单页幻灯片渲染能力，生成缩略图预览。
 import type { CSSProperties } from 'react';
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { useOfficeFileViewerMessages } from '../../locale';
 import type { SlideModel } from '../../services/pptx/types';
 import { PptxSlide } from './PptxSlide';
 import { colorWithOpacity } from './renderers/paint';
@@ -15,6 +16,7 @@ type PptxThumbnailProps = {
 
 /** 渲染 PptxThumbnailComponent 组件。 */
 function PptxThumbnailComponent({ slide, active }: PptxThumbnailProps) {
+  const messages = useOfficeFileViewerMessages();
   const canvasRef = useRef<HTMLDivElement>(null);
   const [thumbnailScale, setThumbnailScale] = useState(0.18);
 
@@ -102,7 +104,7 @@ function PptxThumbnailComponent({ slide, active }: PptxThumbnailProps) {
         </div>
       </div>
       <div className="office-file-pptx-thumbnail__label">
-        第 {slide.index} 页
+        {messages.presentation.slide(slide.index)}
       </div>
     </div>
   );

@@ -8,6 +8,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { useOfficeFileViewerMessages } from '../../locale';
 import type {
   WordOutlineItem,
   WordOutlineTreeNode,
@@ -47,6 +48,7 @@ function WordOutlineSidebarComponent({
   documentIdentity,
   layoutKey,
 }: WordOutlineSidebarProps) {
+  const messages = useOfficeFileViewerMessages();
   const tree = useMemo(() => buildWordOutlineTree(items), [items]);
   const allKeys = useMemo(() => collectTreeKeys(tree), [tree]);
   const ancestorsByKey = useMemo(
@@ -108,7 +110,7 @@ function WordOutlineSidebarComponent({
       className={`office-file-word-outline${
         collapsed ? ' office-file-word-outline--collapsed' : ''
       }`}
-      aria-label="文档大纲"
+      aria-label={messages.outline.region}
       data-outline-count={items.length}
     >
       {collapsed ? (
@@ -116,8 +118,8 @@ function WordOutlineSidebarComponent({
           <button
             type="button"
             className="office-file-word-outline__toggle"
-            aria-label="展开文档大纲"
-            title="展开文档大纲"
+            aria-label={messages.outline.expand}
+            title={messages.outline.expand}
             onClick={() => setCollapsed(false)}
           >
             <PanelLeftOpenIcon />
@@ -129,7 +131,7 @@ function WordOutlineSidebarComponent({
           <header className="office-file-word-outline__header">
             <span className="office-file-word-outline__title">
               <OutlineIcon />
-              大纲
+              {messages.outline.title}
             </span>
             <span className="office-file-word-outline__count">
               {items.length}
@@ -137,8 +139,8 @@ function WordOutlineSidebarComponent({
             <button
               type="button"
               className="office-file-word-outline__toggle"
-              aria-label="收起文档大纲"
-              title="收起文档大纲"
+              aria-label={messages.outline.collapse}
+              title={messages.outline.collapse}
               onClick={() => setCollapsed(true)}
             >
               <PanelLeftCloseIcon />
@@ -149,7 +151,7 @@ function WordOutlineSidebarComponent({
             className="office-file-word-outline__tree-host"
           >
             <Tree<WordOutlineTreeNode>
-              aria-label="大纲目录"
+              aria-label={messages.outline.tree}
               blockNode
               showLine={{ showLeafIcon: false }}
               virtual

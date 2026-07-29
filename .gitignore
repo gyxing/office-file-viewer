@@ -4,3 +4,7 @@ node_modules
 .dumi/tmp-test
 .dumi/tmp-production
 .DS_Store
+/docs-dist/
+/docs/files/
+/docs/dev/smoke-test.md
+/docs/dev/smoke-test.less

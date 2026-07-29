@@ -1,5 +1,6 @@
 // PptxThumbnailPane 渲染幻灯片缩略图列表，并负责切换当前页。
 import React, { memo, useCallback } from 'react';
+import { useOfficeFileViewerMessages } from '../../locale';
 import type { SlideModel } from '../../services/pptx/types';
 import { PptxThumbnail } from './PptxThumbnail';
 
@@ -19,6 +20,7 @@ function PptxThumbnailPaneComponent({
   activeIndex,
   onSelectSlide,
 }: PptxThumbnailPaneProps) {
+  const messages = useOfficeFileViewerMessages();
   const handleSelect = useCallback(
     (index: number) => {
       onSelectSlide(index);
@@ -30,7 +32,7 @@ function PptxThumbnailPaneComponent({
     <aside className="office-file-pptx-viewer__sidebar">
       <div className="office-file-pptx-viewer__sidebar-header">
         <div className="office-file-pptx-viewer__slide-count">
-          共 {slides.length} 页
+          {messages.presentation.slideCount(slides.length)}
         </div>
       </div>
       <div className="office-file-pptx-viewer__thumbnail-list">

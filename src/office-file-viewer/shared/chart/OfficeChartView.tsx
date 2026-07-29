@@ -2,6 +2,7 @@
 import { Empty, Spin } from 'antd';
 import type { CSSProperties } from 'react';
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { useOfficeFileViewerMessages } from '../../locale';
 import type { OfficeChartModel } from '../../shared/ooxml/charts';
 import { buildOfficeChartOption } from '../../shared/ooxml/charts';
 import './index.less';
@@ -28,6 +29,7 @@ function OfficeChartViewComponent({
   height,
   zoom = 100,
 }: OfficeChartViewProps) {
+  const messages = useOfficeFileViewerMessages();
   const hostRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<import('echarts').EChartsType | null>(null);
   const echartsRef = useRef<typeof import('echarts') | null>(null);
@@ -182,7 +184,7 @@ function OfficeChartViewComponent({
   }, [chart, visible]);
 
   if (!width || !height) {
-    return <Empty description="图表尺寸无效" />;
+    return <Empty description={messages.chart.invalidSize} />;
   }
 
   const staticSnapshotSrc =
@@ -198,7 +200,7 @@ function OfficeChartViewComponent({
         <img
           className="office-file-chart__snapshot"
           src={staticSnapshotSrc}
-          alt={chart.title ?? chart.degradedFrom ?? '静态图表'}
+          alt={chart.title ?? chart.degradedFrom ?? messages.chart.staticAlt}
         />
       </div>
     );
@@ -208,7 +210,11 @@ function OfficeChartViewComponent({
     if (!chart.snapshotSrc) {
       return (
         <Empty
-          description={renderFailed ? '图表渲染失败' : '地图数据加载失败'}
+          description={
+            renderFailed
+              ? messages.chart.renderFailed
+              : messages.chart.mapLoadFailed
+          }
         />
       );
     }

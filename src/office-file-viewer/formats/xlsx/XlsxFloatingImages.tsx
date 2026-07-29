@@ -1,6 +1,7 @@
 // XlsxFloatingImages 渲染锚定在工作表画布上的浮动图片。
 import type { CSSProperties } from 'react';
 import React, { memo, useMemo } from 'react';
+import { useOfficeFileViewerMessages } from '../../locale';
 import type { XlsxImage, XlsxSheet } from '../../services/xlsx/types';
 import {
   getXlsxMeasuredAnchorRect,
@@ -30,6 +31,7 @@ function XlsxFloatingImage({
   /** 浏览器最终计算出的列标题行高度。 */
   columnHeaderHeight: number;
 }) {
+  const messages = useOfficeFileViewerMessages();
   const imageStyle = useMemo<CSSProperties>(
     () => ({
       left: XLSX_ROW_HEADER_WIDTH + rect.x,
@@ -50,7 +52,7 @@ function XlsxFloatingImage({
       onError={(event) => {
         event.currentTarget.setAttribute(
           'aria-label',
-          image.alt ? `${image.alt}（图片加载失败）` : '图片加载失败',
+          messages.spreadsheet.imageLoadFailed(image.alt),
         );
         event.currentTarget.setAttribute('data-load-error', 'true');
       }}

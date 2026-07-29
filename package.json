@@ -24,13 +24,13 @@
     "ppt",
     "pptx"
   ],
-  "homepage": "https://github.com/gyxing/office-x-viewer#readme",
+  "homepage": "https://gyxing.github.io/office-file-viewer/",
   "bugs": {
-    "url": "https://github.com/gyxing/office-x-viewer/issues"
+    "url": "https://github.com/gyxing/office-file-viewer/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/gyxing/office-x-viewer.git"
+    "url": "git+https://github.com/gyxing/office-file-viewer.git"
   },
   "license": "MIT",
   "author": {
