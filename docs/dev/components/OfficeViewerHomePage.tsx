@@ -11,6 +11,13 @@ import {
   type PackageManager,
   type WebsiteLocale,
 } from './home-content';
+import { HomeHeader, type HomeSectionId } from './HomeHeader';
+import { HomeHero } from './HomeHero';
+import {
+  ProductHighlightsSection,
+  ProductOverviewSection,
+  SupportedFormatsSection,
+} from './HomeProductSections';
 import './OfficeViewerHomePage.less';
 
 type OfficeViewerHomePageProps = {
@@ -20,8 +27,18 @@ type OfficeViewerHomePageProps = {
 
 type CopyState = 'idle' | 'copied' | 'failed';
 
+// 包管理器顺序同时决定标签页展示顺序与左右方向键行为。
+const PACKAGE_MANAGERS: PackageManager[] = ['npm', 'yarn'];
+// 仅观察主导航可到达的区块，避免短区块频繁抢占当前状态。
+const HOME_SECTION_IDS: HomeSectionId[] = [
+  'overview',
+  'demo',
+  'highlights',
+  'formats',
+];
+
 /** 优先使用 Clipboard API，并为权限受限或较旧的浏览器提供回退。 */
-async function writeTextToClipboard(value: string) {
+async function writeTextToClipboard(value: string): Promise<void> {
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(value);
     return;
@@ -104,78 +121,46 @@ function handleSectionLink(event: React.MouseEvent<HTMLAnchorElement>) {
   window.history.pushState(null, '', event.currentTarget.hash);
 }
 
-/** 渲染官网 Hero 右侧的轻量产品能力示意，不加载任何样例文档。 */
-function ProductPreview({ locale }: { locale: WebsiteLocale }) {
-  const content = getWebsiteContent(locale).productPreview;
+/** 根据页面中最接近视口阅读区域的区块更新导航状态。 */
+function useActiveSection(): HomeSectionId {
+  const [activeSection, setActiveSection] = useState<HomeSectionId>('overview');
 
-  return (
-    <div className="office-viewer-site-preview" aria-hidden="true">
-      <div className="office-viewer-site-preview-window">
-        <div className="office-viewer-site-preview-bar">
-          <span className="office-viewer-site-preview-dots">
-            <i />
-            <i />
-            <i />
-          </span>
-          <span>{content.windowTitle}</span>
-          <span className="office-viewer-site-preview-status">
-            {content.status}
-          </span>
-        </div>
-        <div className="office-viewer-site-preview-body">
-          <aside className="office-viewer-site-preview-sidebar">
-            <strong>{content.fileName}</strong>
-            <span>{content.fileMeta}</span>
-            <div className="office-viewer-site-preview-files">
-              <i className="is-active">PPTX</i>
-              <i>XLSX</i>
-              <i>DOCX</i>
-            </div>
-          </aside>
-          <div className="office-viewer-site-preview-canvas">
-            <div className="office-viewer-site-preview-sheet">
-              <span className="office-viewer-site-preview-kicker">
-                OFFICE / WEB
-              </span>
-              <strong>01</strong>
-              <div className="office-viewer-site-preview-lines">
-                <i />
-                <i />
-                <i />
-              </div>
-              <div className="office-viewer-site-preview-chart">
-                <i />
-                <i />
-                <i />
-                <i />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div className="office-viewer-site-preview-progress">
-        <div>
-          {content.stages.map((stage, index) => (
-            <span
-              key={stage}
-              className={
-                index === content.stages.length - 1 ? 'is-active' : undefined
-              }
-            >
-              <i />
-              {stage}
-            </span>
-          ))}
-        </div>
-        <strong>{content.localOnly}</strong>
-      </div>
-    </div>
-  );
+  useEffect(() => {
+    const sections = HOME_SECTION_IDS.map((id) =>
+      document.getElementById(id),
+    ).filter((section): section is HTMLElement => section !== null);
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const activeEntry = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort(
+            (left, right) =>
+              Math.abs(left.boundingClientRect.top) -
+              Math.abs(right.boundingClientRect.top),
+          )[0];
+
+        if (activeEntry) {
+          setActiveSection(activeEntry.target.id as HomeSectionId);
+        }
+      },
+      {
+        rootMargin: '-20% 0px -62%',
+        threshold: [0.01, 0.2, 0.5],
+      },
+    );
+
+    sections.forEach((section) => observer.observe(section));
+    return () => observer.disconnect();
+  }, []);
+
+  return activeSection;
 }
 
 /** 渲染默认英文、可切换中文的 Office File Viewer 产品官网。 */
 export function OfficeViewerHomePage({ locale }: OfficeViewerHomePageProps) {
   const content = getWebsiteContent(locale);
+  const activeSection = useActiveSection();
   const [packageManager, setPackageManager] = useState<PackageManager>('npm');
   const heroCopy = useCopyFeedback();
   const developerCopy = useCopyFeedback();
@@ -183,10 +168,42 @@ export function OfficeViewerHomePage({ locale }: OfficeViewerHomePageProps) {
   const antdLocale = locale === 'zh-CN' ? zhCN : enUS;
 
   useEffect(() => {
-    // Dumi 的 Markdown 路由仍会生成文档外壳，用页面标记将官网样式限制在两个公开首页。
+    // Dumi 仍会生成文档外壳，用页面标记将官网样式限制在两个公开首页。
     document.body.classList.add('office-viewer-site-page');
     return () => document.body.classList.remove('office-viewer-site-page');
   }, []);
+
+  const handlePackageManagerKeyDown = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    currentManager: PackageManager,
+  ) => {
+    const currentIndex = PACKAGE_MANAGERS.indexOf(currentManager);
+    let nextManager: PackageManager | undefined;
+
+    if (event.key === 'ArrowRight') {
+      nextManager =
+        PACKAGE_MANAGERS[(currentIndex + 1) % PACKAGE_MANAGERS.length];
+    } else if (event.key === 'ArrowLeft') {
+      nextManager =
+        PACKAGE_MANAGERS[
+          (currentIndex - 1 + PACKAGE_MANAGERS.length) % PACKAGE_MANAGERS.length
+        ];
+    } else if (event.key === 'Home') {
+      nextManager = PACKAGE_MANAGERS[0];
+    } else if (event.key === 'End') {
+      nextManager = PACKAGE_MANAGERS[PACKAGE_MANAGERS.length - 1];
+    }
+
+    if (!nextManager) {
+      return;
+    }
+
+    event.preventDefault();
+    setPackageManager(nextManager);
+    window.requestAnimationFrame(() =>
+      document.getElementById(`package-tab-${nextManager}`)?.focus(),
+    );
+  };
 
   return (
     <div className="office-viewer-site" lang={content.htmlLang}>
@@ -194,145 +211,25 @@ export function OfficeViewerHomePage({ locale }: OfficeViewerHomePageProps) {
         {content.skipToContent}
       </a>
 
-      <header className="office-viewer-site-header">
-        <nav
-          className="office-viewer-site-nav"
-          aria-label={content.navigation.ariaLabel}
-        >
-          <a
-            className="office-viewer-site-brand"
-            href={SITE_ROOT}
-            aria-label="Office File Viewer"
-          >
-            <span className="office-viewer-site-brand-mark" aria-hidden="true">
-              <i />
-              <i />
-              <i />
-            </span>
-            <span>Office File Viewer</span>
-          </a>
-
-          <div className="office-viewer-site-nav-links">
-            <a href="#features" onClick={handleSectionLink}>
-              {content.navigation.features}
-            </a>
-            <a href="#demo" onClick={handleSectionLink}>
-              {content.navigation.demo}
-            </a>
-            <a href="#compatibility" onClick={handleSectionLink}>
-              {content.navigation.compatibility}
-            </a>
-          </div>
-
-          <div className="office-viewer-site-nav-actions">
-            <a href={NPM_URL} target="_blank" rel="noreferrer">
-              {content.navigation.npm}
-            </a>
-            <a href={GITHUB_URL} target="_blank" rel="noreferrer">
-              {content.navigation.github}
-            </a>
-            <a
-              className="office-viewer-site-language"
-              href={content.languageHref}
-            >
-              {content.languageLabel}
-            </a>
-          </div>
-        </nav>
-      </header>
+      <HomeHeader
+        content={content}
+        activeSection={activeSection}
+        onSectionLink={handleSectionLink}
+      />
 
       <main id="main-content">
-        <section
-          className="office-viewer-site-hero"
-          aria-labelledby="hero-title"
-        >
-          <div className="office-viewer-site-hero-copy">
-            <span className="office-viewer-site-eyebrow">
-              {content.hero.eyebrow}
-            </span>
-            <h1 id="hero-title">{content.hero.title}</h1>
-            <p>{content.hero.description}</p>
-            <div className="office-viewer-site-hero-actions">
-              <a
-                className="office-viewer-site-button is-primary"
-                href="#demo"
-                onClick={handleSectionLink}
-              >
-                {content.hero.primaryAction}
-              </a>
-              <a
-                className="office-viewer-site-button is-secondary"
-                href={GITHUB_URL}
-                target="_blank"
-                rel="noreferrer"
-              >
-                {content.hero.secondaryAction}
-              </a>
-            </div>
-            <div className="office-viewer-site-command">
-              <code>{content.developer.commands.npm}</code>
-              <button
-                type="button"
-                onClick={() => heroCopy.copy(content.developer.commands.npm)}
-                aria-live="polite"
-              >
-                {getCopyLabel(heroCopy.state, {
-                  idle: content.hero.copy,
-                  copied: content.hero.copied,
-                  failed: content.hero.copyFailed,
-                })}
-              </button>
-            </div>
-            <span className="office-viewer-site-privacy-line">
-              {content.hero.privacy}
-            </span>
-          </div>
-          <ProductPreview locale={locale} />
-        </section>
+        <HomeHero
+          content={content}
+          copyLabel={getCopyLabel(heroCopy.state, {
+            idle: content.hero.copy,
+            copied: content.hero.copied,
+            failed: content.hero.copyFailed,
+          })}
+          onCopy={() => heroCopy.copy(content.developer.commands.npm)}
+          onSectionLink={handleSectionLink}
+        />
 
-        <section
-          className="office-viewer-site-capabilities"
-          aria-label={content.features.eyebrow}
-        >
-          {content.capabilities.map((item) => (
-            <div key={item.label}>
-              <strong>{item.value}</strong>
-              <span>{item.label}</span>
-            </div>
-          ))}
-        </section>
-
-        <section
-          className="office-viewer-site-section office-viewer-site-features"
-          id="features"
-          aria-labelledby="features-title"
-        >
-          <div className="office-viewer-site-section-heading">
-            <span className="office-viewer-site-eyebrow">
-              {content.features.eyebrow}
-            </span>
-            <h2 id="features-title">{content.features.title}</h2>
-            <p>{content.features.description}</p>
-          </div>
-          <div className="office-viewer-site-feature-grid">
-            {content.features.items.map((feature) => (
-              <article
-                key={feature.title}
-                className={[
-                  'office-viewer-site-feature-card',
-                  `is-${feature.tone}`,
-                  feature.size ? `is-${feature.size}` : undefined,
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-              >
-                <span>{feature.metric}</span>
-                <h3>{feature.title}</h3>
-                <p>{feature.description}</p>
-              </article>
-            ))}
-          </div>
-        </section>
+        <ProductOverviewSection content={content} />
 
         <section
           className="office-viewer-site-section office-viewer-site-demo"
@@ -359,8 +256,11 @@ export function OfficeViewerHomePage({ locale }: OfficeViewerHomePageProps) {
           </div>
         </section>
 
+        <ProductHighlightsSection content={content} />
+        <SupportedFormatsSection content={content} />
+
         <section
-          className="office-viewer-site-section office-viewer-site-developer"
+          className="office-viewer-site-section"
           aria-labelledby="developer-title"
         >
           <div className="office-viewer-site-section-heading">
@@ -370,6 +270,7 @@ export function OfficeViewerHomePage({ locale }: OfficeViewerHomePageProps) {
             <h2 id="developer-title">{content.developer.title}</h2>
             <p>{content.developer.description}</p>
           </div>
+
           <div className="office-viewer-site-code-grid">
             <article className="office-viewer-site-code-card">
               <div className="office-viewer-site-code-header">
@@ -378,21 +279,26 @@ export function OfficeViewerHomePage({ locale }: OfficeViewerHomePageProps) {
                   role="tablist"
                   aria-label={content.developer.packageManagerLabel}
                 >
-                  {(['npm', 'yarn'] as const).map((manager) => (
+                  {PACKAGE_MANAGERS.map((manager) => (
                     <button
                       key={manager}
                       id={`package-tab-${manager}`}
                       type="button"
                       role="tab"
+                      tabIndex={packageManager === manager ? 0 : -1}
                       aria-selected={packageManager === manager}
                       aria-controls="install-command-panel"
                       onClick={() => setPackageManager(manager)}
+                      onKeyDown={(event) =>
+                        handlePackageManagerKeyDown(event, manager)
+                      }
                     >
                       {manager}
                     </button>
                   ))}
                 </div>
               </div>
+
               <div
                 className="office-viewer-site-code-body"
                 id="install-command-panel"
@@ -412,6 +318,7 @@ export function OfficeViewerHomePage({ locale }: OfficeViewerHomePageProps) {
                   })}
                 </button>
               </div>
+
               <div className="office-viewer-site-code-links">
                 <a href={GITHUB_URL} target="_blank" rel="noreferrer">
                   {content.developer.github}
@@ -435,7 +342,7 @@ export function OfficeViewerHomePage({ locale }: OfficeViewerHomePageProps) {
         </section>
 
         <section
-          className="office-viewer-site-section office-viewer-site-compatibility"
+          className="office-viewer-site-section"
           id="compatibility"
           aria-labelledby="compatibility-title"
         >
@@ -448,6 +355,7 @@ export function OfficeViewerHomePage({ locale }: OfficeViewerHomePageProps) {
             </div>
             <p>{content.compatibility.description}</p>
           </div>
+
           <div className="office-viewer-site-compatibility-grid">
             {content.compatibility.items.map((item) => (
               <article key={item.name}>
