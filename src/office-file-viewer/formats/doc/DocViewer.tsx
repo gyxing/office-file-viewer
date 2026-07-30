@@ -179,16 +179,7 @@ function DocViewerComponent({
       key={docPage.id}
       page={page}
       zoom={zoom}
-      headerImage={
-        docPage.blocks.length > 0 &&
-        docPage.blocks.every(
-          (block) =>
-            block.type === 'paragraph' &&
-            /^\s*\d+(?:\.\d+)*\s+.+\s+-\s*.+\s*-\s*$/.test(block.text),
-        )
-          ? undefined
-          : documentMetadata.headerImage
-      }
+      headerImage={documentMetadata.headerImage}
       footerText={
         documentMetadata.footerPageNumbers && pageIndex > 0
           ? `- ${pageIndex} -`

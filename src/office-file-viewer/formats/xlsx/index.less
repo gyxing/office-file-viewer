@@ -280,15 +280,28 @@
   position: sticky;
   left: 0;
   z-index: 2;
+  box-sizing: border-box;
   width: 48px;
+  padding: 0;
+  line-height: 0;
+}
+
+.office-file-xlsx-sheet-table__row-header-label {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  line-height: 1;
+  place-items: center;
 }
 
 .office-file-xlsx-sheet-table__cell {
   position: relative;
+  box-sizing: border-box;
   padding: 0 4px;
   overflow: visible;
   color: #1f2937;
-  line-height: 1.2;
+  // Excel 的行高包含边框；较大的默认行高会让浮动对象锚点逐行累积偏移。
+  line-height: 1.1;
 }
 
 .office-file-xlsx-cell-diagonal {
@@ -310,6 +323,10 @@
 }
 
 .office-file-xlsx-sheet-table__cell-content--clipped {
+  position: absolute;
+  right: 4px;
+  left: 4px;
   width: auto;
+  min-width: 0;
   overflow: hidden;
 }

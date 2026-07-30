@@ -82,6 +82,7 @@ function DocxShapeItemRendererComponent({ item }: DocxShapeItemRendererProps) {
             key={block.id}
             block={block}
             availableWidth={item.width}
+            maximumWidth={item.width}
           />
         ) : block.type === 'chart' ? (
           <div key={block.id} className="office-file-docx-table-block__chart">

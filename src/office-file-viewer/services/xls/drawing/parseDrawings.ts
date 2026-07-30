@@ -15,6 +15,12 @@ type ShapeProperties = {
   blipIndex?: number;
   /** ShapeProperties 的可读名称。 */
   name?: string;
+  /** OfficeArt 中以 BGR 顺序编码的形状填充色。 */
+  fillColor?: number;
+  /** OfficeArt 中以 BGR 顺序编码的形状轮廓色。 */
+  lineColor?: number;
+  /** 形状轮廓宽度，单位为 EMU。 */
+  lineWidth?: number;
 };
 
 /** 提取并汇总 `collectRecords` 返回的数据。 */
@@ -70,6 +76,9 @@ function parseShapeProperties(record: OfficeArtRecord | undefined) {
     const propertyId = operation & 0x3fff;
     const value = view.getUint32(offset + 2, true);
     if (propertyId === 0x0104) result.blipIndex = value;
+    if (propertyId === 0x0181) result.fillColor = value;
+    if (propertyId === 0x01c0) result.lineColor = value;
+    if (propertyId === 0x01cb) result.lineWidth = value;
     if (operation & 0x8000) {
       if (complexOffset + value > record.data.length) break;
       if (propertyId === 0x0380) {
@@ -114,6 +123,9 @@ export function parseBiff8DrawingShapes(
         shapeType: fsp?.instance,
         name: properties.name,
         blipIndex: properties.blipIndex,
+        fillColor: properties.fillColor,
+        lineColor: properties.lineColor,
+        lineWidth: properties.lineWidth,
         anchor: parseClientAnchor(anchor.data),
       });
     } catch {

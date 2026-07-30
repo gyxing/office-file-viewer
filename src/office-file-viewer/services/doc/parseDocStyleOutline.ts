@@ -12,6 +12,10 @@ type DocOutlineStyleDefinition = {
   name?: string;
   /** 样式直接声明的大纲级别。 */
   outlineLevel?: number;
+  /** 段落样式 UPX 中声明的段落属性差异。 */
+  paragraphGrpprl?: Uint8Array;
+  /** 段落样式 UPX 中声明的字符属性差异。 */
+  characterGrpprl?: Uint8Array;
 };
 
 /** DOC/WPS 大纲解析使用的样式目录。 */
@@ -62,7 +66,8 @@ function readSprmOperandSize(sprm: number, bytes: Uint8Array, offset: number) {
   if (sizeCode === 0 || sizeCode === 1) return 1;
   if (sizeCode === 2 || sizeCode === 4 || sizeCode === 5) return 2;
   if (sizeCode === 3) return 4;
-  if (sizeCode === 6 || sizeCode === 7) return 1 + (bytes[offset] ?? 0);
+  if (sizeCode === 6) return 1 + (bytes[offset] ?? 0);
+  if (sizeCode === 7) return 3;
   return 0;
 }
 
@@ -227,6 +232,7 @@ function parseStyleDefinition(
   const papxStart = papxLengthOffset + 2;
   const papxEnd = papxStart + papxLength;
   if (papxEnd > stdEnd || papxLength < 2) return definition;
+  definition.paragraphGrpprl = data.slice(papxStart + 2, papxEnd);
 
   const initialLevel = styleId >= 1 && styleId <= 9 ? styleId - 1 : 9;
   const parsed = applyParagraphOutlineSprms(
@@ -237,6 +243,22 @@ function parseStyleDefinition(
   );
   if (parsed.didSetOutline && parsed.level >= 0 && parsed.level <= 9)
     definition.outlineLevel = parsed.level;
+
+  if (formattingSetCount >= 2) {
+    const chpxLengthOffset = papxEnd + (papxLength % 2);
+    const chpxLength = readUint16(data, chpxLengthOffset);
+    const chpxStart = chpxLengthOffset + 2;
+    if (
+      chpxLength !== undefined &&
+      chpxLength > 0 &&
+      chpxStart + chpxLength <= stdEnd
+    ) {
+      definition.characterGrpprl = data.slice(
+        chpxStart,
+        chpxStart + chpxLength,
+      );
+    }
+  }
   return definition;
 }
 
@@ -250,7 +272,7 @@ export function parseDocStyleOutlineCatalog(
   lcbStshf: number,
 ): DocStyleOutlineCatalog {
   const catalog = createEmptyCatalog();
-  if (!fcStshf || !lcbStshf) return catalog;
+  if (!lcbStshf) return catalog;
   if (fcStshf < 0 || fcStshf + lcbStshf > tableStream.length) {
     catalog.warnings.push('DOC 样式表范围超出 Table 流，已忽略大纲样式。');
     return catalog;
@@ -315,4 +337,49 @@ export function readDocParagraphOutlineLevel(
   );
   if (resolveTocStyle(parsed.styleId, catalog)) return undefined;
   return parsed.level >= 0 && parsed.level <= 8 ? parsed.level : undefined;
+}
+
+/** 读取段落实际采用的样式索引，包括 PAPX 中的样式切换。 */
+function readDocParagraphStyleId(grpprl: Uint8Array) {
+  const initialStyleId = readUint16(grpprl, 0);
+  if (initialStyleId === undefined) return undefined;
+  return applyParagraphOutlineSprms(
+    grpprl.slice(Math.min(2, grpprl.length)),
+    initialStyleId,
+    9,
+    () => 9,
+  ).styleId;
+}
+
+/** 按继承顺序返回段落样式的格式差异，供正文解析器合并。 */
+export function readDocParagraphStyleChain(
+  grpprl: Uint8Array,
+  catalog: DocStyleOutlineCatalog,
+) {
+  const styleId = readDocParagraphStyleId(grpprl);
+  if (styleId === undefined) return [];
+  const chain: DocOutlineStyleDefinition[] = [];
+  const seen = new Set<number>();
+  let current = catalog.styles.get(styleId);
+  while (current && !seen.has(current.id)) {
+    seen.add(current.id);
+    chain.unshift(current);
+    current =
+      current.baseStyleId === undefined
+        ? undefined
+        : catalog.styles.get(current.baseStyleId);
+  }
+  return chain.map((style) => ({
+    paragraphGrpprl: style.paragraphGrpprl,
+    characterGrpprl: style.characterGrpprl,
+  }));
+}
+
+/** 判断段落最终样式是否属于 Word 自动目录样式。 */
+export function isDocParagraphTocStyle(
+  grpprl: Uint8Array,
+  catalog: DocStyleOutlineCatalog,
+) {
+  const styleId = readDocParagraphStyleId(grpprl);
+  return styleId === undefined ? false : resolveTocStyle(styleId, catalog);
 }

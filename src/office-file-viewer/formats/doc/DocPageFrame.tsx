@@ -30,7 +30,7 @@ function DocPageFrameComponent({
   const shellStyle = useMemo<CSSProperties>(
     () => ({
       width: page.width * scale,
-      minHeight: page.minHeight * scale,
+      height: page.minHeight * scale,
     }),
     [page.minHeight, page.width, scale],
   );

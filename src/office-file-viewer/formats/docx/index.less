@@ -73,6 +73,52 @@
   font-family: SimSun, '宋体', serif;
 }
 
+.office-file-docx-inline-tab {
+  display: inline-block;
+  width: 2em;
+}
+
+.office-file-docx-toc-line {
+  display: flex;
+  align-items: baseline;
+
+  // 目录超链接在编辑态可呈蓝色下划线，打印预览应继承目录段落的正文样式。
+  span {
+    color: inherit !important;
+    text-decoration: none !important;
+  }
+}
+
+.office-file-docx-toc-line__text {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.office-file-docx-toc-line__leader {
+  flex: 1 1 16px;
+  height: 1px;
+  min-width: 16px;
+  margin: 0 4px;
+  transform: translateY(-0.22em);
+
+  &[data-office-docx-tab-leader='dot'],
+  &[data-office-docx-tab-leader='middleDot'] {
+    border-bottom: 1px dotted currentColor;
+  }
+
+  &[data-office-docx-tab-leader='hyphen'] {
+    border-bottom: 1px dashed currentColor;
+  }
+
+  &[data-office-docx-tab-leader='underscore'] {
+    border-bottom: 1px solid currentColor;
+  }
+}
+
+.office-file-docx-toc-line__page {
+  flex: none;
+}
+
 .office-file-docx-table-block {
   margin: 0;
 

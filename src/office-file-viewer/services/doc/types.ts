@@ -85,6 +85,8 @@ export type DocParagraphBlock = {
   role?: 'title' | 'heading' | 'body';
   /** 源 DOC/WPS 明确声明的大纲级别，使用从 0 开始的内部表示。 */
   outlineLevel?: number;
+  /** 是否属于 Word 自动目录段落。 */
+  isTableOfContents?: boolean;
   /** DocParagraphBlock 使用的渲染或文本样式。 */
   style?: DocTextStyle;
   /** 源文档在该段落前存在显式分页符；渲染分页时该占位段落不显示。 */
@@ -109,6 +111,10 @@ export type DocTableBlock = {
   width?: number;
   /** DocTableBlock 的水平对齐方式；未提供时沿用来源格式或渲染器的默认规则。 */
   align?: 'left' | 'center' | 'right';
+  /** 表格外边界相对正文左边界的偏移，单位为标准化渲染像素。 */
+  offsetLeft?: number;
+  /** 表格后的垂直间距；用于保留源文档中紧随表格的空段落。 */
+  spacingAfter?: number;
 };
 
 /** 描述 DocTableRow 在 DOC 二进制解析中的数据结构。 */
@@ -117,6 +123,10 @@ export type DocTableRow = {
   id: string;
   /** DocTableRow 包含的 cells 有序集合。 */
   cells: DocTableCell[];
+  /** 源 DOC 表格行高度，单位为标准化渲染像素。 */
+  height?: number;
+  /** 正行高表示最小高度，负行高表示精确高度。 */
+  heightRule?: 'atLeast' | 'exact';
 };
 
 /** 描述 DocTableCell 在 DOC 二进制解析中的数据结构。 */
@@ -200,6 +210,8 @@ export type DocTextStyle = {
   color?: string;
   /** DocTextStyle 的背景颜色，使用 CSS 颜色值；未提供时沿用来源格式或渲染器的默认规则。 */
   backgroundColor?: string;
+  /** 标记来自段落属性的底纹，避免字符高亮被错误扩散到整段。 */
+  paragraphBackgroundColor?: string;
   /** 段落边框颜色；未提供时不绘制边框。 */
   borderColor?: string;
   /** 段落边框宽度，单位为标准化渲染像素。 */
@@ -218,6 +230,8 @@ export type DocTextStyle = {
   textAlign?: 'left' | 'center' | 'right' | 'justify';
   /** DocTextStyle 的行高，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
   lineHeight?: number;
+  /** DOC 的 LSPD 同时声明倍数行距时保留该倍数，供标题和目录布局选用。 */
+  lineHeightMultiplier?: number;
   /** DocTextStyle 的字体族名称；未提供时沿用来源格式或渲染器的默认规则。 */
   fontFamily?: string;
   /** DocTextStyle 的对应间距，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */

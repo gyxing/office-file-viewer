@@ -77,7 +77,9 @@ function XlsxSheetTableComponent({
         {tableModel.rows.map(({ row, height, cells }, rowOffset) => (
           <tr key={row.index} style={{ height }}>
             <th className="office-file-xlsx-sheet-table__row-header">
-              {row.index}
+              <span className="office-file-xlsx-sheet-table__row-header-label">
+                {row.index}
+              </span>
             </th>
             {cells.map(({ cell, colSpan, rowSpan }) => {
               const style = cell.style ?? {};
@@ -85,6 +87,7 @@ function XlsxSheetTableComponent({
               const contentHeight = tableModel.rows
                 .slice(rowOffset, rowOffset + (rowSpan ?? 1))
                 .reduce((sum, item) => sum + item.height, 0);
+              const cellHeight = rowSpan ? contentHeight : height;
               const fallbackBorder = style.border
                 ? `${style.borderWidth ?? 1}px solid ${
                     style.borderColor ?? '#b9c2d0'
@@ -99,8 +102,8 @@ function XlsxSheetTableComponent({
                   title={cell.value}
                   style={{
                     ...cellStyleCache.get(cell.ref),
-                    height,
-                    minHeight: height,
+                    height: cellHeight,
+                    minHeight: cellHeight,
                     borderTop: style.borderTop ?? fallbackBorder,
                     borderRight: style.borderRight ?? fallbackBorder,
                     borderBottom: style.borderBottom ?? fallbackBorder,

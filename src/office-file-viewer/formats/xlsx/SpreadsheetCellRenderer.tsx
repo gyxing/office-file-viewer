@@ -70,13 +70,20 @@ function SpreadsheetCellRendererComponent({
   contentHeight,
   clipped,
 }: SpreadsheetCellRendererProps) {
+  const clippedPosition = clipped
+    ? cell.style?.verticalAlign === 'bottom'
+      ? { bottom: 0 }
+      : cell.style?.verticalAlign === 'middle'
+      ? { top: '50%', transform: 'translateY(-50%)' }
+      : { top: 0 }
+    : undefined;
   return (
     <>
       <div
         className={`office-file-xlsx-sheet-table__cell-content${
           clipped ? ' office-file-xlsx-sheet-table__cell-content--clipped' : ''
         }`}
-        style={{ maxHeight: contentHeight }}
+        style={{ maxHeight: contentHeight, ...clippedPosition }}
       >
         {cell.value}
       </div>

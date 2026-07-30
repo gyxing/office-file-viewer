@@ -129,6 +129,10 @@ export type DocxParagraphBlock = {
   text: string;
   /** 源 DOCX 明确声明的大纲级别，使用从 0 开始的内部表示。 */
   outlineLevel?: number;
+  /** 是否属于自动目录段落，用于还原目录制表位与打印样式。 */
+  isTableOfContents?: boolean;
+  /** 段落声明的制表位，位置单位为标准化渲染像素。 */
+  tabStops?: DocxTabStop[];
   /** DocxParagraphBlock 的水平对齐方式；未提供时沿用来源格式或渲染器的默认规则。 */
   align?: 'left' | 'center' | 'right' | 'justify';
   /** DocxParagraphBlock 的行高，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
@@ -280,6 +284,7 @@ export type DocxTableCell = {
 /** 描述 DocxInline 在 DOCX 解析中的数据结构。 */
 export type DocxInline =
   | DocxTextInline
+  | DocxTabInline
   | DocxBreakInline
   | DocxImageInline
   | DocxChartInline
@@ -293,6 +298,24 @@ export type DocxTextInline = {
   text: string;
   /** DocxTextInline 使用的渲染或文本样式。 */
   style?: DocxTextStyle;
+};
+
+/** 描述 DOCX 段落中的制表符。 */
+export type DocxTabInline = {
+  /** 用于区分制表符与普通文本。 */
+  type: 'tab';
+  /** 制表符沿用的文字样式。 */
+  style?: DocxTextStyle;
+};
+
+/** 描述 DOCX 段落属性中的制表位。 */
+export type DocxTabStop = {
+  /** 制表位相对段落起点的位置，单位为标准化渲染像素。 */
+  position: number;
+  /** 制表位的对齐方式。 */
+  align: 'left' | 'center' | 'right' | 'decimal' | 'bar' | 'number';
+  /** 制表位引导符。 */
+  leader?: 'dot' | 'hyphen' | 'underscore' | 'middleDot' | 'none';
 };
 
 /** 描述 DocxBreakInline 在 DOCX 解析中的数据结构。 */

@@ -25,6 +25,7 @@ import {
   parseRange,
   pointToPx,
   resolveStyle,
+  resolveXlsxMaxDigitWidth,
 } from './parseXlsx';
 
 /** 单个 Sheet 流式解析后的稀疏结构。 */
@@ -83,6 +84,7 @@ export async function parseXlsxSheetStream(
   let columnCount = Math.max(1, descriptor.columnCount);
   let defaultRowHeight = 20;
   let defaultColumnWidth = 64;
+  const maxDigitWidth = resolveXlsxMaxDigitWidth(context.styles.fonts[0]);
   let pendingCell: PendingCell | undefined;
   let capture: 'value' | 'formula' | 'inline' | undefined;
   let drawingRelationshipId: string | undefined;
@@ -117,9 +119,15 @@ export async function parseXlsxSheetStream(
           columnCount = Math.max(columnCount, range.endColumn);
         }
       } else if (event.localName === 'sheetFormatPr') {
-        defaultColumnWidth = excelWidthToPx(
-          Number(event.attributes.get('defaultColWidth') ?? 8.43),
-        );
+        const sourceDefaultColumnWidth =
+          event.attributes.get('defaultColWidth');
+        defaultColumnWidth = sourceDefaultColumnWidth
+          ? excelWidthToPx(
+              Number(sourceDefaultColumnWidth),
+              defaultColumnWidth,
+              maxDigitWidth,
+            )
+          : defaultColumnWidth;
         defaultRowHeight = pointToPx(
           Number(event.attributes.get('defaultRowHeight') ?? 15),
         );
@@ -132,6 +140,7 @@ export async function parseXlsxSheetStream(
         const width = excelWidthToPx(
           Number(event.attributes.get('width')),
           defaultColumnWidth,
+          maxDigitWidth,
         );
         const hidden = readBoolean(event.attributes.get('hidden'));
         for (let index = start; index <= end; index += 1) {

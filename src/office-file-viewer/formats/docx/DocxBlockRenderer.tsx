@@ -11,15 +11,24 @@ type DocxBlockRendererProps = {
   block: DocxBlock;
   /** DocxBlockRendererProps 的 availableWidth 尺寸或坐标，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
   availableWidth?: number;
+  /** 当前页面或容器允许块内容占用的最大物理宽度。 */
+  maximumWidth?: number;
 };
 
 /** 渲染 DocxBlockRendererComponent 组件。 */
 function DocxBlockRendererComponent({
   block,
   availableWidth,
+  maximumWidth,
 }: DocxBlockRendererProps) {
   if (block.type === 'table')
-    return <DocxTableBlock block={block} availableWidth={availableWidth} />;
+    return (
+      <DocxTableBlock
+        block={block}
+        availableWidth={availableWidth}
+        maximumWidth={maximumWidth}
+      />
+    );
   if (block.type === 'chart')
     return <DocxChartBlock block={block} zoom={100} />;
   return <DocxParagraph block={block} />;

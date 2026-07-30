@@ -64,6 +64,12 @@ export type Biff8DrawingShape = {
   name?: string;
   /** Biff8DrawingShape 在所属集合中的位置索引。 */
   blipIndex?: number;
+  /** OfficeArt 中以 BGR 顺序编码的形状填充色。 */
+  fillColor?: number;
+  /** OfficeArt 中以 BGR 顺序编码的形状轮廓色。 */
+  lineColor?: number;
+  /** 形状轮廓宽度，单位为 EMU。 */
+  lineWidth?: number;
   /** Biff8DrawingShape 在工作表或画布中的定位锚点。 */
   anchor: Biff8Anchor;
 };
