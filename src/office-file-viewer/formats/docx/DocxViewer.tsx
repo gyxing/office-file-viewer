@@ -256,6 +256,7 @@ function DocxViewerComponent({
         key={block.id}
         block={block}
         availableWidth={contentWidth}
+        maximumWidth={pageItem.page.width}
       />
     ));
   }, []);
@@ -265,20 +266,12 @@ function DocxViewerComponent({
         pageItem.headers?.even !== undefined ||
           pageItem.footerPageNumbers?.even !== undefined,
       );
-      const firstBodyText = pageItem.blocks.find(
-        (block) => block.type === 'paragraph' && block.text,
+      const headerBlocks = selectPageRegion<DocxPageContent['blocks']>(
+        pageItem.headers,
+        pageIndex,
+        pageItem.differentFirstPage,
+        differentEvenOdd,
       );
-      // 目录首页在源文档中关闭页眉，后续目录续页恢复默认页眉。
-      const suppressHeader =
-        firstBodyText?.type === 'paragraph' && firstBodyText.text === '目录';
-      const headerBlocks = suppressHeader
-        ? undefined
-        : selectPageRegion<DocxPageContent['blocks']>(
-            pageItem.headers,
-            pageIndex,
-            pageItem.differentFirstPage,
-            differentEvenOdd,
-          );
       const footerPageNumber = selectPageRegion<boolean>(
         pageItem.footerPageNumbers,
         pageIndex,
@@ -321,6 +314,7 @@ function DocxViewerComponent({
           key={block.id}
           block={block}
           availableWidth={availableWidth}
+          maximumWidth={page?.page.width}
         />
       );
     },

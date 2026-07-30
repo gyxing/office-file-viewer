@@ -94,7 +94,6 @@ type XlsxPackageState = {
   theme: OfficeTheme;
 };
 
-const DEFAULT_COLUMN_WIDTH_CHARACTERS = 8.43;
 const DEFAULT_ROW_HEIGHT_POINTS = 15;
 const DEFAULT_COLUMN_WIDTH = 64;
 const DEFAULT_ROW_HEIGHT = 20;
@@ -188,6 +187,8 @@ type SheetMetrics = {
   defaultColumnWidth: number;
   /** SheetMetrics 的 defaultRowHeight 渲染尺寸，单位为标准化像素。 */
   defaultRowHeight: number;
+  /** Normal 字体中数字 0 的最大像素宽度，用于还原 OOXML 字符列宽。 */
+  maxDigitWidth: number;
 };
 
 // XLSX 中工作表、drawing、chart、media 分散在不同 XML，通过关系表统一解析引用路径。
@@ -563,9 +564,32 @@ export function resolveStyle(
 export function excelWidthToPx(
   width?: number,
   fallback = DEFAULT_COLUMN_WIDTH,
+  maxDigitWidth = 7,
 ) {
   if (!width || !Number.isFinite(width)) return fallback;
-  return Math.max(40, Math.round(width * 7 + 5));
+  const safeDigitWidth = Math.max(1, Math.floor(maxDigitWidth));
+  return Math.max(
+    1,
+    Math.floor(
+      ((width * 256 + Math.floor(128 / safeDigitWidth)) / 256) * safeDigitWidth,
+    ),
+  );
+}
+
+/** 按 Normal 字体估算 Excel 列宽算法使用的最大数字宽度。 */
+export function resolveXlsxMaxDigitWidth(font: XlsxCellStyle | undefined) {
+  const fontSize = font?.fontSize ?? 11 * (96 / 72);
+  const family = font?.fontFamily?.toLowerCase() ?? '';
+  const ratio = /arial narrow/.test(family)
+    ? 0.45
+    : /calibri/.test(family)
+    ? 0.48
+    : /arial|helvetica|liberation sans/.test(family)
+    ? 0.525
+    : /courier|consolas|monaco|monospace/.test(family)
+    ? 0.6
+    : 0.5;
+  return Math.max(1, Math.floor(fontSize * ratio));
 }
 
 /** 执行 `pointToPx` 封装的 XLSX 解析处理步骤。 */
@@ -619,25 +643,33 @@ function anchorPosition(
   }
 
   return {
-    x: x + emuToPx(anchor.columnOffset),
-    y: y + emuToPx(anchor.rowOffset),
+    x: x + anchor.columnOffset,
+    y: y + anchor.rowOffset,
   };
 }
 
 /** 读取 `readSheetMetrics` 所需的源数据，供 XLSX 解析使用。 */
-function readSheetMetrics(sheetNode: Element): SheetMetrics {
+function readSheetMetrics(
+  sheetNode: Element,
+  styleBook: StyleBook,
+): SheetMetrics {
   const sheetFormat = childByLocalName(sheetNode, 'sheetFormatPr');
+  const maxDigitWidth = resolveXlsxMaxDigitWidth(styleBook.fonts[0]);
+  const defaultColumnWidth = attr(sheetFormat, 'defaultColWidth');
   return {
-    defaultColumnWidth: excelWidthToPx(
-      Number(
-        attr(sheetFormat, 'defaultColWidth') ?? DEFAULT_COLUMN_WIDTH_CHARACTERS,
-      ),
-    ),
+    defaultColumnWidth: defaultColumnWidth
+      ? excelWidthToPx(
+          Number(defaultColumnWidth),
+          DEFAULT_COLUMN_WIDTH,
+          maxDigitWidth,
+        )
+      : DEFAULT_COLUMN_WIDTH,
     defaultRowHeight: pointToPx(
       Number(
         attr(sheetFormat, 'defaultRowHeight') ?? DEFAULT_ROW_HEIGHT_POINTS,
       ),
     ),
+    maxDigitWidth,
   };
 }
 
@@ -661,6 +693,7 @@ function readColumns(
         width: excelWidthToPx(
           Number(attr(node, 'width')),
           metrics.defaultColumnWidth,
+          metrics.maxDigitWidth,
         ),
         hidden: attr(node, 'hidden') === '1',
       });
@@ -683,9 +716,14 @@ function readColumns(
 function readAnchorPoint(node: Element | null) {
   return {
     column: Number(textContent(childByLocalName(node, 'col'))) + 1,
-    columnOffset: Number(textContent(childByLocalName(node, 'colOff')) || 0),
+    // 标准模型的锚点偏移统一使用 CSS 像素，避免渲染阶段把 EMU 当像素再次参与比例换算。
+    columnOffset: emuToPx(
+      Number(textContent(childByLocalName(node, 'colOff')) || 0),
+    ),
     row: Number(textContent(childByLocalName(node, 'row'))) + 1,
-    rowOffset: Number(textContent(childByLocalName(node, 'rowOff')) || 0),
+    rowOffset: emuToPx(
+      Number(textContent(childByLocalName(node, 'rowOff')) || 0),
+    ),
   };
 }
 
@@ -949,7 +987,7 @@ function readSheet(
   const sheetNode = doc.documentElement;
   const range = attr(childByLocalName(sheetNode, 'dimension'), 'ref');
   const parsedRange = parseRange(range);
-  const metrics = readSheetMetrics(sheetNode);
+  const metrics = readSheetMetrics(sheetNode, styleBook);
   const cells = new Map<string, XlsxCell>();
   let maxRow = parsedRange?.endRow ?? 0;
   let maxColumn = parsedRange?.endColumn ?? 0;

@@ -16,10 +16,12 @@ import {
   parseBiff8Drawings,
   parseBiff8DrawingShapes,
 } from './drawing/parseDrawings';
+import type { Biff8DrawingShape } from './drawing/types';
 import type {
   Biff8BorderStyle,
   Biff8Cell,
   Biff8CellFormat,
+  Biff8Font,
   Biff8SheetDescriptor,
   Biff8Workbook,
   Biff8Worksheet,
@@ -30,6 +32,7 @@ const TWIPS_PER_INCH = 1440;
 const POINTS_PER_INCH = 72;
 const DEFAULT_COLUMN_PIXELS = 64;
 const DEFAULT_ROW_PIXELS = 20;
+const EMUS_PER_INCH = 914400;
 
 /** 执行 `columnLabel` 封装的XLS/BIFF8 解析处理步骤。 */
 function columnLabel(index: number) {
@@ -50,7 +53,8 @@ function cellRef(row: number, column: number) {
 
 /** 执行 `twipsToPixels` 封装的XLS/BIFF8 解析处理步骤。 */
 function twipsToPixels(value: number) {
-  return (value / TWIPS_PER_INCH) * CSS_DPI;
+  // Excel 在屏幕布局中把 BIFF 行高截断到整像素；保留小数会让下方绘图锚点持续累积偏移。
+  return Math.max(1, Math.floor((value / TWIPS_PER_INCH) * CSS_DPI));
 }
 
 /** 执行 `pointsToPixels` 封装的XLS/BIFF8 解析处理步骤。 */
@@ -58,10 +62,30 @@ function pointsToPixels(value: number) {
   return (value / POINTS_PER_INCH) * CSS_DPI;
 }
 
-/** 执行 `columnWidthToPixels` 封装的XLS/BIFF8 解析处理步骤。 */
-function columnWidthToPixels(width: number) {
+/** 估算 Normal 样式字体的最大数字宽度，BIFF 列宽与绘图锚点都依赖该值。 */
+function resolveMaxDigitWidth(font: Biff8Font | undefined) {
+  if (!font) return 7;
+  const family = font.name.trim().toLowerCase();
+  const ratio = /arial narrow/.test(family)
+    ? 0.45
+    : /(arial|helvetica|liberation sans)/.test(family)
+    ? 0.56
+    : /(courier|consolas|monaco|monospace)/.test(family)
+    ? 0.6
+    : 0.5;
+  const fontSizePixels = pointsToPixels(font.heightTwips / 20);
+  return Math.max(1, Math.floor(fontSizePixels * ratio));
+}
+
+/** 按 BIFF 规范将字符列宽换算成像素，最大数字宽度来自工作簿 Normal 字体。 */
+function columnWidthToPixels(width: number, maxDigitWidth: number) {
   if (!Number.isFinite(width) || width <= 0) return DEFAULT_COLUMN_PIXELS;
-  return Math.max(1, Math.floor(((width * 256 + 18) / 256) * 7));
+  return Math.max(
+    1,
+    Math.floor(
+      ((width * 256 + Math.floor(128 / maxDigitWidth)) / 256) * maxDigitWidth,
+    ),
+  );
 }
 
 const SYSTEM_COLORS: Record<number, string> = {
@@ -294,6 +318,7 @@ function adaptWorksheet(
   workbook: Biff8Workbook,
 ): SpreadsheetSheet {
   const { maxRow, maxColumn } = computeUsedRange(sheet);
+  const maxDigitWidth = resolveMaxDigitWidth(workbook.globals.fonts[0]);
   const sourceCells = new Map(
     sheet.cells.map((cell) => [`${cell.row}:${cell.column}`, cell]),
   );
@@ -307,6 +332,7 @@ function adaptWorksheet(
         label: columnLabel(column + 1),
         width: columnWidthToPixels(
           info?.widthCharacters ?? sheet.defaultColumnWidth,
+          maxDigitWidth,
         ),
         hidden: info?.hidden,
       };
@@ -348,7 +374,10 @@ function adaptWorksheet(
     name: sheet.descriptor.name,
     path: `/Workbook/${sheet.descriptor.name}`,
     kind: 'worksheet',
-    defaultColumnWidth: columnWidthToPixels(sheet.defaultColumnWidth),
+    defaultColumnWidth: columnWidthToPixels(
+      sheet.defaultColumnWidth,
+      maxDigitWidth,
+    ),
     defaultRowHeight: sheet.defaultRowHeightTwips
       ? twipsToPixels(sheet.defaultRowHeightTwips)
       : DEFAULT_ROW_PIXELS,
@@ -410,9 +439,13 @@ export function adaptBiff8WorksheetSparse(
   sheet: Biff8Worksheet,
 ) {
   const { maxRow, maxColumn } = computeUsedRange(sheet);
+  const maxDigitWidth = resolveMaxDigitWidth(workbook.globals.fonts[0]);
   const rowCount = maxRow + 1;
   const columnCount = maxColumn + 1;
-  const defaultColumnWidth = columnWidthToPixels(sheet.defaultColumnWidth);
+  const defaultColumnWidth = columnWidthToPixels(
+    sheet.defaultColumnWidth,
+    maxDigitWidth,
+  );
   const defaultRowHeight = sheet.defaultRowHeightTwips
     ? twipsToPixels(sheet.defaultRowHeightTwips)
     : DEFAULT_ROW_PIXELS;
@@ -428,7 +461,7 @@ export function adaptBiff8WorksheetSparse(
     ) {
       columnMetrics.set(index + 1, {
         index: index + 1,
-        width: columnWidthToPixels(column.widthCharacters),
+        width: columnWidthToPixels(column.widthCharacters, maxDigitWidth),
         hidden: Boolean(column.hidden),
       });
     }
@@ -588,6 +621,60 @@ export type XlsResourceCollector = {
   add(resource: PortableResource): Promise<string>;
 };
 
+/** 将 OfficeArt 的低三字节 BGR 色值转换为 CSS RGB 颜色。 */
+function officeArtColorToCss(value: number | undefined) {
+  if (value === undefined) return undefined;
+  const red = value & 0xff;
+  const green = (value >>> 8) & 0xff;
+  const blue = (value >>> 16) & 0xff;
+  return `rgb(${red}, ${green}, ${blue})`;
+}
+
+/** 转义 SVG 文本节点，避免对象名称破坏生成的图形资源。 */
+function escapeSvgText(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+/** 将常见 BIFF8 AutoShape 转成无损缩放的 SVG 图片资源。 */
+function createBiff8ShapeResource(
+  shape: Biff8DrawingShape,
+  width: number,
+  height: number,
+): PortableResource | undefined {
+  if (shape.shapeType !== 1 && shape.shapeType !== 2 && shape.shapeType !== 3) {
+    return undefined;
+  }
+  const fill = officeArtColorToCss(shape.fillColor) ?? 'none';
+  const stroke = officeArtColorToCss(shape.lineColor) ?? 'none';
+  const strokeWidth =
+    shape.lineWidth === undefined
+      ? 0
+      : Math.max(0, (shape.lineWidth / EMUS_PER_INCH) * CSS_DPI);
+  const inset = stroke === 'none' ? 0 : strokeWidth / 2;
+  const innerWidth = Math.max(0, width - inset * 2);
+  const innerHeight = Math.max(0, height - inset * 2);
+  const geometry =
+    shape.shapeType === 3
+      ? `<ellipse cx="${width / 2}" cy="${height / 2}" rx="${
+          innerWidth / 2
+        }" ry="${innerHeight / 2}"/>`
+      : `<rect x="${inset}" y="${inset}" width="${innerWidth}" height="${innerHeight}"${
+          shape.shapeType === 2 ? ` rx="${Math.min(width, height) * 0.12}"` : ''
+        }/>`;
+  const title = shape.name ? `<title>${escapeSvgText(shape.name)}</title>` : '';
+  return {
+    id: `xls-shape-resource:${shape.id}`,
+    encoding: 'text',
+    mimeType: 'image/svg+xml',
+    text: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}">${title}<g fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}">${geometry}</g></svg>`,
+  };
+}
+
 /** 解析并附加 XLS 绘图图片，资源的实体化方式由运行环境注入。 */
 export async function attachBiff8DrawingImages(
   target: SpreadsheetWorkbook,
@@ -613,8 +700,10 @@ export async function attachBiff8DrawingImages(
     );
     if (!sheetBytes.length) continue;
     let images: ReturnType<typeof parseBiff8Drawings>;
+    let shapes: ReturnType<typeof parseBiff8DrawingShapes>;
     try {
       images = parseBiff8Drawings(groupBytes, sheetBytes, warnings);
+      shapes = parseBiff8DrawingShapes(sheetBytes, warnings);
     } catch (error) {
       warnings.push({
         code: 'INVALID_SHEET_DRAWING',
@@ -677,6 +766,51 @@ export async function attachBiff8DrawingImages(
           sheetName: sourceSheet.descriptor.name,
         });
       }
+    }
+    // BIFF8 普通形状没有 BLIP 图片数据，统一转成 SVG 后复用现有浮动图片坐标与资源生命周期。
+    for (const shape of shapes) {
+      if (shape.blipIndex !== undefined) continue;
+      if (
+        shape.shapeType !== 1 &&
+        shape.shapeType !== 2 &&
+        shape.shapeType !== 3
+      ) {
+        continue;
+      }
+      ensureSheetBounds(
+        targetSheet,
+        shape.anchor.to.row + 1,
+        shape.anchor.to.column + 1,
+      );
+      const from = pointGeometry(targetSheet, shape.anchor.from);
+      const to = pointGeometry(targetSheet, shape.anchor.to);
+      const width = Math.max(1, to.x - from.x);
+      const height = Math.max(1, to.y - from.y);
+      const resource = createBiff8ShapeResource(shape, width, height);
+      if (!resource) continue;
+      const src = await resources.add(resource);
+      targetSheet.images.push({
+        id: shape.id,
+        name: shape.name,
+        alt: shape.name,
+        src,
+        from: {
+          row: shape.anchor.from.row + 1,
+          column: shape.anchor.from.column + 1,
+          rowOffset: from.rowHeight * shape.anchor.from.rowFraction,
+          columnOffset: from.columnWidth * shape.anchor.from.columnFraction,
+        },
+        to: {
+          row: shape.anchor.to.row + 1,
+          column: shape.anchor.to.column + 1,
+          rowOffset: to.rowHeight * shape.anchor.to.rowFraction,
+          columnOffset: to.columnWidth * shape.anchor.to.columnFraction,
+        },
+        x: from.x,
+        y: from.y,
+        width,
+        height,
+      });
     }
   }
 }

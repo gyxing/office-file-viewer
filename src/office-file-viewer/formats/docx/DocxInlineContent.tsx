@@ -15,6 +15,14 @@ type DocxInlineContentProps = {
 /** 渲染 DocxInlineContentComponent 组件。 */
 function DocxInlineContentComponent({ inline }: DocxInlineContentProps) {
   if (inline.type === 'break') return <br />;
+  if (inline.type === 'tab')
+    return (
+      <span
+        className="office-file-docx-inline-tab"
+        style={buildDocxTextStyle(inline.style)}
+        aria-hidden="true"
+      />
+    );
   if (inline.type === 'image') return <DocxImage inline={inline} />;
   if (inline.type === 'chart') return <DocxInlineChart inline={inline} />;
   if (inline.type === 'shape') return <DocxShape inline={inline} />;

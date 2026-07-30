@@ -29,6 +29,7 @@ function DocxParagraphComponent({
   const hasContent = block.inlines.length > 0;
   const hasFlowContent = block.inlines.some((inline) => {
     if (inline.type === 'text') return inline.text.length > 0;
+    if (inline.type === 'tab') return true;
     if (inline.type === 'break') return true;
     if (inline.type === 'image') return !inline.image.position;
     if (inline.type === 'shape') return !inline.shape.position;
@@ -46,6 +47,10 @@ function DocxParagraphComponent({
   const hasBlockLevelInline = block.inlines.some(
     (inline) => inline.type === 'shape' || inline.type === 'chart',
   );
+  const tocTabIndex = block.isTableOfContents
+    ? block.inlines.findIndex((inline) => inline.type === 'tab')
+    : -1;
+  const isTocLine = tocTabIndex >= 0;
 
   const positionStyle = calculatePositionStyle(block.position);
 
@@ -78,7 +83,11 @@ function DocxParagraphComponent({
       paddingRight: block.paddingRight,
       minHeight: baseMinHeight,
       textAlign: block.align,
-      lineHeight: getDocxCssLineHeight(block),
+      // flex 基线布局会把绝对行距向上取整约 1px，目录行需抵消该误差。
+      lineHeight:
+        isTocLine && block.lineHeight !== undefined && block.lineHeight > 4
+          ? `${Math.max(1, block.lineHeight - 1)}px`
+          : getDocxCssLineHeight(block),
       color: block.style?.color ?? '#000',
       fontSize: block.style?.fontSize ?? 14,
       fontWeight: block.style?.bold ? 700 : 400,
@@ -93,25 +102,50 @@ function DocxParagraphComponent({
       maxWidth: block.position ? 'none' : undefined,
       ...buildDocxTextStyle(block.style),
     };
-  }, [block, compact, hasContent, hasFlowContent, positionStyle]);
+  }, [block, compact, hasContent, hasFlowContent, isTocLine, positionStyle]);
 
   // 图表和形状内部会渲染块级节点，使用 div 容器避免嵌套到 p 里触发浏览器修正。
   const Container =
     hasPositionedElements || hasBlockLevelInline || asDiv ? 'div' : 'p';
+  const tocLeader = block.tabStops?.find(
+    (stop) => stop.align === 'right' || stop.align === 'decimal',
+  )?.leader;
+  const renderInline = (
+    inline: (typeof block.inlines)[number],
+    index: number,
+  ) => (
+    <DocxInlineContent key={`${block.id}-inline-${index}`} inline={inline} />
+  );
 
   return (
     <Container
+      className={isTocLine ? 'office-file-docx-toc-line' : undefined}
       style={paragraphStyle}
       data-office-word-outline-target={
         block.outlineLevel !== undefined ? block.id : undefined
       }
     >
-      {block.inlines.map((inline, index) => (
-        <DocxInlineContent
-          key={`${block.id}-inline-${index}`}
-          inline={inline}
-        />
-      ))}
+      {tocTabIndex >= 0 ? (
+        <>
+          <span className="office-file-docx-toc-line__text">
+            {block.inlines.slice(0, tocTabIndex).map(renderInline)}
+          </span>
+          <span
+            className="office-file-docx-toc-line__leader"
+            data-office-docx-tab-leader={tocLeader ?? 'none'}
+            aria-hidden="true"
+          />
+          <span className="office-file-docx-toc-line__page">
+            {block.inlines
+              .slice(tocTabIndex + 1)
+              .map((inline, index) =>
+                renderInline(inline, tocTabIndex + index + 1),
+              )}
+          </span>
+        </>
+      ) : (
+        block.inlines.map(renderInline)
+      )}
     </Container>
   );
 }

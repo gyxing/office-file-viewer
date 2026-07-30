@@ -34,6 +34,7 @@
 
 .office-file-doc-page-frame {
   margin: 0 auto;
+  overflow: hidden;
 }
 
 .office-file-doc-page-frame + .office-file-doc-page-frame {
@@ -53,9 +54,10 @@
 
 .office-file-doc-page-frame__header-image {
   position: absolute;
-  top: 55px;
+  // 二进制页眉未恢复 PICF 锚点尺寸时，采用 Word 常见的 93pt 徽标宽度。
+  top: 57px;
   left: 120px;
-  width: 110px;
+  width: 124px;
   height: auto;
 }
 
@@ -75,6 +77,30 @@
   color: #111827;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.office-file-doc-paragraph--toc {
+  display: flex;
+  align-items: baseline;
+  white-space: nowrap;
+}
+
+.office-file-doc-paragraph__toc-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.office-file-doc-paragraph__toc-leader {
+  flex: 1 1 auto;
+  height: 1px;
+  min-width: 18px;
+  margin: 0 6px 0.28em;
+  border-bottom: 1px dotted currentColor;
+}
+
+.office-file-doc-paragraph__toc-page {
+  flex: 0 0 auto;
 }
 
 .office-file-doc-inline-image {
@@ -105,10 +131,6 @@
   border-collapse: collapse;
 }
 
-.office-file-doc-table--document-grid tr {
-  height: 31px;
-}
-
 .office-file-doc-table__cell {
   padding: 5px 8px;
   white-space: pre-wrap;
@@ -132,7 +154,7 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  margin: 6px 0 16px;
+  margin: 6px 0 10px;
 }
 
 .office-file-doc-image-layout__row {

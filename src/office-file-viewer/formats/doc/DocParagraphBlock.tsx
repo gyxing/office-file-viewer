@@ -1,7 +1,10 @@
 // DocParagraphBlock 渲染 DOC 段落块，并应用推断出的标题、正文和文字样式。
 import type { CSSProperties } from 'react';
 import React, { memo, useMemo } from 'react';
-import type { DocParagraphBlock as DocParagraphBlockModel } from '../../services/doc/types';
+import type {
+  DocParagraphBlock as DocParagraphBlockModel,
+  DocTextInline,
+} from '../../services/doc/types';
 import { DocInlineContent } from './DocInlineContent';
 import { docTextStyleToCss } from './docRenderUtils';
 
@@ -10,6 +13,36 @@ type DocParagraphBlockProps = {
   /** DocParagraphBlockProps 当前负责渲染的文档块模型。 */
   block: DocParagraphBlockModel;
 };
+
+/** 按目录段落最后一个制表符拆出标题和页码，并保留各自的源文字样式。 */
+function splitTableOfContentsInlines(inlines?: DocTextInline[]) {
+  if (!inlines?.length) return undefined;
+  let splitInlineIndex = -1;
+  let splitTextIndex = -1;
+  inlines.forEach((inline, inlineIndex) => {
+    if (inline.type !== 'text') return;
+    const textIndex = inline.text.lastIndexOf('\t');
+    if (textIndex >= 0) {
+      splitInlineIndex = inlineIndex;
+      splitTextIndex = textIndex;
+    }
+  });
+  if (splitInlineIndex < 0) return undefined;
+
+  const splitInline = inlines[splitInlineIndex];
+  if (splitInline.type !== 'text') return undefined;
+  const left = inlines.slice(0, splitInlineIndex);
+  const right = inlines.slice(splitInlineIndex + 1);
+  if (splitTextIndex > 0) {
+    left.push({
+      ...splitInline,
+      text: splitInline.text.slice(0, splitTextIndex),
+    });
+  }
+  const pageNumber = splitInline.text.slice(splitTextIndex + 1);
+  if (pageNumber) right.unshift({ ...splitInline, text: pageNumber });
+  return { left, right };
+}
 
 /** 渲染 DocParagraphBlockComponent 组件。 */
 function DocParagraphBlockComponent({ block }: DocParagraphBlockProps) {
@@ -25,20 +58,41 @@ function DocParagraphBlockComponent({ block }: DocParagraphBlockProps) {
     }),
     [block.style, isHeading, isTitle],
   );
+  const tocInlines = block.isTableOfContents
+    ? splitTableOfContentsInlines(block.inlines)
+    : undefined;
 
   return (
     <p
-      className="office-file-doc-paragraph"
+      className={`office-file-doc-paragraph${
+        tocInlines ? ' office-file-doc-paragraph--toc' : ''
+      }`}
       style={paragraphStyle}
       data-office-word-outline-target={
         block.outlineLevel !== undefined ? block.id : undefined
       }
     >
-      <DocInlineContent
-        inlines={block.inlines}
-        fallback={block.text}
-        preserveBlockTypography={isTitle || isHeading}
-      />
+      {tocInlines ? (
+        <>
+          <span className="office-file-doc-paragraph__toc-title">
+            <DocInlineContent inlines={tocInlines.left} fallback="" />
+          </span>
+          <span
+            className="office-file-doc-paragraph__toc-leader"
+            data-office-doc-tab-leader="dot"
+            aria-hidden="true"
+          />
+          <span className="office-file-doc-paragraph__toc-page">
+            <DocInlineContent inlines={tocInlines.right} fallback="" />
+          </span>
+        </>
+      ) : (
+        <DocInlineContent
+          inlines={block.inlines}
+          fallback={block.text}
+          preserveBlockTypography={isTitle || isHeading}
+        />
+      )}
     </p>
   );
 }

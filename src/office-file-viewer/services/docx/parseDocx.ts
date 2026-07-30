@@ -31,6 +31,13 @@ import {
   type DocxBlockParseOperations,
   type DocxBlockParseResult,
 } from './parseDocxBlock';
+import {
+  nextDocxNumberPrefix,
+  readDocxNumbering,
+  readDocxNumberingReference,
+  type DocxNumberingCatalog,
+  type DocxNumberingReference,
+} from './parseDocxNumbering';
 import type {
   DocxBlock,
   DocxChartBlock,
@@ -47,6 +54,7 @@ import type {
   DocxTableBlock,
   DocxTableCell,
   DocxTableRow,
+  DocxTabStop,
   DocxTextStyle,
 } from './types';
 
@@ -72,6 +80,10 @@ export type DocxParseContext = {
   theme: OfficeTheme;
   /** 文档网格推导出的默认正文行高，单位为标准化渲染像素。 */
   defaultLineHeight?: number;
+  /** 文档网格单行的实际高度，供表格等局部排版遵循吸附规则。 */
+  documentGridLineHeight?: number;
+  /** DOCX 自动编号定义及当前解析计数状态。 */
+  numbering: DocxNumberingCatalog;
   /** ParseContext 关联的 styles 结构；字段形状由 DocxStyleCatalog 定义。 */
   styles: DocxStyleCatalog;
   /** ParseContext 包含的 images 有序集合。 */
@@ -90,7 +102,7 @@ type ParseContext = DocxParseContext;
 type ReadBlockChildrenOptions = {
   /** 是否位于形状内部；用于选择局部坐标和排版规则。 */
   insideShape?: boolean;
-  /** 是否位于表格单元格内部；单元格正文不吸附页面行网格。 */
+  /** 是否位于表格单元格内部。 */
   insideTable?: boolean;
   /** 是否位于页眉或页脚区域；这些段落不属于正文大纲。 */
   insidePageRegion?: boolean;
@@ -106,6 +118,12 @@ type DocxStyleDefinition = {
   basedOn?: string;
   /** 样式直接声明的大纲级别，使用从 0 开始的内部表示。 */
   outlineLevel?: number;
+  /** 样式直接声明的自动编号引用。 */
+  numbering?: DocxNumberingReference;
+  /** 样式直接声明的制表位。 */
+  tabStops?: DocxTabStop[];
+  /** 样式是否要求文字吸附文档网格。 */
+  snapToGrid?: boolean;
   /** DocxStyleDefinition 使用的渲染或文本样式。 */
   style: DocxTextStyle;
 };
@@ -139,6 +157,11 @@ const DEFAULT_PAGE: DocxPage = {
   marginBottom: 96,
   marginLeft: 120,
 };
+
+// Word 的正文流表格会在文档网格边界后保留约 6pt，浏览器表格需显式补回。
+const DOCX_FLOW_TABLE_TOP_OFFSET = 8;
+// 百分比表宽不包含首尾默认单元格边距，Word 会把两侧各约 7px 绘制到正文边界外。
+const DOCX_DEFAULT_TABLE_EDGE_OFFSET = 7;
 
 const DEFAULT_DOCX_FONT_FAMILY =
   '"Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif';
@@ -464,6 +487,42 @@ function readParagraphPropertyStyle(
   return Object.keys(cleaned).length ? cleaned : undefined;
 }
 
+/** 读取段落制表位，保留目录的右对齐位置与引导符语义。 */
+function readParagraphTabStops(
+  pPr: Element | null | undefined,
+): DocxTabStop[] | undefined {
+  const tabs = childByLocalName(pPr, 'tabs');
+  if (!tabs) return undefined;
+  const stops = childrenByLocalName(tabs, 'tab')
+    .map((tab): DocxTabStop | undefined => {
+      const rawAlign = readVal(tab);
+      const position = twipToPx(attr(tab, 'w:pos') ?? attr(tab, 'pos'));
+      if (position === undefined || rawAlign === 'clear') return undefined;
+      const align =
+        rawAlign === 'center' ||
+        rawAlign === 'right' ||
+        rawAlign === 'decimal' ||
+        rawAlign === 'bar' ||
+        rawAlign === 'num'
+          ? rawAlign === 'num'
+            ? 'number'
+            : rawAlign
+          : 'left';
+      const rawLeader = attr(tab, 'w:leader') ?? attr(tab, 'leader');
+      const leader =
+        rawLeader === 'dot' ||
+        rawLeader === 'hyphen' ||
+        rawLeader === 'underscore' ||
+        rawLeader === 'middleDot' ||
+        rawLeader === 'none'
+          ? rawLeader
+          : undefined;
+      return { position, align, leader };
+    })
+    .filter((stop): stop is DocxTabStop => Boolean(stop));
+  return stops.length ? stops : undefined;
+}
+
 /** 读取 `readOnOff` 所需的源数据，供 DOCX 解析使用。 */
 function readOnOff(node: Element | null | undefined) {
   if (!node) return undefined;
@@ -519,9 +578,13 @@ function readFontFamily(
   const hAnsi = attr(rFonts, 'w:hAnsi') ?? attr(rFonts, 'hAnsi');
   const cs = attr(rFonts, 'w:cs') ?? attr(rFonts, 'cs');
   const themeFonts = theme.fontScheme ?? {};
-  const explicitFont =
-    eastAsia ?? ascii ?? hAnsi ?? cs ?? readThemeFont(rFonts, theme);
-  if (explicitFont || !allowFallback) return quoteFontFamily(explicitFont);
+  // CSS 会为每个字符选择字体栈中首个可用字形；西文字体在前可同时还原 ASCII 与中文。
+  const explicitFonts = [ascii ?? hAnsi ?? cs, eastAsia]
+    .filter((font): font is string => Boolean(font))
+    .filter((font, index, fonts) => fonts.indexOf(font) === index);
+  if (explicitFonts.length) return quoteFontFamily(explicitFonts.join(','));
+  const themeFont = readThemeFont(rFonts, theme);
+  if (themeFont || !allowFallback) return quoteFontFamily(themeFont);
   return quoteFontFamily(
     themeFonts.minorFont ?? themeFonts.majorFont ?? DEFAULT_DOCX_FONT_FAMILY,
   );
@@ -605,6 +668,9 @@ function readDocxStyles(
       name,
       basedOn,
       outlineLevel: readDocxOutlineLevel(pPr),
+      numbering: readDocxNumberingReference(pPr),
+      tabStops: readParagraphTabStops(pPr),
+      snapToGrid: readOnOff(childByLocalName(pPr, 'snapToGrid')),
       style: style ?? {},
     };
   });
@@ -633,6 +699,11 @@ function readTextStyle(
 ): DocxTextStyle | undefined {
   if (!rPr) return undefined;
 
+  const runFonts = childByLocalName(rPr, 'rFonts');
+  const scriptHint =
+    attr(runFonts, 'w:hint') ?? attr(runFonts, 'hint') ?? undefined;
+  const usesComplexScript =
+    scriptHint === 'cs' || Boolean(childByLocalName(rPr, 'cs'));
   const color =
     readDrawingColor(childByLocalName(rPr, 'textFill'), theme) ??
     parseHexColor(
@@ -642,11 +713,11 @@ function readTextStyle(
   const style: DocxTextStyle = {
     bold: firstDefined(
       readOnOff(childByLocalName(rPr, 'b')),
-      readOnOff(childByLocalName(rPr, 'bCs')),
+      usesComplexScript ? readOnOff(childByLocalName(rPr, 'bCs')) : undefined,
     ),
     italic: firstDefined(
       readOnOff(childByLocalName(rPr, 'i')),
-      readOnOff(childByLocalName(rPr, 'iCs')),
+      usesComplexScript ? readOnOff(childByLocalName(rPr, 'iCs')) : undefined,
     ),
     underline: readUnderline(rPr),
     strike: firstDefined(
@@ -794,6 +865,25 @@ function isDocxTocStyle(
   return isToc;
 }
 
+/** 沿 basedOn 继承链读取段落样式中的非文字属性。 */
+function resolveDocxParagraphStyleProperty<
+  K extends 'numbering' | 'tabStops' | 'snapToGrid',
+>(
+  styleId: string | undefined,
+  catalog: DocxStyleCatalog,
+  property: K,
+  seen: Set<string> = new Set(),
+): DocxStyleDefinition[K] | undefined {
+  if (!styleId || seen.has(styleId)) return undefined;
+  const entry = catalog.styles[styleId];
+  if (!entry || entry.kind !== 'paragraph') return undefined;
+  seen.add(styleId);
+  return (
+    entry[property] ??
+    resolveDocxParagraphStyleProperty(entry.basedOn, catalog, property, seen)
+  );
+}
+
 /** 解析并确定 `resolveParagraphStyle` 对应的引用或配置。 */
 function resolveParagraphStyle(
   pPr: Element | null | undefined,
@@ -834,6 +924,19 @@ function resolveParagraphStyle(
     paddingBottom: directStyle?.paddingBottom ?? style?.paddingBottom,
     paddingLeft: directStyle?.paddingLeft ?? style?.paddingLeft,
     styleId: effectiveStyleId,
+    numbering:
+      readDocxNumberingReference(pPr) ??
+      resolveDocxParagraphStyleProperty(effectiveStyleId, catalog, 'numbering'),
+    tabStops:
+      readParagraphTabStops(pPr) ??
+      resolveDocxParagraphStyleProperty(effectiveStyleId, catalog, 'tabStops'),
+    snapToGrid:
+      readOnOff(childByLocalName(pPr, 'snapToGrid')) ??
+      resolveDocxParagraphStyleProperty(
+        effectiveStyleId,
+        catalog,
+        'snapToGrid',
+      ),
     outlineLevel:
       readDocxOutlineLevel(pPr) ??
       resolveDocxOutlineLevel(effectiveStyleId, catalog),
@@ -2321,7 +2424,7 @@ function parseRun(
       return;
     }
     if (matchesLocalName(child, 'tab')) {
-      inlines.push({ type: 'text', text: '\t', style: runStyle });
+      inlines.push({ type: 'tab', style: runStyle });
       return;
     }
     if (matchesLocalName(child, 'br') || matchesLocalName(child, 'cr')) {
@@ -2422,7 +2525,9 @@ function readParagraphRuns(
 /** 执行 `textFromInlines` 封装的 DOCX 解析处理步骤。 */
 function textFromInlines(inlines: DocxInline[]) {
   return inlines
-    .map((inline) => (inline.type === 'text' ? inline.text : ''))
+    .map((inline) =>
+      inline.type === 'text' ? inline.text : inline.type === 'tab' ? '\t' : '',
+    )
     .join('');
 }
 
@@ -2436,6 +2541,34 @@ function parseParagraph(
   const pPr = childByLocalName(pNode, 'pPr');
   const style = resolveParagraphStyle(pPr, context.styles, context.theme);
   const inlines = readParagraphRuns(pNode, style.style, context);
+  const sourceText = textFromInlines(inlines).trim();
+  const numberingReference = style.numbering
+    ? {
+        ...style.numbering,
+        level: style.numbering.level ?? style.outlineLevel ?? 0,
+      }
+    : undefined;
+  const numberPrefix =
+    sourceText && !options?.insidePageRegion && numberingReference
+      ? nextDocxNumberPrefix(numberingReference, context.numbering)
+      : undefined;
+  if (
+    numberPrefix &&
+    sourceText !== numberPrefix.text &&
+    !sourceText.startsWith(`${numberPrefix.text} `) &&
+    !sourceText.startsWith(`${numberPrefix.text}\t`)
+  ) {
+    inlines.unshift({
+      type: 'text',
+      text: `${numberPrefix.text}${numberPrefix.suffix === 'space' ? ' ' : ''}`,
+      // 项目符号通常依赖 numbering.xml 中的 Wingdings/Symbol 字体，不能套用正文中文字体。
+      style: numberPrefix.fontFamily
+        ? { ...style.style, fontFamily: numberPrefix.fontFamily }
+        : style.style,
+    });
+    if (numberPrefix.suffix === 'tab')
+      inlines.splice(1, 0, { type: 'tab', style: style.style });
+  }
   const text = textFromInlines(inlines).trim();
   const outlineLevel =
     text &&
@@ -2447,15 +2580,22 @@ function parseParagraph(
       ? style.outlineLevel
       : undefined;
   const fontSize = style.style?.fontSize ?? 14;
+  const gridLineHeight = options?.insideTable
+    ? context.documentGridLineHeight
+    : context.defaultLineHeight;
+  const explicitLineHeightPx =
+    style.lineHeight === undefined
+      ? undefined
+      : style.lineHeight <= 4
+      ? fontSize * style.lineHeight
+      : style.lineHeight;
   const lineHeight =
-    style.lineHeight !== undefined &&
-    style.lineHeight <= 4 &&
-    !options?.insideTable &&
-    context.defaultLineHeight !== undefined &&
-    fontSize * style.lineHeight < context.defaultLineHeight
-      ? context.defaultLineHeight
-      : style.lineHeight ??
-        (options?.insideTable ? undefined : context.defaultLineHeight);
+    style.snapToGrid !== false &&
+    gridLineHeight !== undefined &&
+    (explicitLineHeightPx === undefined ||
+      explicitLineHeightPx < gridLineHeight)
+      ? gridLineHeight
+      : style.lineHeight;
 
   return {
     id,
@@ -2463,6 +2603,8 @@ function parseParagraph(
     inlines,
     text,
     outlineLevel,
+    isTableOfContents: style.isTocStyle || undefined,
+    tabStops: style.tabStops,
     align: style.align,
     lineHeight,
     style: style.style,
@@ -2534,6 +2676,19 @@ function readCellBorders(tcPr: Element | null | undefined) {
     hasBorderRight: Boolean(right),
     hasBorderBottom: Boolean(bottom),
     hasBorderLeft: Boolean(left),
+  };
+}
+
+/** 读取表格级外框和内部网格线，供未单独声明边框的单元格继承。 */
+function readTableBorders(tblPr: Element | null | undefined) {
+  const borders = childByLocalName(tblPr, 'tblBorders');
+  return {
+    top: readBorder(childByLocalName(borders, 'top')),
+    right: readBorder(childByLocalName(borders, 'right')),
+    bottom: readBorder(childByLocalName(borders, 'bottom')),
+    left: readBorder(childByLocalName(borders, 'left')),
+    insideHorizontal: readBorder(childByLocalName(borders, 'insideH')),
+    insideVertical: readBorder(childByLocalName(borders, 'insideV')),
   };
 }
 
@@ -2625,7 +2780,59 @@ function readTableRowHeight(
 
 /** 读取 `readCellBlocks` 所需的源数据，供 DOCX 解析使用。 */
 function readCellBlocks(cellNode: Element, id: string, context: ParseContext) {
-  return readBlockChildren(cellNode, id, context, { insideTable: true });
+  const blocks = readBlockChildren(cellNode, id, context, {
+    insideTable: true,
+  });
+  const defaultLineHeight = context.defaultLineHeight;
+  const visibleParagraphs = blocks.filter(
+    (block): block is DocxParagraphBlock =>
+      block.type === 'paragraph' && Boolean(block.text.trim()),
+  );
+  if (visibleParagraphs.length <= 1 || defaultLineHeight === undefined) {
+    return blocks;
+  }
+  // 正文多段单元格提升到正文网格；已吸附原始文档网格的紧凑代码文本保持较小行距。
+  return blocks.map((block) => {
+    if (block.type !== 'paragraph' || !block.text.trim()) return block;
+    const fontSize = block.style?.fontSize ?? 14;
+    const explicitLineHeight =
+      block.lineHeight === undefined
+        ? undefined
+        : block.lineHeight > 4
+        ? block.lineHeight
+        : fontSize * block.lineHeight;
+    const followsDocumentGrid =
+      block.lineHeight !== undefined &&
+      block.lineHeight > 4 &&
+      context.documentGridLineHeight !== undefined &&
+      Math.abs(block.lineHeight - context.documentGridLineHeight) < 0.5;
+    const followsBodyGrid =
+      explicitLineHeight === undefined || !followsDocumentGrid;
+    return followsBodyGrid &&
+      (explicitLineHeight === undefined ||
+        explicitLineHeight < defaultLineHeight)
+      ? {
+          ...block,
+          // 表格 flex 行盒会把绝对行高向上取整约 1px，解析阶段抵消以保持文档网格总高。
+          lineHeight: Math.max(1, defaultLineHeight - 1),
+        }
+      : block;
+  });
+}
+
+/** 判断单元格文本是否已由绝对文档网格行高完整约束。 */
+function usesDocumentGridCellPadding(blocks: DocxBlock[]) {
+  const paragraphs = blocks.filter(
+    (block): block is DocxParagraphBlock =>
+      block.type === 'paragraph' && Boolean(block.text.trim()),
+  );
+  return (
+    paragraphs.length > 0 &&
+    paragraphs.every(
+      (paragraph) =>
+        paragraph.lineHeight !== undefined && paragraph.lineHeight > 4,
+    )
+  );
 }
 
 /** 获取 `getParagraphAnchorLineHeight` 返回的数据。 */
@@ -2678,7 +2885,10 @@ function offsetTableAfterPositionedParagraph(
 function readTableWidth(tblW: Element | null | undefined, columns: number[]) {
   const widthType = attr(tblW, 'w:type') ?? attr(tblW, 'type');
   if (widthType === 'pct' && columns.length) {
-    return columns.reduce((sum, width) => sum + width, 0);
+    return (
+      columns.reduce((sum, width) => sum + width, 0) +
+      DOCX_DEFAULT_TABLE_EDGE_OFFSET * 2
+    );
   }
   return positiveTwipToPx(attr(tblW, 'w:w') ?? attr(tblW, 'w'));
 }
@@ -2694,7 +2904,16 @@ function normalizeTableForBlockContext(
     // 文本框已经承载了页面锚点，内部表格再使用 tblpPr 会把页面坐标叠加一次。
     position: undefined,
     insideShape: true,
-    visualOffsetTop: table.rows.length === 19 ? 10 : undefined,
+    visualOffsetTop: undefined,
+  };
+}
+
+/** 为顶层正文流表格补回 Word 文档网格在表格边界前保留的留白。 */
+function offsetTopLevelFlowTable(table: DocxTableBlock) {
+  if (table.position) return table;
+  return {
+    ...table,
+    marginTop: (table.marginTop ?? 0) + DOCX_FLOW_TABLE_TOP_OFFSET,
   };
 }
 
@@ -2745,6 +2964,7 @@ function parseTable(
     .map((col) => positiveTwipToPx(attr(col, 'w:w') ?? attr(col, 'w')))
     .filter((width): width is number => width !== undefined);
   const tableMargins = readCellMargins(tblPr);
+  const tableBorders = readTableBorders(tblPr);
   const result: DocxTableBlock = {
     id,
     type: 'table',
@@ -2786,10 +3006,21 @@ function parseTable(
         activeVerticalMerges.delete(columnIndex);
       }
 
+      const blocks = readCellBlocks(cellNode, cellId, context);
+      const gridControlsVerticalSpacing = usesDocumentGridCellPadding(blocks);
       const cell: DocxTableCell = {
         id: cellId,
         ...cellStyle,
-        blocks: readCellBlocks(cellNode, cellId, context),
+        // 文档网格已提供完整行盒时不再叠加浏览器补偿内边距。
+        paddingTop:
+          gridControlsVerticalSpacing && cellStyle.paddingTop === undefined
+            ? 0
+            : cellStyle.paddingTop,
+        paddingBottom:
+          gridControlsVerticalSpacing && cellStyle.paddingBottom === undefined
+            ? 0
+            : cellStyle.paddingBottom,
+        blocks,
       };
       cells.push(cell);
 
@@ -2806,6 +3037,34 @@ function parseTable(
       ...readTableRowHeight(rowNode, context.defaultLineHeight !== undefined),
       cells,
     };
+  });
+  result.rows.forEach((row, rowIndex) => {
+    row.cells.forEach((cell, cellIndex) => {
+      const isFirstRow = rowIndex === 0;
+      const isLastRow = rowIndex === result.rows.length - 1;
+      const isFirstCell = cellIndex === 0;
+      const isLastCell = cellIndex === row.cells.length - 1;
+      if (!cell.hasBorderTop && !cell.borderTop) {
+        cell.borderTop = isFirstRow
+          ? tableBorders.top
+          : tableBorders.insideHorizontal;
+      }
+      if (!cell.hasBorderBottom && !cell.borderBottom) {
+        cell.borderBottom = isLastRow
+          ? tableBorders.bottom
+          : tableBorders.insideHorizontal;
+      }
+      if (!cell.hasBorderLeft && !cell.borderLeft) {
+        cell.borderLeft = isFirstCell
+          ? tableBorders.left
+          : tableBorders.insideVertical;
+      }
+      if (!cell.hasBorderRight && !cell.borderRight) {
+        cell.borderRight = isLastCell
+          ? tableBorders.right
+          : tableBorders.insideVertical;
+      }
+    });
   });
 
   return result;
@@ -2840,8 +3099,17 @@ function readBlockChildren(
         parseTable(child, `${id}-table-${tableIndex}`, context),
         options,
       );
+      const flowTable =
+        !options?.insideShape &&
+        !options?.insideTable &&
+        !options?.insidePageRegion
+          ? offsetTopLevelFlowTable(table)
+          : table;
       blocks.push(
-        offsetTableAfterPositionedParagraph(table, blocks[blocks.length - 1]),
+        offsetTableAfterPositionedParagraph(
+          flowTable,
+          blocks[blocks.length - 1],
+        ),
       );
     }
   });
@@ -2977,17 +3245,27 @@ function readSectionPageRegions(
 }
 
 /** 从 WPS 文档网格推导未显式设置行距的正文行高。 */
-function readDefaultGridLineHeight(
+function readDocumentGridLineHeight(
   bodyNode: Element | null | undefined,
-  styles: DocxStyleCatalog,
 ): number | undefined {
   const docGrid = childByLocalName(
     childByLocalName(bodyNode, 'sectPr'),
     'docGrid',
   );
-  const linePitch = positiveTwipToPx(
+  const gridType = attr(docGrid, 'w:type') ?? attr(docGrid, 'type');
+  if (gridType && gridType !== 'lines' && gridType !== 'linesAndChars')
+    return undefined;
+  return positiveTwipToPx(
     attr(docGrid, 'w:linePitch') ?? attr(docGrid, 'linePitch'),
   );
+}
+
+/** 从 WPS 文档网格与默认段落倍数推导正文行高。 */
+function readDefaultGridLineHeight(
+  bodyNode: Element | null | undefined,
+  styles: DocxStyleCatalog,
+): number | undefined {
+  const linePitch = readDocumentGridLineHeight(bodyNode);
   if (linePitch === undefined) return undefined;
   const defaultStyle = resolveDocxStyle(
     styles.defaults.paragraphStyleId,
@@ -3012,6 +3290,24 @@ function markTitle(blocks: DocxBlock[]) {
       block.type === 'paragraph' && Boolean(block.text),
   );
   return firstParagraph?.text ?? 'DOCX 文档';
+}
+
+/** 为缺少显式段前距的首个大字号居中标题恢复 Word 封面的视觉留白。 */
+function applyDocxCoverTitleSpacing(blocks: DocxBlock[]) {
+  const firstParagraph = blocks.find(
+    (block): block is DocxParagraphBlock =>
+      block.type === 'paragraph' && Boolean(block.text),
+  );
+  const fontSize = firstParagraph?.style?.fontSize ?? 0;
+  if (
+    firstParagraph &&
+    firstParagraph.align === 'center' &&
+    fontSize >= 28 &&
+    firstParagraph.spacingBefore === undefined
+  ) {
+    // Word 的大字号空段行框高于浏览器默认行框，用字号比例补足封面标题前的差值。
+    firstParagraph.spacingBefore = Math.round(fontSize * 0.8);
+  }
 }
 
 /** 判断 `isEmptySpacerParagraph` 对应的条件是否成立。 */
@@ -3225,6 +3521,8 @@ export function createDocxParseContext(
       packageState.relationships['word/_rels/document.xml.rels'] ?? {},
     theme,
     defaultLineHeight: readDefaultGridLineHeight(options.bodyNode, styles),
+    documentGridLineHeight: readDocumentGridLineHeight(options.bodyNode),
+    numbering: readDocxNumbering(entries),
     styles,
     images: [],
     imageIndex: 0,
@@ -3242,7 +3540,9 @@ export const docxBlockParseOperations: DocxBlockParseOperations<DocxParseContext
     isParagraph: (node) => matchesLocalName(node, 'p'),
     isTable: (node) => matchesLocalName(node, 'tbl'),
     readParagraphBlocks,
-    parseTable,
+    // 流式大文件解析绕过 readBlockChildren，这里保持与完整物化路径一致。
+    parseTable: (node, id, context) =>
+      offsetTopLevelFlowTable(parseTable(node, id, context)),
     offsetTable: offsetTableAfterPositionedParagraph,
     readParagraphSection: (node) =>
       matchesLocalName(node, 'p')
@@ -3329,6 +3629,7 @@ export async function parseDocx(
     pushCurrentPage(readPage(bodyNode));
   }
 
+  applyDocxCoverTitleSpacing(blocks);
   const normalizedPages = normalizeDocxPages(pages);
   const outline = blocks.flatMap((block) =>
     block.type === 'paragraph' && block.outlineLevel !== undefined && block.text
