@@ -1,6 +1,6 @@
 {
   "name": "office-file-viewer",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "A browser-based React component for offline preview of DOC/DOCX/WPS, XLS/XLSX, and PPT/PPTX files.",
   "keywords": [
     "office",
@@ -72,9 +72,9 @@
     ]
   },
   "dependencies": {
-    "@zip.js/zip.js": "2.8.34",
+    "@zip.js/zip.js": "^2.8.34",
     "echarts": "^5.6.0",
-    "saxes": "6.0.0"
+    "saxes": "^6.0.0"
   },
   "devDependencies": {
     "@commitlint/cli": "^17.1.2",
