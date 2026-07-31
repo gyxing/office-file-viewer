@@ -6,6 +6,7 @@ import {
 } from '../word-pages/scheduler';
 import { DocPaginationState, type PaginatedDocPage } from './docRenderUtils';
 
+/** 按页面批次组织的 DOC 内容块集合。 */
 type DocBlockBatches = AsyncIterable<DocBlock[]> | Iterable<DocBlock[]>;
 
 /** 分批消费 DOC blocks，并在每个完成页和 8ms 时间片边界让出主线程。 */

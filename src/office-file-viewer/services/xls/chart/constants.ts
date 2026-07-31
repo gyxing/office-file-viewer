@@ -13,12 +13,14 @@ export const CHART_TYPE_RECORDS = new Map<number, string>([
   [BIFF8_RECORD.BOPPOP, 'ofPie'],
 ]);
 
+/** BIFF8 图表缓存数据类别对应的编号。 */
 export const CHART_CACHE_KIND = {
   VALUES: 1,
   CATEGORIES: 2,
   BUBBLES: 3,
 } as const;
 
+/** BIFF8 图表文本对象链接目标对应的编号。 */
 export const CHART_TEXT_LINK = {
   TITLE: 1,
   Y_AXIS_TITLE: 2,
@@ -26,6 +28,7 @@ export const CHART_TEXT_LINK = {
   SERIES_OR_POINT: 4,
 } as const;
 
+/** Excel 图表缺少锚点时使用的默认单元格范围。 */
 export const FALLBACK_CHART_ANCHOR = {
   from: { row: 0, column: 0, rowFraction: 0, columnFraction: 0 },
   to: { row: 19, column: 9, rowFraction: 0, columnFraction: 0 },

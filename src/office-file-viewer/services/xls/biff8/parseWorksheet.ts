@@ -18,6 +18,7 @@ import { BIFF8_RECORD, BIFF8_SUBSTREAM, BIFF8_VERSION } from './constants';
 import { decodeBiff8Formula } from './formulas';
 import { readBiff8UnicodeString } from './strings';
 
+/** Excel 错误值编号到可读错误文本的映射。 */
 const ERROR_VALUES: Record<number, string> = {
   0x00: '#NULL!',
   0x07: '#DIV/0!',
@@ -28,12 +29,10 @@ const ERROR_VALUES: Record<number, string> = {
   0x2a: '#N/A',
 };
 
-/** 执行 `cellKey` 封装的XLS/BIFF8 解析处理步骤。 */
 function cellKey(row: number, column: number) {
   return `${row}:${column}`;
 }
 
-/** 读取 `readCellHeader` 所需的源数据，供XLS/BIFF8 解析使用。 */
 function readCellHeader(reader: Biff8Reader) {
   return {
     row: reader.readUint16(),
@@ -56,10 +55,11 @@ function decodeRk(raw: number) {
   return raw & 0x01 ? value / 100 : value;
 }
 
-/** 执行 `validateWorksheetBof` 封装的XLS/BIFF8 解析处理步骤。 */
 /** 为内存字节和 CFB 随机读取统一 BIFF 记录消费协议。 */
 export interface Biff8AsyncRecordCursor {
+  /** 读取下一条 BIFF8 记录并推进游标。 */
   next(): Promise<Biff8Record | undefined>;
+  /** 查看下一条 BIFF8 记录但不推进游标。 */
   peek(): Promise<Biff8Record | undefined>;
 }
 
@@ -92,7 +92,6 @@ async function validateWorksheetBof(
   }
 }
 
-/** 解析 `parseFormulaCell` 接收的数据，并返回XLS/BIFF8 解析结果。 */
 function parseFormulaCell(
   data: Uint8Array,
   globals: Biff8WorkbookGlobals,
@@ -159,7 +158,6 @@ function parseFormulaCell(
   } satisfies Biff8Cell;
 }
 
-/** 执行 `rangesOverlap` 封装的XLS/BIFF8 解析处理步骤。 */
 function rangesOverlap(left: Biff8Merge, right: Biff8Merge) {
   return !(
     left.endRow < right.startRow ||
@@ -169,7 +167,6 @@ function rangesOverlap(left: Biff8Merge, right: Biff8Merge) {
   );
 }
 
-/** 执行 `addMerge` 封装的XLS/BIFF8 解析处理步骤。 */
 function addMerge(
   merge: Biff8Merge,
   merges: Biff8Merge[],
@@ -319,10 +316,11 @@ export async function parseBiff8WorksheetFromCursor(
         const heightTwips = reader.readUint16();
         reader.readBytes(4);
         const flags = reader.readUint32();
-        // fUnsynced 表示该行保存了显式高度，不能退回工作表默认行高。
+        // ROW 始终保存当前计算行高；fUnsynced 只区分手动行高与自动行高。
         rows.set(index, {
           index,
-          heightTwips: flags & 0x0040 ? heightTwips : undefined,
+          heightTwips,
+          customHeight: Boolean(flags & 0x0040),
           hidden: Boolean(flags & 0x0020),
           outlineLevel: flags & 0x0007,
         });

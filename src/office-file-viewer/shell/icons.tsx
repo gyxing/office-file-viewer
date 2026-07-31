@@ -1,19 +1,20 @@
 import type { ReactNode, SVGProps } from 'react';
 import React from 'react';
 
-/** 定义 OfficeIcon 组件可接收的属性。 */
+/** Office图标组件属性。 */
 type OfficeIconProps = Omit<SVGProps<SVGSVGElement>, 'children'>;
 
-/** 定义 OfficeIconBase 组件可接收的属性。 */
+/** Office 文件图标基础组件属性。 */
 type OfficeIconBaseProps = OfficeIconProps & {
-  /** OfficeIconBaseProps 包含并负责布局的 React 子节点。 */
+  /** 当前组件包含的子节点。 */
   children: ReactNode;
 };
 
+/** Office 文件类型图标共用的文件轮廓路径。 */
 const FILE_FRAME = <path d="M6 2.75h7l5 5v13.5H6zM13 2.75v5h5" />;
 
 // OfficeIconBase 统一工具栏图标的尺寸、描边和无障碍属性。
-/** 渲染 OfficeIconBase 组件。 */
+/** 渲染 Office 文件类型图标共用的基础轮廓。 */
 function OfficeIconBase({ children, ...props }: OfficeIconBaseProps) {
   return (
     <svg
@@ -34,8 +35,13 @@ function OfficeIconBase({ children, ...props }: OfficeIconBaseProps) {
   );
 }
 
+/** 渲染尚未识别格式时使用的通用文件图标。 */
+export function FileIcon(props: OfficeIconProps) {
+  return <OfficeIconBase {...props}>{FILE_FRAME}</OfficeIconBase>;
+}
+
 // FileExcelIcon 表示电子表格文件。
-/** 渲染 FileExcelIcon 组件。 */
+/** 渲染 Excel 文件图标。 */
 export function FileExcelIcon(props: OfficeIconProps) {
   return (
     <OfficeIconBase {...props}>
@@ -46,7 +52,7 @@ export function FileExcelIcon(props: OfficeIconProps) {
 }
 
 // FilePptIcon 表示演示文稿文件。
-/** 渲染 FilePptIcon 组件。 */
+/** 渲染 PowerPoint 文件图标。 */
 export function FilePptIcon(props: OfficeIconProps) {
   return (
     <OfficeIconBase {...props}>
@@ -57,7 +63,7 @@ export function FilePptIcon(props: OfficeIconProps) {
 }
 
 // FileWordIcon 表示文字文档文件。
-/** 渲染 FileWordIcon 组件。 */
+/** 渲染 Word 文件图标。 */
 export function FileWordIcon(props: OfficeIconProps) {
   return (
     <OfficeIconBase {...props}>
@@ -68,7 +74,7 @@ export function FileWordIcon(props: OfficeIconProps) {
 }
 
 // ChevronLeftIcon 表示上一页操作。
-/** 渲染 ChevronLeftIcon 组件。 */
+/** 渲染向左翻页箭头图标。 */
 export function ChevronLeftIcon(props: OfficeIconProps) {
   return (
     <OfficeIconBase {...props}>
@@ -78,7 +84,7 @@ export function ChevronLeftIcon(props: OfficeIconProps) {
 }
 
 // ChevronRightIcon 表示下一页操作。
-/** 渲染 ChevronRightIcon 组件。 */
+/** 渲染向右翻页箭头图标。 */
 export function ChevronRightIcon(props: OfficeIconProps) {
   return (
     <OfficeIconBase {...props}>
@@ -88,7 +94,7 @@ export function ChevronRightIcon(props: OfficeIconProps) {
 }
 
 // ZoomOutIcon 表示缩小操作。
-/** 渲染 ZoomOutIcon 组件。 */
+/** 渲染缩小预览图标。 */
 export function ZoomOutIcon(props: OfficeIconProps) {
   return (
     <OfficeIconBase {...props}>
@@ -99,7 +105,7 @@ export function ZoomOutIcon(props: OfficeIconProps) {
 }
 
 // ZoomInIcon 表示放大操作。
-/** 渲染 ZoomInIcon 组件。 */
+/** 渲染放大预览图标。 */
 export function ZoomInIcon(props: OfficeIconProps) {
   return (
     <OfficeIconBase {...props}>
@@ -110,7 +116,7 @@ export function ZoomInIcon(props: OfficeIconProps) {
 }
 
 // NotesIcon 表示演讲者备注面板。
-/** 渲染 NotesIcon 组件。 */
+/** 渲染演讲者备注图标。 */
 export function NotesIcon(props: OfficeIconProps) {
   return (
     <OfficeIconBase {...props}>
@@ -120,7 +126,7 @@ export function NotesIcon(props: OfficeIconProps) {
 }
 
 // FullscreenIcon 表示进入全屏操作。
-/** 渲染 FullscreenIcon 组件。 */
+/** 渲染全屏切换图标。 */
 export function FullscreenIcon(props: OfficeIconProps) {
   return (
     <OfficeIconBase {...props}>
@@ -130,7 +136,7 @@ export function FullscreenIcon(props: OfficeIconProps) {
 }
 
 // OutlineIcon 表示 Word 文档的层级大纲。
-/** 渲染 OutlineIcon 组件。 */
+/** 渲染文档大纲图标。 */
 export function OutlineIcon(props: OfficeIconProps) {
   return (
     <OfficeIconBase {...props}>
@@ -143,7 +149,7 @@ export function OutlineIcon(props: OfficeIconProps) {
 }
 
 // PanelLeftCloseIcon 表示收起左侧面板。
-/** 渲染 PanelLeftCloseIcon 组件。 */
+/** 渲染收起左侧面板图标。 */
 export function PanelLeftCloseIcon(props: OfficeIconProps) {
   return (
     <OfficeIconBase {...props}>
@@ -154,7 +160,7 @@ export function PanelLeftCloseIcon(props: OfficeIconProps) {
 }
 
 // PanelLeftOpenIcon 表示展开左侧面板。
-/** 渲染 PanelLeftOpenIcon 组件。 */
+/** 渲染展开左侧面板图标。 */
 export function PanelLeftOpenIcon(props: OfficeIconProps) {
   return (
     <OfficeIconBase {...props}>

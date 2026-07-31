@@ -5,21 +5,34 @@ import type {
   OfficeContentStore,
 } from './types';
 
+/** 浏览器内容缓存使用的 IndexedDB 数据库名称。 */
 const DATABASE_NAME = 'office-file-viewer-content-cache';
+/** 浏览器内容缓存数据库的结构版本。 */
 const DATABASE_VERSION = 1;
+/** IndexedDB 中保存内容记录的对象仓库名称。 */
 const RECORD_STORE = 'records';
+/** IndexedDB 中保存解析会话的对象仓库名称。 */
 const SESSION_STORE = 'sessions';
+/** 解析会话缓存的有效期，单位为毫秒。 */
 const SESSION_TTL = 24 * 60 * 60 * 1000;
 
+/** IndexedDB 中持久化的内容记录。 */
 type StoredRecord<TMeta, TValue> = OfficeContentRecord<TMeta, TValue> & {
+  /** 当前解析或预览会话的标识。 */
   sessionId: string;
+  /** 当前记录所属的内容存储命名空间。 */
   namespace: string;
 };
 
+/** IndexedDB 中持久化的解析会话。 */
 type StoredSession = {
+  /** 当前解析或预览会话的标识。 */
   sessionId: string;
+  /** 当前会话所属的内容存储命名空间。 */
   namespace: string;
+  /** 记录创建时的时间戳。 */
   createdAt: number;
+  /** 会话最近一次访问的时间戳。 */
   lastAccessAt: number;
 };
 

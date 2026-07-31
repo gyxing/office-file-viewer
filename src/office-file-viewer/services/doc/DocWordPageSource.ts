@@ -31,14 +31,19 @@ import type { WordPreviewSource } from '../word/WordPreviewSource';
 import { estimateDocBlockBytes } from './chunkDocBlocks';
 import type { DocBlock, DocDocument } from './types';
 
+/** DOC 页面数据源的预览摘要。 */
 export type DocWordPreviewSummary = Omit<
   DocDocument,
   'blocks' | 'paragraphs' | 'resources'
 >;
 
+/** 创建 DOC 页面数据源时使用的选项。 */
 type DocWordPageSourceOptions = {
+  /** 当前解析或预览会话的标识。 */
   sessionId: string;
+  /** 用于取消当前异步操作的信号。 */
   signal?: AbortSignal;
+  /** 报告不会阻断预览的解析或缓存警告。 */
   onWarning?(error: unknown): void;
 };
 

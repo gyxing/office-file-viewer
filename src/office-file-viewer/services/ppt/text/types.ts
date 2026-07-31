@@ -1,60 +1,60 @@
 import type { TextParagraph, TextStyle } from '../../presentation/types';
 import type { PptRecord } from '../types';
 
-/** 描述 PptTextDefaults 在 PPT 二进制解析中的数据结构。 */
+/** PPT 文档、母版和占位符层级的文字默认样式。 */
 export type PptTextDefaults = {
-  /** PptTextDefaults 当前关联的标准化文档模型。 */
+  /** 文档级默认文字样式。 */
   document?: TextStyle;
-  /** PptTextDefaults 关联的 master 结构；字段形状由 TextStyle 定义；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 母版级默认文字样式。 */
   master?: TextStyle;
-  /** PptTextDefaults 关联的 placeholder 结构；字段形状由 TextStyle 定义；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 占位符级默认文字样式。 */
   placeholder?: TextStyle;
-  /** PptTextDefaults 按业务键索引的 fonts 映射；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 按字体编号索引的字体族名称。 */
   fonts?: Map<number, string>;
 };
 
-/** 描述 PptTextAtomGroup 在 PPT 二进制解析中的数据结构。 */
+/** PPT 文本内容记录及其配套样式记录。 */
 export type PptTextAtomGroup = {
-  /** PptTextAtomGroup 从源格式读取的 textType 枚举或标识值。 */
+  /** PPT TextHeaderAtom 声明的文本用途编号。 */
   textType: number;
-  /** PptTextAtomGroup 携带或渲染的文本内容。 */
+  /** 文本内容。 */
   text: string;
-  /** PptTextAtomGroup 关联的 contentRecord 结构；字段形状由 PptRecord 定义。 */
+  /** 保存实际文本内容的 PPT 记录。 */
   contentRecord: PptRecord;
-  /** PptTextAtomGroup 关联的 styleRecord 结构；字段形状由 PptRecord 定义；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 保存文本样式区间的 PPT 记录。 */
   styleRecord?: PptRecord;
 };
 
-/** 描述 PptParagraphStyleRun 在 PPT 二进制解析中的数据结构。 */
+/** PPT 段落样式覆盖的字符数量和层级。 */
 export type PptParagraphStyleRun = {
-  /** PptParagraphStyleRun 对应项目的数量。 */
+  /** 当前集合或范围包含的项目数量。 */
   count: number;
-  /** PptParagraphStyleRun 从源格式读取的 level 枚举或标识值。 */
+  /** 编号或大纲的零基级别。 */
   level: number;
-  /** PptParagraphStyleRun 使用的渲染或文本样式。 */
+  /** 当前内容使用的渲染样式。 */
   style: TextStyle;
 };
 
-/** 描述 PptCharacterStyleRun 在 PPT 二进制解析中的数据结构。 */
+/** PPT 字符样式覆盖的字符数量。 */
 export type PptCharacterStyleRun = {
-  /** PptCharacterStyleRun 对应项目的数量。 */
+  /** 当前集合或范围包含的项目数量。 */
   count: number;
-  /** PptCharacterStyleRun 使用的渲染或文本样式。 */
+  /** 当前内容使用的渲染样式。 */
   style: TextStyle;
 };
 
-/** 描述 PptTextStyleRuns 在 PPT 二进制解析中的数据结构。 */
+/** PPT 段落和字符样式区间集合。 */
 export type PptTextStyleRuns = {
-  /** PptTextStyleRuns 包含的 paragraphs 有序集合。 */
+  /** 按源文档顺序排列的段落。 */
   paragraphs: PptParagraphStyleRun[];
-  /** PptTextStyleRuns 包含的 characters 有序集合。 */
+  /** 按字符范围排列的文字样式区间。 */
   characters: PptCharacterStyleRun[];
 };
 
-/** 描述 PptParsedText 在 PPT 二进制解析中的数据结构。 */
+/** 完成样式合并的 PPT 文本段落。 */
 export type PptParsedText = {
-  /** PptParsedText 从源格式读取的 textType 枚举或标识值。 */
+  /** PPT TextHeaderAtom 声明的文本用途编号。 */
   textType: number;
-  /** PptParsedText 包含的 paragraphs 有序集合。 */
+  /** 按源文档顺序排列的段落。 */
   paragraphs: TextParagraph[];
 };

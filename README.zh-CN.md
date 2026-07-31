@@ -165,20 +165,19 @@ type OfficeFileViewerUri =
 
 ## 组件属性
 
-| 属性                 | 类型                                             | 默认值    | 说明                                                      |
-| -------------------- | ------------------------------------------------ | --------- | --------------------------------------------------------- |
-| `locale`             | `'zh-CN' \| 'en-US'`                             | `'zh-CN'` | 预览器界面语言；Ant Design 语言仍由 `ConfigProvider` 提供 |
-| `uri`                | `OfficeFileViewerUri`                            | -         | 预加载文件来源；不传时显示文件选择入口                    |
-| `defaultFileName`    | `string`                                         | 语言文案  | 未加载文件时显示的名称                                    |
-| `defaultPreviewKind` | `PreviewKind`                                    | `'pptx'`  | 未加载文件时使用的空状态格式                              |
-| `defaultZoom`        | `number`                                         | `100`     | 初始缩放百分比，最终限制在 `25` 至 `300`                  |
-| `className`          | `string`                                         | -         | 根容器自定义类名                                          |
-| `height`             | `CSSProperties['height']`                        | `100%`    | 预览器高度；不传时跟随父容器                              |
-| `style`              | `CSSProperties`                                  | -         | 根容器自定义样式                                          |
-| `parseOptions`       | `OfficeParseOptions`                             | `{}`      | Worker 模式与自定义 Worker 工厂                           |
-| `onParseProgress`    | `(progress: ParseProgress) => void`              | -         | 解析阶段或完成度变化时触发                                |
-| `onFileParsed`       | `(parsed: ParsedOfficeFile, file: File) => void` | -         | 完整文件解析成功后触发一次，不接收内部渐进结果            |
-| `onError`            | `(error: Error, file?: File) => void`            | -         | 文件下载、解析或全屏操作失败时触发                        |
+| 属性              | 类型                                             | 默认值    | 说明                                                      |
+| ----------------- | ------------------------------------------------ | --------- | --------------------------------------------------------- |
+| `locale`          | `'zh-CN' \| 'en-US'`                             | `'zh-CN'` | 预览器界面语言；Ant Design 语言仍由 `ConfigProvider` 提供 |
+| `uri`             | `OfficeFileViewerUri`                            | -         | 预加载文件来源；不传时显示文件选择入口                    |
+| `defaultFileName` | `string`                                         | 语言文案  | 未加载文件时显示的名称                                    |
+| `defaultZoom`     | `number`                                         | `100`     | 初始缩放百分比，最终限制在 `25` 至 `300`                  |
+| `className`       | `string`                                         | -         | 根容器自定义类名                                          |
+| `height`          | `CSSProperties['height']`                        | `100%`    | 预览器高度；不传时跟随父容器                              |
+| `style`           | `CSSProperties`                                  | -         | 根容器自定义样式                                          |
+| `parseOptions`    | `OfficeParseOptions`                             | `{}`      | Worker 模式与自定义 Worker 工厂                           |
+| `onParseProgress` | `(progress: ParseProgress) => void`              | -         | 解析阶段或完成度变化时触发                                |
+| `onFileParsed`    | `(parsed: ParsedOfficeFile, file: File) => void` | -         | 完整文件解析成功后触发一次，不接收内部渐进结果            |
+| `onError`         | `(error: Error, file?: File) => void`            | -         | 文件下载、解析或全屏操作失败时触发                        |
 
 `PreviewKind` 的可选值为 `'docx' | 'doc' | 'xlsx' | 'xls' | 'pptx' | 'ppt'`；WPS 文件复用 `'doc'` 预览模型。
 

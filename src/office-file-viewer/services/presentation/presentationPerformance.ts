@@ -1,32 +1,52 @@
 import { OFFICE_LARGE_FILE_THRESHOLDS } from '../performance/officePerformanceThresholds';
 import type { SlideElement, SlideModel } from './types';
 
+/** 启用缩略图虚拟列表的幻灯片数量阈值。 */
 export const PRESENTATION_THUMBNAIL_VIRTUAL_SLIDE_COUNT = 50;
+/** 启用幻灯片按需加载的页数阈值。 */
 export const PRESENTATION_LAZY_SLIDE_COUNT = 80;
+/** 启用幻灯片按需加载的累计元素权重阈值。 */
 export const PRESENTATION_LAZY_ELEMENT_WEIGHT = 3000;
+/** 单页元素过多时启用按需加载的数量阈值。 */
 export const PRESENTATION_LAZY_SINGLE_SLIDE_ELEMENTS = 300;
+/** 当前幻灯片前后预加载的页数。 */
 export const PRESENTATION_PRELOAD_RADIUS = 2;
 
-/** 描述 Presentation Viewer 的缩略图和幻灯片加载策略。 */
+/** 演示文稿 性能 性能档案。 */
 export type PresentationPerformanceProfile = {
+  /** 缩略图列表采用普通渲染还是虚拟渲染。 */
   thumbnailMode: 'normal' | 'virtual';
+  /** 幻灯片采用全部物化还是按需加载。 */
   slideMode: 'materialized' | 'lazy';
+  /** 全部内容元素折算后的累计渲染权重。 */
   totalElementWeight: number;
 };
 
 /** 提前性能画像可使用的包目录和渐进解析统计。 */
 export type PresentationPerformanceStats = {
+  /** 演示文稿包含的幻灯片数量。 */
   slideCount: number;
+  /** 全部内容元素折算后的累计渲染权重。 */
   totalElementWeight?: number;
+  /** 单张幻灯片包含的最大元素数量。 */
   maxSlideElementCount?: number;
+  /** 媒体资源累计大小，单位为字节。 */
   mediaBytes?: number;
+  /** 源压缩包大小，单位为字节。 */
   compressedBytes?: number;
+  /** 源压缩包解压后的累计大小，单位为字节。 */
   uncompressedBytes?: number;
+  /** 主 XML 文档大小，单位为字节。 */
   mainXmlBytes?: number;
+  /** 单个最大媒体资源的大小，单位为字节。 */
   singleMediaBytes?: number;
+  /** CFB 文件总大小，单位为字节。 */
   cfbFileBytes?: number;
+  /** CFB 主数据流大小，单位为字节。 */
   cfbMainStreamBytes?: number;
+  /** CFB 最大资源流大小，单位为字节。 */
   cfbResourceStreamBytes?: number;
+  /** 单张幻灯片解析耗时的最大值，单位为毫秒。 */
   maxSlideParseMilliseconds?: number;
 };
 

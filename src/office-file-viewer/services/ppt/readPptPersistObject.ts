@@ -1,6 +1,7 @@
 import type { CfbStreamReader } from '../../shared/binary/cfb';
 import type { PptEditChain } from './types';
 
+/** PPT 二进制记录头占用的字节数。 */
 const PPT_RECORD_HEADER_BYTES = 8;
 
 function createAbortError() {

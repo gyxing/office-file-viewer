@@ -5,9 +5,13 @@ import type {
 } from './WordOutlineProvider';
 import type { WordOutlineItem, WordOutlineTreeNode } from './types';
 
+/** 附带原始顺序索引的 Word 大纲节点。 */
 type IndexedOutlineNode = {
+  /** 当前处理的项目。 */
   item: WordOutlineItem;
+  /** 按正文顺序排列的直接子级标识。 */
   childIds: string[];
+  /** 从根节点到父节点的祖先标识。 */
   ancestorIds: string[];
 };
 

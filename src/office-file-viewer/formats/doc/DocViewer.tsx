@@ -25,12 +25,21 @@ import { DocPageFrame } from './DocPageFrame';
 import { paginateDocBlocks, type PaginatedDocPage } from './docRenderUtils';
 import './index.less';
 
-/** 定义 DocViewer 组件可接收的属性。 */
+/** DOC预览器组件属性。 */
 type DocViewerProps = {
+  /** 当前处理的标准化文档模型。 */
   document?: DocDocument;
+  /** 当前预览使用的按需加载数据源。 */
   source?: DocWordPageSource;
+  /** 当前预览内容的摘要信息。 */
   summary?: DocWordPreviewSummary;
+  /** 当前预览缩放比例，100 表示原始大小。 */
   zoom: number;
+  /** 文档大纲当前是否展开。 */
+  showOutline: boolean;
+  /** 关闭文档大纲。 */
+  onCloseOutline: () => void;
+  /** 当前文档解析会话的标识。 */
   documentSessionId: string;
 };
 
@@ -62,12 +71,29 @@ function collectAnchoredImageIds(document?: DocDocument) {
   return ids;
 }
 
+/** 从分页结果定位正文页码起点；目录页使用自身编号但不显示正文页脚。 */
+function resolveFooterPageNumberStartIndex(pages: PaginatedDocPage[]) {
+  const lastTocPageIndex = pages.reduce(
+    (lastIndex, currentPage, pageIndex) =>
+      currentPage.blocks.some(
+        (block) => block.type === 'paragraph' && block.isTableOfContents,
+      )
+        ? pageIndex
+        : lastIndex,
+    -1,
+  );
+  // 无目录时保持首页封面不编号的既有规则，避免普通 DOC 回归时新增页脚。
+  return lastTocPageIndex >= 0 ? lastTocPageIndex + 1 : 1;
+}
+
 /** 渲染普通 DOC 模型或大文件渐进 PageSource。 */
 function DocViewerComponent({
   document,
   source,
   summary,
   zoom,
+  showOutline,
+  onCloseOutline,
   documentSessionId,
 }: DocViewerProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -88,6 +114,10 @@ function DocViewerComponent({
     };
   }, [contentWidth, document, page, source]);
   const materializedPages = pagination.pages;
+  const footerPageNumberStartIndex = useMemo(
+    () => resolveFooterPageNumberStartIndex(materializedPages),
+    [materializedPages],
+  );
   const materializedPageSource = useMemo(
     () =>
       createMaterializedWordPageSource(materializedPages, {
@@ -118,8 +148,9 @@ function DocViewerComponent({
   }, [pageSnapshot]);
   const pageNavigationControllerRef = useRef<WordPageNavigationController>();
   const outlineItems = useMemo(
-    () => source?.getOutlineItems() ?? document?.outline ?? [],
-    [document?.outline, pageSnapshot.revision, source],
+    () =>
+      showOutline ? source?.getOutlineItems() ?? document?.outline ?? [] : [],
+    [document?.outline, pageSnapshot.revision, showOutline, source],
   );
   const memoryOutlineProvider = useMemo(
     () => createMemoryWordOutlineProvider(outlineItems),
@@ -181,8 +212,9 @@ function DocViewerComponent({
       zoom={zoom}
       headerImage={documentMetadata.headerImage}
       footerText={
-        documentMetadata.footerPageNumbers && pageIndex > 0
-          ? `- ${pageIndex} -`
+        documentMetadata.footerPageNumbers &&
+        pageIndex >= footerPageNumberStartIndex
+          ? `${pageIndex - footerPageNumberStartIndex + 1}`
           : undefined
       }
     >
@@ -205,18 +237,21 @@ function DocViewerComponent({
         </div>
       ) : null}
       <div className="office-file-doc-viewer__body">
-        <WordOutlineSidebar
-          items={outlineItems}
-          provider={outlineProvider}
-          outlineMode={profile.outlineMode}
-          pageMode={profile.pageMode}
-          pageSource={pageSource}
-          blockPageIndex={blockPageIndex}
-          pageNavigationControllerRef={pageNavigationControllerRef}
-          scrollContainerRef={scrollContainerRef}
-          documentSessionId={documentSessionId}
-          layoutKey={layoutKey}
-        />
+        {showOutline ? (
+          <WordOutlineSidebar
+            items={outlineItems}
+            provider={outlineProvider}
+            outlineMode={profile.outlineMode}
+            pageMode={profile.pageMode}
+            pageSource={pageSource}
+            blockPageIndex={blockPageIndex}
+            pageNavigationControllerRef={pageNavigationControllerRef}
+            scrollContainerRef={scrollContainerRef}
+            documentSessionId={documentSessionId}
+            layoutKey={layoutKey}
+            onClose={onCloseOutline}
+          />
+        ) : null}
         <div
           ref={scrollContainerRef}
           className="office-file-doc-viewer__scroller"

@@ -34,32 +34,53 @@ import {
   type PptSlideDescriptor,
 } from './types';
 
+/** PPT 复合文档的大文件判定指标。 */
 export type PptArchiveProfile = {
+  /** 当前文档的性能统计信息。 */
   performance: PresentationPerformanceProfile;
+  /** 源文件总大小，单位为字节。 */
   fileSize: number;
+  /** 主文档数据流大小，单位为字节。 */
   mainStreamSize: number;
+  /** 图片等资源数据流大小，单位为字节。 */
   resourceStreamSize: number;
 };
 
+/** 附带性能档案的 PPT 复合文档读取器。 */
 export type ProfiledPptArchive = {
+  /** 用于按需读取源数据的读取器。 */
   reader: CfbRandomAccessReader;
+  /** 控制解析或渲染策略的性能档案。 */
   profile: PptArchiveProfile;
 };
 
 /** 大型 PPT Source 常驻的结构和共享解析上下文。 */
 export type PptStructure = {
+  /** 用于按需读取源数据的读取器。 */
   reader: CfbRandomAccessReader;
+  /** 按需读取 PowerPoint Document 主流的接口。 */
   documentStream: NonNullable<ReturnType<CfbRandomAccessReader['openStream']>>;
+  /** 当前文档最近一次有效保存对应的编辑链。 */
   editChain: PptEditChain;
+  /** 当前解析任务共享的上下文。 */
   parseContext: PptParseContext;
+  /** 集中管理图片、字体和对象地址等可释放资源。 */
   resources: ResourceRegistry;
+  /** 宽度，单位为标准化渲染像素。 */
   width: number;
+  /** 高度，单位为标准化渲染像素。 */
   height: number;
+  /** 当前文档使用的主题颜色和字体配置。 */
   theme: ThemeModel;
+  /** 按母版标识索引的 PPT 母版模型。 */
   masters: Map<number, PptMasterModel>;
+  /** 按字体编号索引的字体族名称。 */
   fonts: Map<number, string>;
+  /** 按演示顺序排列的幻灯片描述信息。 */
   slideDescriptors: readonly PptSlideDescriptor[];
+  /** 按幻灯片标识索引的备注页描述信息。 */
   notesBySlideId: ReadonlyMap<number, PptNotesDescriptor>;
+  /** 解析时产生但不阻止继续预览的警告。 */
   warnings: PresentationWarning[];
 };
 

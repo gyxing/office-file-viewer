@@ -57,22 +57,32 @@ export type SpreadsheetSheetLayout = {
 
 /** 为普通和大型工作簿提供统一的 Sheet 与范围读取协议。 */
 export interface SpreadsheetSource {
+  /** 返回当前可观察状态的只读快照。 */
   getSnapshot(): SpreadsheetSourceSnapshot;
+  /** 订阅状态快照变化，并返回取消订阅函数。 */
   subscribe(listener: () => void): () => void;
+  /** 返回指定工作表采用的性能配置。 */
   getProfile(sheetId: string): SpreadsheetPerformanceProfile;
+  /** 读取指定工作表的行列布局。 */
   getSheetLayout(sheetId: string): SpreadsheetSheetLayout;
+  /** 确保指定工作表的结构数据已经加载。 */
   ensureSheet(sheetId: string, signal?: AbortSignal): Promise<void>;
+  /** 返回已完整物化的工作表；不可用时返回空值。 */
   getMaterializedSheet(
     sheetId: string,
     signal?: AbortSignal,
   ): Promise<SpreadsheetSheet | undefined>;
+  /** 读取指定工作表范围内的单元格与对象。 */
   getRange(
     sheetId: string,
     range: SpreadsheetRange,
     signal?: AbortSignal,
   ): Promise<SpreadsheetRangeData>;
+  /** 保留指定可视范围并回收远离窗口的缓存内容。 */
   retainRange(sheetId: string, range: SpreadsheetRange): () => void;
+  /** 重新加载此前失败的工作表。 */
   retrySheet(sheetId: string): void;
+  /** 幂等释放当前对象持有的资源和订阅。 */
   dispose(): Promise<void>;
 }
 

@@ -17,6 +17,7 @@ export {
   isPresentationPreviewKind,
   isSpreadsheetPreviewKind,
   isSupportedOfficeFileName,
+  isWordPreviewKind,
   SUPPORTED_OFFICE_EXTENSIONS,
 } from './parsing/detectPreviewKind';
 export type { PreviewKind } from './parsing/detectPreviewKind';
@@ -24,39 +25,39 @@ export type { PreviewKind } from './parsing/detectPreviewKind';
 /** 使用格式判别字段关联对应的标准化文档或工作簿结果。 */
 export type ParsedOfficeFile =
   | {
-      /** 标识 ParsedOfficeFile 对应的 Office 文件或数据种类。 */
+      /** 当前模型对应的 Office 内容类型。 */
       kind: 'pptx';
-      /** ParsedOfficeFile 当前关联的标准化文档模型。 */
+      /** 当前处理的标准化文档模型。 */
       document: PptxDocument;
     }
   | {
-      /** 标识 ParsedOfficeFile 对应的 Office 文件或数据种类。 */
+      /** 当前模型对应的 Office 内容类型。 */
       kind: 'ppt';
-      /** ParsedOfficeFile 当前关联的标准化文档模型。 */
+      /** 当前处理的标准化文档模型。 */
       document: PresentationDocument;
     }
   | {
-      /** 标识 ParsedOfficeFile 对应的 Office 文件或数据种类。 */
+      /** 当前模型对应的 Office 内容类型。 */
       kind: 'xlsx';
-      /** ParsedOfficeFile 当前关联的标准化工作簿。 */
+      /** 当前处理的标准化工作簿。 */
       workbook: SpreadsheetWorkbook;
     }
   | {
-      /** 标识 ParsedOfficeFile 对应的 Office 文件或数据种类。 */
+      /** 当前模型对应的 Office 内容类型。 */
       kind: 'xls';
-      /** ParsedOfficeFile 当前关联的标准化工作簿。 */
+      /** 当前处理的标准化工作簿。 */
       workbook: SpreadsheetWorkbook;
     }
   | {
-      /** 标识 ParsedOfficeFile 对应的 Office 文件或数据种类。 */
+      /** 当前模型对应的 Office 内容类型。 */
       kind: 'docx';
-      /** ParsedOfficeFile 当前关联的标准化文档模型。 */
+      /** 当前处理的标准化文档模型。 */
       document: DocxDocument;
     }
   | {
-      /** 标识 ParsedOfficeFile 对应的 Office 文件或数据种类。 */
+      /** 当前模型对应的 Office 内容类型。 */
       kind: 'doc';
-      /** ParsedOfficeFile 当前关联的标准化文档模型。 */
+      /** 当前处理的标准化文档模型。 */
       document: DocDocument;
     };
 
@@ -80,7 +81,7 @@ export async function disposeParsedOfficeFile(
   await disposeDocumentSession(owner);
 }
 
-/** 解析 `parseOfficeFile` 接收的数据，并返回Office 文件解析与渲染结果。 */
+/** 识别 Office 文件格式并解析为标准预览模型。 */
 export async function parseOfficeFile(
   file: File,
   options?: OfficeParseOptions,

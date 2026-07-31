@@ -3,7 +3,7 @@ import { useOfficeFileViewerMessages } from '../locale';
 import type { ParseProgress } from '../services/parsing';
 import { OfficeNotice } from './Notice';
 
-/** 定义 OfficeParseStatus 组件可接收的属性。 */
+/** Office解析状态组件属性。 */
 type OfficeParseStatusProps = {
   /** 当前解析阶段及其完成度信息。 */
   progress?: ParseProgress;

@@ -9,11 +9,11 @@ import type {
   OfficeArtRecord,
 } from './types';
 
-/** 描述 ShapeProperties 在 XLS/BIFF8 解析中的数据结构。 */
+/** 从 OfficeArt 形状属性提取的图片和外观信息。 */
 type ShapeProperties = {
-  /** ShapeProperties 在所属集合中的位置索引。 */
+  /** 在所属集合中的位置索引。 */
   blipIndex?: number;
-  /** ShapeProperties 的可读名称。 */
+  /** 面向用户展示的名称。 */
   name?: string;
   /** OfficeArt 中以 BGR 顺序编码的形状填充色。 */
   fillColor?: number;
@@ -36,7 +36,6 @@ function collectRecords(
   return result;
 }
 
-/** 解析 `parseShapeId` 接收的数据，并返回XLS/BIFF8 解析结果。 */
 function parseShapeId(record: OfficeArtRecord | undefined) {
   if (!record || record.data.length < 4) return undefined;
   return new DataView(
@@ -58,7 +57,6 @@ function decodeUtf16(bytes: Uint8Array) {
   return value;
 }
 
-/** 解析 `parseShapeProperties` 接收的数据，并返回XLS/BIFF8 解析结果。 */
 function parseShapeProperties(record: OfficeArtRecord | undefined) {
   const result: ShapeProperties = {};
   if (!record) return result;

@@ -1,6 +1,7 @@
 // TextRenderer 渲染 PPTX 文本框，并处理文本框形状、渐变填充、段落和 run 样式。
+import type { CSSProperties } from 'react';
 import React, { memo } from 'react';
-import type { TextElement } from '../../../services/pptx/types';
+import type { TextElement, TextStyle } from '../../../services/pptx/types';
 import {
   colorWithOpacity,
   gradientToSvgEndpoints,
@@ -9,15 +10,14 @@ import {
 } from './paint';
 import { buildRendererId } from './renderIds';
 
-/** 定义 TextRenderer 组件可接收的属性。 */
+/** 文本渲染器组件属性。 */
 type TextRendererProps = {
-  /** TextRendererProps 当前负责渲染的演示文稿元素模型。 */
+  /** 当前处理或渲染的演示文稿元素。 */
   element: TextElement;
-  /** TextRendererProps 的 renderKey 文本值。 */
+  /** 内容变化时用于刷新渲染结果的键。 */
   renderKey: string;
 };
 
-/** 执行 `shadowToCss` 封装的演示文稿渲染处理步骤。 */
 function shadowToCss(element: TextElement) {
   if (!element.shadow) return undefined;
   return `${element.shadow.offsetX ?? 0}px ${
@@ -28,7 +28,6 @@ function shadowToCss(element: TextElement) {
   )}`;
 }
 
-/** 执行 `radiusToPx` 封装的演示文稿渲染处理步骤。 */
 function radiusToPx(element: TextElement) {
   if (element.shape === 'ellipse') return '50%';
   if (element.shape !== 'roundRect') return 0;
@@ -36,7 +35,6 @@ function radiusToPx(element: TextElement) {
   return Math.min(element.width, element.height) * ratio;
 }
 
-/** 执行 `textDecoration` 封装的演示文稿渲染处理步骤。 */
 function textDecoration(style: NonNullable<TextElement['boxStyle']>) {
   const parts: string[] = [];
   if (style.underline) parts.push('underline');
@@ -44,14 +42,31 @@ function textDecoration(style: NonNullable<TextElement['boxStyle']>) {
   return parts.length ? parts.join(' ') : 'none';
 }
 
-/** 执行 `lineStyle` 封装的演示文稿渲染处理步骤。 */
+/** 把文本纯色或渐变填充转换为浏览器字形样式。 */
+function resolveTextPaintStyle(
+  fill: TextStyle['textFill'],
+  fallbackColor: TextStyle['color'],
+  opacity?: number,
+): CSSProperties {
+  if (isGradientPaint(fill)) {
+    return {
+      color: 'transparent',
+      backgroundImage: paintToCss(fill),
+      backgroundClip: 'text',
+      WebkitBackgroundClip: 'text',
+      WebkitTextFillColor: 'transparent',
+    };
+  }
+  return { color: colorWithOpacity(fill ?? fallbackColor, opacity) };
+}
+
 function lineStyle(dash?: string) {
   if (!dash || dash === 'solid') return 'solid';
   if (dash.includes('dot')) return 'dotted';
   return 'dashed';
 }
 
-/** 渲染 TextRendererComponent 组件。 */
+/** 渲染文本渲染器。 */
 function TextRendererComponent({ element, renderKey }: TextRendererProps) {
   const style = element.boxStyle ?? {};
   const isVectorShape = Boolean(element.path);
@@ -70,10 +85,14 @@ function TextRendererComponent({ element, renderKey }: TextRendererProps) {
         top: element.y,
         width: element.width,
         height: element.height,
-        color: colorWithOpacity(style.color ?? '#172033', style.opacity),
+        ...resolveTextPaintStyle(
+          style.textFill,
+          style.color ?? '#172033',
+          style.opacity,
+        ),
         fontFamily: style.fontFamily,
         fontSize: style.fontSize,
-        fontWeight: style.bold ? 400 : 300,
+        fontWeight: style.bold ? 700 : 400,
         fontStyle: style.italic ? 'italic' : 'normal',
         textDecoration: textDecoration(style),
         textTransform: style.allCaps ? 'uppercase' : undefined,
@@ -106,7 +125,7 @@ function TextRendererComponent({ element, renderKey }: TextRendererProps) {
         paddingRight: style.marginRight ?? 0,
         paddingTop: style.marginTop ?? 0,
         paddingBottom: style.marginBottom ?? 0,
-        letterSpacing: 0,
+        letterSpacing: style.charSpace ?? 0,
         // PowerPoint 不会在连续数字或英文单词中间强制断行，窄文本框应保留原词并裁切。
         wordBreak: 'normal',
         overflowWrap: 'normal',
@@ -222,13 +241,14 @@ function TextRendererComponent({ element, renderKey }: TextRendererProps) {
               <span
                 key={runIndex}
                 style={{
-                  color: colorWithOpacity(
+                  ...resolveTextPaintStyle(
+                    runStyle.textFill ?? style.textFill,
                     runStyle.color ?? style.color ?? '#172033',
                     runStyle.opacity ?? style.opacity,
                   ),
                   fontFamily: runStyle.fontFamily ?? style.fontFamily,
                   fontSize: runStyle.fontSize ?? style.fontSize,
-                  fontWeight: runStyle.bold ?? style.bold ? 400 : 300,
+                  fontWeight: runStyle.bold ?? style.bold ? 700 : 400,
                   fontStyle:
                     runStyle.italic ?? style.italic ? 'italic' : 'normal',
                   textDecoration:
@@ -250,7 +270,7 @@ function TextRendererComponent({ element, renderKey }: TextRendererProps) {
                       : runStyle.baseline && runStyle.baseline < 0
                       ? 'sub'
                       : undefined,
-                  letterSpacing: 0,
+                  letterSpacing: runStyle.charSpace ?? style.charSpace ?? 0,
                 }}
               >
                 {run.text}

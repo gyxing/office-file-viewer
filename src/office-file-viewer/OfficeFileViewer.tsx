@@ -48,6 +48,7 @@ import {
   isPresentationPreviewKind,
   isSpreadsheetPreviewKind,
   isSupportedOfficeFileName,
+  isWordPreviewKind,
   type ParsedOfficeFile,
   type PreviewKind,
 } from './services/preview';
@@ -94,7 +95,7 @@ export type OfficeFileViewerUri =
   | string
   | (() => Promise<File | Blob | string | Response>);
 
-/** 定义 OfficeFileViewer 组件可接收的属性。 */
+/** Office文件预览器组件属性。 */
 export type OfficeFileViewerProps = {
   /** 预览器使用的界面语言，默认使用简体中文。 */
   locale?: OfficeFileViewerLocale;
@@ -102,8 +103,7 @@ export type OfficeFileViewerProps = {
   uri?: OfficeFileViewerUri;
   /** 无法从文件来源推断名称时使用的默认文件名。 */
   defaultFileName?: string;
-  /** 无法根据文件名识别格式时采用的默认预览类型。 */
-  defaultPreviewKind?: PreviewKind;
+
   /** 组件首次渲染时采用的缩放比例。 */
   defaultZoom?: number;
   /** 非受控模式下演讲者备注是否默认展开。 */
@@ -128,6 +128,7 @@ export type OfficeFileViewerProps = {
   onParseProgress?: (progress: ParseProgress) => void;
 };
 
+/** Office MIME 类型到文件扩展名的映射。 */
 const OFFICE_MIME_EXTENSION_MAP: Record<string, string> = {
   'application/vnd.openxmlformats-officedocument.presentationml.presentation':
     '.pptx',
@@ -280,7 +281,6 @@ async function normalizeOfficeFileUri(
 function OfficeFileViewerContent({
   uri,
   defaultFileName,
-  defaultPreviewKind = 'pptx',
   defaultZoom = OFFICE_DEFAULT_ZOOM,
   defaultShowSpeakerNotes = false,
   showSpeakerNotes,
@@ -300,8 +300,7 @@ function OfficeFileViewerContent({
   const [error, setError] = useState<string>();
   const [parseProgress, setParseProgress] = useState<ParseProgress>();
   const [partialWarning, setPartialWarning] = useState(false);
-  const [previewKind, setPreviewKind] =
-    useState<PreviewKind>(defaultPreviewKind);
+  const [previewKind, setPreviewKind] = useState<PreviewKind>();
   const [pptxDocument, setPptxDocument] = useState<PptxDocument>();
   const presentationDocumentRef = useRef<PptxDocument>();
   const [presentationPreviewSource, setPresentationPreviewSource] =
@@ -337,6 +336,8 @@ function OfficeFileViewerContent({
   const [internalShowSpeakerNotes, setInternalShowSpeakerNotes] = useState(
     defaultShowSpeakerNotes,
   );
+  const [hasWordOutline, setHasWordOutline] = useState(false);
+  const [showWordOutline, setShowWordOutline] = useState(false);
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const resourceStore = useMemo(() => createOfficeResourceStore(), []);
   const loadGenerationRef = useRef(0);
@@ -388,8 +389,11 @@ function OfficeFileViewerContent({
     setDocDocument(undefined);
     setDocPreviewSource(undefined);
     setDocPreviewSummary(undefined);
+    setPreviewKind(undefined);
     setActiveIndex(0);
     setActiveSheetId(undefined);
+    setHasWordOutline(false);
+    setShowWordOutline(false);
 
     const spreadsheet = spreadsheetWorkbookRef.current;
     spreadsheetWorkbookRef.current = undefined;
@@ -909,42 +913,80 @@ function OfficeFileViewerContent({
     });
   }, [spreadsheetPreviewSource]);
 
+  useEffect(() => {
+    if (!previewKind || !isWordPreviewKind(previewKind)) {
+      setHasWordOutline(false);
+      setShowWordOutline(false);
+      return undefined;
+    }
+
+    const outlineProvider =
+      previewKind === 'docx'
+        ? docxPreviewSource?.outline
+        : docPreviewSource?.outline;
+    const materializedOutlineCount =
+      previewKind === 'docx'
+        ? docxDocument?.outline?.length ?? 0
+        : docDocument?.outline?.length ?? 0;
+    // 渐进解析只向根层同步“大纲是否可用”，避免标题批次增长带动整个预览器刷新。
+    const syncOutlineAvailability = () => {
+      const available = outlineProvider
+        ? outlineProvider.getSnapshot().count > 0
+        : materializedOutlineCount > 0;
+      setHasWordOutline(available);
+      if (!available) setShowWordOutline(false);
+    };
+
+    syncOutlineAvailability();
+    return outlineProvider?.subscribe(syncOutlineAvailability);
+  }, [
+    docDocument?.outline,
+    docPreviewSource,
+    docxDocument?.outline,
+    docxPreviewSource,
+    previewKind,
+  ]);
+
   const presentationSlideCount =
     presentationPreviewSummary?.slideCount ?? pptxDocument?.slides.length ?? 0;
-  const hasDocument = useMemo(
-    () =>
-      // 工具栏的翻页/缩放按钮只依赖“当前格式是否有可渲染内容”，不要耦合到具体 viewer 实现。
-      isPresentationPreviewKind(previewKind)
-        ? presentationSlideCount > 0
-        : isSpreadsheetPreviewKind(previewKind)
-        ? Boolean(
-            spreadsheetWorkbook?.sheets.length ||
-              spreadsheetPreviewSummary?.sheets.length,
-          )
-        : previewKind === 'docx'
-        ? Boolean(docxDocument?.blocks.length || docxPreviewSummary)
-        : Boolean(
-            docDocument?.paragraphs.length ||
-              docPreviewSource?.getSnapshot().pages.length,
-          ),
-    [
-      docDocument,
-      docPreviewSource,
-      docxDocument,
-      docxPreviewSummary,
-      pptxDocument,
-      presentationSlideCount,
-      previewKind,
-      spreadsheetWorkbook,
-      spreadsheetPreviewSummary,
-    ],
-  );
+  const hasDocument = useMemo(() => {
+    // 工具栏的格式操作只依赖当前已识别文件的可渲染内容。
+    if (!previewKind) return false;
+    if (isPresentationPreviewKind(previewKind)) {
+      return presentationSlideCount > 0;
+    }
+    if (isSpreadsheetPreviewKind(previewKind)) {
+      return Boolean(
+        spreadsheetWorkbook?.sheets.length ||
+          spreadsheetPreviewSummary?.sheets.length,
+      );
+    }
+    if (previewKind === 'docx') {
+      return Boolean(docxDocument?.blocks.length || docxPreviewSummary);
+    }
+    return Boolean(
+      docDocument?.paragraphs.length ||
+        docPreviewSource?.getSnapshot().pages.length,
+    );
+  }, [
+    docDocument,
+    docPreviewSource,
+    docxDocument,
+    docxPreviewSummary,
+    pptxDocument,
+    presentationSlideCount,
+    previewKind,
+    spreadsheetWorkbook,
+    spreadsheetPreviewSummary,
+  ]);
 
   const canGoPreviousSlide =
+    previewKind !== undefined &&
     isPresentationPreviewKind(previewKind) &&
     presentationSlideCount > 1 &&
     activeIndex > 0;
   const canGoNextSlide =
+    previewKind !== undefined &&
     isPresentationPreviewKind(previewKind) &&
     presentationSlideCount > 1 &&
     activeIndex < presentationSlideCount - 1;
@@ -983,6 +1025,13 @@ function OfficeFileViewerContent({
     onSpeakerNotesVisibilityChange,
     showSpeakerNotes,
   ]);
+  const handleToggleWordOutline = useCallback(() => {
+    if (!hasWordOutline) return;
+    setShowWordOutline((visible) => !visible);
+  }, [hasWordOutline]);
+  const handleCloseWordOutline = useCallback(() => {
+    setShowWordOutline(false);
+  }, []);
 
   const fullscreenSupported =
     typeof document !== 'undefined' &&
@@ -1052,6 +1101,9 @@ function OfficeFileViewerContent({
           canGoNextSlide={canGoNextSlide}
           showSpeakerNotes={speakerNotesVisible}
           onToggleSpeakerNotes={handleToggleSpeakerNotes}
+          hasWordOutline={hasWordOutline}
+          showWordOutline={showWordOutline}
+          onToggleWordOutline={handleToggleWordOutline}
           onSelectFile={handleSelectFile}
           onPreviousSlide={handlePreviousSlide}
           onNextSlide={handleNextSlide}
@@ -1086,6 +1138,8 @@ function OfficeFileViewerContent({
               activeSheetId={activeSheetId}
               zoom={zoom}
               showSpeakerNotes={speakerNotesVisible}
+              showWordOutline={showWordOutline && hasWordOutline}
+              onCloseWordOutline={handleCloseWordOutline}
               onSelectSlide={setActiveIndex}
               onSelectSheet={setActiveSheetId}
             />

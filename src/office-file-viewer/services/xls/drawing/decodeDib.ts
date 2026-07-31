@@ -1,27 +1,26 @@
 import { XlsParseError } from '../errors';
 import type { DecodedBitmap } from './types';
 
-/** 描述 DibInfo 在 XLS/BIFF8 解析中的数据结构。 */
+/** DIB 位图头解析出的尺寸、像素和颜色信息。 */
 type DibInfo = {
-  /** DibInfo 的 width 几何值，单位遵循对应 Office 二进制记录定义。 */
+  /** 宽度，单位为标准化渲染像素。 */
   width: number;
-  /** DibInfo 的 height 几何值，单位遵循对应 Office 二进制记录定义。 */
+  /** 高度，单位为标准化渲染像素。 */
   height: number;
   /** 位图像素行是否按从上到下的顺序存储。 */
   topDown: boolean;
-  /** DibInfo 对应项目的数量。 */
+  /** 每个像素占用的位数。 */
   bitCount: number;
-  /** DibInfo 从源格式读取的 compression 枚举或标识值。 */
+  /** DIB 像素数据使用的压缩方式编号。 */
   compression: number;
-  /** DibInfo 在对应二进制流中的字节偏移。 */
+  /** 像素数组相对输入起点的字节偏移。 */
   pixelOffset: number;
-  /** DibInfo 包含的 palette 集合。 */
+  /** 按索引排列的蓝、绿、红、透明颜色分量。 */
   palette: Array<[number, number, number, number]>;
-  /** DibInfo 关联的 masks 结构；字段形状由 [number, number, number, number] 定义。 */
+  /** 红、绿、蓝和透明通道的位掩码。 */
   masks: [number, number, number, number];
 };
 
-/** 执行 `ensureRange` 封装的XLS/BIFF8 解析处理步骤。 */
 function ensureRange(bytes: Uint8Array, offset: number, length: number) {
   if (
     !Number.isSafeInteger(offset) ||
@@ -34,7 +33,6 @@ function ensureRange(bytes: Uint8Array, offset: number, length: number) {
   }
 }
 
-/** 读取 `readPalette` 所需的源数据，供XLS/BIFF8 解析使用。 */
 function readPalette(
   bytes: Uint8Array,
   offset: number,
@@ -55,7 +53,6 @@ function readPalette(
   return palette;
 }
 
-/** 解析 `parseCoreHeader` 接收的数据，并返回XLS/BIFF8 解析结果。 */
 function parseCoreHeader(bytes: Uint8Array, view: DataView): DibInfo {
   const width = view.getUint16(4, true);
   const height = view.getUint16(6, true);
@@ -78,7 +75,6 @@ function parseCoreHeader(bytes: Uint8Array, view: DataView): DibInfo {
   };
 }
 
-/** 解析 `parseInfoHeader` 接收的数据，并返回XLS/BIFF8 解析结果。 */
 function parseInfoHeader(
   bytes: Uint8Array,
   view: DataView,
@@ -144,7 +140,6 @@ function parseInfoHeader(
   };
 }
 
-/** 解析 `parseDibInfo` 接收的数据，并返回XLS/BIFF8 解析结果。 */
 function parseDibInfo(bytes: Uint8Array) {
   ensureRange(bytes, 0, 12);
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -172,7 +167,6 @@ function extractMasked(raw: number, mask: number, fallback: number) {
   return Math.round((component / shiftedMask) * 255);
 }
 
-/** 执行 `writeRgba` 封装的XLS/BIFF8 解析处理步骤。 */
 function writeRgba(
   rgba: Uint8ClampedArray,
   width: number,

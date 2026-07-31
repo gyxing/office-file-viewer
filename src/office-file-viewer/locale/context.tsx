@@ -4,6 +4,7 @@ import { enUS } from './en-US';
 import type { OfficeFileViewerLocale, OfficeFileViewerMessages } from './types';
 import { zhCN } from './zh-CN';
 
+/** 文件预览器语言上下文组件属性。 */
 type OfficeFileViewerLocaleProviderProps = {
   /** 当前预览器使用的内置界面语言。 */
   locale: OfficeFileViewerLocale;

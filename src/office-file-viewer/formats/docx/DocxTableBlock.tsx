@@ -9,19 +9,20 @@ import { OfficeChartView } from '../../shared/chart/OfficeChartView';
 import { DocxParagraph } from './DocxParagraph';
 import { calculatePositionStyle } from './positionUtils';
 
+/** DOCX 表格边线与内容区域之间的视觉修正量，单位为标准化渲染像素。 */
 const DOCX_TABLE_EDGE_OFFSET = 7;
 
-/** 定义 DocxTableBlock 组件可接收的属性。 */
+/** DOCX表格内容块组件属性。 */
 type DocxTableBlockProps = {
-  /** DocxTableBlockProps 当前负责渲染的文档块模型。 */
+  /** 当前负责处理或渲染的内容块。 */
   block: DocxTableBlockModel;
-  /** DocxTableBlockProps 的 availableWidth 尺寸或坐标，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 当前可用宽度，单位为标准化渲染像素。 */
   availableWidth?: number;
   /** 表格在当前页面或容器内允许占用的最大物理宽度。 */
   maximumWidth?: number;
 };
 
-/** 渲染 DocxTableBlockComponent 组件。 */
+/** 渲染DOCX表格内容块。 */
 function DocxTableBlockComponent({
   block,
   availableWidth,

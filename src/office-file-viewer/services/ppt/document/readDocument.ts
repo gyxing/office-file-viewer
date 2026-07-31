@@ -14,12 +14,14 @@ import { readPptNotes } from './readNotes';
 import { readPptSlide } from './readSlide';
 import { readPptSlideLists } from './readSlideLists';
 
+/** PPT 缺少页面设置时使用的默认幻灯片宽度。 */
 const DEFAULT_SLIDE_WIDTH = 960;
+/** PPT 缺少页面设置时使用的默认幻灯片高度。 */
 const DEFAULT_SLIDE_HEIGHT = 540;
 /** PowerPoint 主坐标固定为 576 dpi，统一换算到浏览器的 96 dpi。 */
 const MASTER_UNIT_TO_PX = 96 / 576;
 
-/** 描述 PptDocumentStructure 在 PPT 二进制解析中的数据结构。 */
+/** PPT 文档的页面尺寸、主题和母版。 */
 export type PptDocumentStructure = Pick<
   PptBinaryDocument,
   'width' | 'height' | 'theme' | 'masters'
@@ -27,7 +29,9 @@ export type PptDocumentStructure = Pick<
 
 /** 完整解析和按页 Source 共用的文档结构读取结果。 */
 export type PptDocumentReadStructure = PptDocumentStructure & {
+  /** 按字体编号索引的字体族名称。 */
   fonts: Map<number, string>;
+  /** 按源顺序排列的轻量描述信息。 */
   descriptors: ReturnType<typeof readPptSlideLists>;
 };
 
@@ -37,15 +41,15 @@ export type PptDocumentBaseStructure = Omit<
   'masters'
 >;
 
-/** 描述 PptDocumentObserver 在 PPT 二进制解析中的数据结构。 */
+/** PPT 文档和幻灯片解析进度的异步观察器。 */
 export type PptDocumentObserver = {
-  /** 执行 PptDocumentObserver 的 structure 操作。 */
+  /** 接收 PPT 文档的结构与资源目录。 */
   structure(value: PptDocumentStructure): Promise<void>;
-  /** PptDocumentObserver 当前关联的幻灯片。 */
+  /** 接收解析产生的单张幻灯片。 */
   slide(index: number, slide: PptSlideModel): Promise<void>;
 };
 
-/** 读取 `readDocumentSize` 所需的源数据，供PPT 二进制解析使用。 */
+/** 读取文档大小。 */
 export function readDocumentSize(
   documentStream: Uint8Array,
   documentRecordOffset: number,

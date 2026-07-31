@@ -58,7 +58,6 @@ class StyleReader {
   }
 }
 
-/** 读取 `readColor` 所需的源数据，供PPT 二进制解析使用。 */
 function readColor(value: number) {
   const red = value & 0xff;
   const green = (value >>> 8) & 0xff;
@@ -68,19 +67,16 @@ function readColor(value: number) {
     .join('')}`;
 }
 
-/** 读取 `readLineHeight` 所需的源数据，供PPT 二进制解析使用。 */
 function readLineHeight(value: number) {
   // 正值是行高百分比；负值是绝对主单位，统一模型暂无绝对行高字段。
   return value >= 0 ? Math.max(0.1, value / 100) : undefined;
 }
 
-/** 读取 `readParagraphSpacing` 所需的源数据，供PPT 二进制解析使用。 */
 function readParagraphSpacing(value: number) {
   // 正值按默认 18px 行高折算，负值按 576 dpi 主单位折算到 96 dpi。
   return value >= 0 ? (value / 100) * 18 : Math.abs(value) / 6;
 }
 
-/** 读取 `readParagraphException` 所需的源数据，供PPT 二进制解析使用。 */
 function readParagraphException(reader: StyleReader) {
   const masks = reader.u32();
   const style: TextStyle = {};
@@ -130,7 +126,6 @@ function readParagraphException(reader: StyleReader) {
   return style;
 }
 
-/** 读取 `readCharacterException` 所需的源数据，供PPT 二进制解析使用。 */
 function readCharacterException(
   reader: StyleReader,
   defaults: PptTextDefaults,
@@ -159,7 +154,6 @@ function readCharacterException(
   return style;
 }
 
-/** 执行 `addWarning` 封装的PPT 二进制解析处理步骤。 */
 function addWarning(
   context: PptParseContext,
   record: PptRecord,

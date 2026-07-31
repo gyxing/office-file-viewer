@@ -1,11 +1,11 @@
 import type { PortableDocMetadata } from '../parsing/protocol/messages';
 import type { DocBlock, DocDocument, DocParagraph } from './types';
 
-/** 表示DOC 二进制解析流式处理中的一个数据分块。 */
+/** 按目标字节数切分的 DOC 内容块分片。 */
 export type DocBlockChunk = {
-  /** DocBlockChunk 分块在完整集合中的起始索引。 */
+  /** 分块在完整集合中的起始索引。 */
   startIndex: number;
-  /** DocBlockChunk 包含的 blocks 有序集合。 */
+  /** 按源文档顺序排列的内容块。 */
   blocks: DocBlock[];
 };
 

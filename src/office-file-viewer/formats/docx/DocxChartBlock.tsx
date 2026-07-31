@@ -3,15 +3,15 @@ import React, { memo } from 'react';
 import type { DocxChartBlock as DocxChartBlockModel } from '../../services/docx/types';
 import { DocxChartView } from './DocxChartView';
 
-/** 定义 DocxChartBlock 组件可接收的属性。 */
+/** DOCX图表内容块组件属性。 */
 type DocxChartBlockProps = {
-  /** DocxChartBlockProps 当前负责渲染的文档块模型。 */
+  /** 当前负责处理或渲染的内容块。 */
   block: DocxChartBlockModel;
   /** 当前预览缩放比例。 */
   zoom: number;
 };
 
-/** 渲染 DocxChartBlockComponent 组件。 */
+/** 渲染DOCX图表内容块。 */
 function DocxChartBlockComponent({ block, zoom }: DocxChartBlockProps) {
   return (
     <div className="office-file-docx-chart-block">

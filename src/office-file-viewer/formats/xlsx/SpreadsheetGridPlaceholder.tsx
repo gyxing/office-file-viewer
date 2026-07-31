@@ -22,7 +22,10 @@ function SpreadsheetGridPlaceholderComponent({
   return (
     <div className="office-file-xlsx-grid-placeholder">
       {loading ? (
-        <Spin tip={messages.lazyContent.loading} />
+        <>
+          <Spin aria-label={messages.lazyContent.loading} />
+          <span>{messages.lazyContent.loading}</span>
+        </>
       ) : (
         <>
           <span>

@@ -5,6 +5,7 @@ import type {
   SpreadsheetRange,
 } from './types';
 
+/** 工作表上的浮动图片或图表对象。 */
 type SpreadsheetFloatingObject = SpreadsheetImage | SpreadsheetChart;
 
 /** 按完整工作表像素坐标查询与虚拟窗口相交的浮动对象。 */

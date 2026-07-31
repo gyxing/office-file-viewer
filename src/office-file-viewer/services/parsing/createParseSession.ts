@@ -42,7 +42,6 @@ import type {
   ParseProgress,
 } from './types';
 
-/** 创建 `createParseSession` 返回的对象，供解析运行时使用。 */
 function createParseSession(
   file: File,
   options: OfficeParseOptions,

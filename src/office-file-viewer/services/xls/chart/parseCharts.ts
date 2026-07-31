@@ -60,19 +60,19 @@ export function readBiff8ChartSubstream(
   );
 }
 
-/** 描述 ParsedSheetChart 在 XLS/BIFF8 解析中的数据结构。 */
+/** 工作表内嵌图表及其锚点和预览图片。 */
 export type ParsedSheetChart = {
-  /** ParsedSheetChart 在所属文档或任务中的唯一标识。 */
+  /** 在所属集合中的唯一标识。 */
   id: string;
-  /** ParsedSheetChart 对外展示的标题。 */
+  /** 面向用户展示的标题。 */
   title?: string;
-  /** ParsedSheetChart 当前关联的图表模型。 */
+  /** 转换后的标准图表模型。 */
   chart: ReturnType<typeof adaptBiff8Chart>['chart'];
-  /** ParsedSheetChart 在工作表或画布中的定位锚点。 */
+  /** 对象在工作表或画布中的定位锚点。 */
   anchor: Biff8DrawingShape['anchor'];
-  /** ParsedSheetChart 的 previewImageId 文本值。 */
+  /** 匹配到的图表静态预览图片标识。 */
   previewImageId?: string;
-  /** ParsedSheetChart 解析时产生但不阻止继续预览的警告集合。 */
+  /** 解析时产生但不阻止继续预览的警告。 */
   warnings: SpreadsheetWarning[];
 };
 

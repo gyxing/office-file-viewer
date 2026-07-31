@@ -10,11 +10,11 @@ import {
 } from '../types';
 import { createPptStaticPreviewCard } from './createStaticPreviewCard';
 
-/** 描述 RasterInfo 在 PPT 二进制解析中的数据结构。 */
+/** PPT Pictures 流中位图的 MIME 类型和数据偏移。 */
 type RasterInfo = {
   /** 资源的 MIME 类型，用于选择解码和渲染方式。 */
   mimeType: string;
-  /** RasterInfo 保存的原始字节序列。 */
+  /** 原始字节序列。 */
   bytes: Uint8Array;
 };
 
@@ -29,7 +29,6 @@ function findSignature(bytes: Uint8Array, signature: number[]) {
   return -1;
 }
 
-/** 读取 `readRaster` 所需的源数据，供PPT 二进制解析使用。 */
 function readRaster(record: OfficeArtRecord): RasterInfo | undefined {
   const candidates = [
     {
@@ -53,7 +52,6 @@ function readRaster(record: OfficeArtRecord): RasterInfo | undefined {
   };
 }
 
-/** 执行 `fallbackLabel` 封装的PPT 二进制解析处理步骤。 */
 function fallbackLabel(type: number) {
   if (type === OFFICE_ART_RECORD.BLIP_WMF)
     return ['WMF 图像', '矢量图静态预览'];
@@ -65,7 +63,6 @@ function fallbackLabel(type: number) {
   return ['嵌入图像', 'PowerPoint 97–2003 图片对象'];
 }
 
-/** 将输入转换为 `toExactArrayBuffer` 返回的格式。 */
 function toExactArrayBuffer(bytes: Uint8Array) {
   return Uint8Array.from(bytes).buffer;
 }

@@ -1,9 +1,13 @@
 import type { KeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+/** 演讲者备注区域的默认高度，单位为标准化渲染像素。 */
 const DEFAULT_NOTES_HEIGHT = 220;
+/** 演讲者备注区域允许的最小高度，单位为标准化渲染像素。 */
 const MIN_NOTES_HEIGHT = 120;
+/** 演讲者备注区域可占预览工作区高度的最大比例。 */
 const MAX_WORKSPACE_RATIO = 0.65;
+/** 键盘调整备注区域高度时的单次步长，单位为标准化渲染像素。 */
 const KEYBOARD_RESIZE_STEP = 20;
 
 /** 管理备注面板的显式分隔条拖拽，避免依赖浏览器不一致的原生 resize 手柄。 */

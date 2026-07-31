@@ -2,10 +2,12 @@ import { throwIfSpreadsheetAborted } from '../../spreadsheet/SpreadsheetSource';
 
 /** BIFF8 SST 的按引用读取协议。 */
 export interface Biff8SharedStringSource {
+  /** 批量解析实际使用的共享字符串索引。 */
   resolveMany(
     indexes: readonly number[],
     signal?: AbortSignal,
   ): Promise<ReadonlyMap<number, string>>;
+  /** 幂等释放当前对象持有的资源和订阅。 */
   dispose(): Promise<void>;
 }
 

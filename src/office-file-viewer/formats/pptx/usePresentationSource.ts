@@ -7,6 +7,7 @@ import type {
   SpeakerNotesModel,
 } from '../../services/presentation/types';
 
+/** 演示文稿数据尚未加载时使用的空快照。 */
 const EMPTY_PRESENTATION_SNAPSHOT: PresentationSourceSnapshot = {
   revision: 0,
   width: 960,
@@ -21,10 +22,15 @@ const EMPTY_PRESENTATION_SNAPSHOT: PresentationSourceSnapshot = {
   },
 };
 
+/** 当前幻灯片的加载结果。 */
 type PresentationContentState = {
+  /** 当前处理或展示的幻灯片。 */
   slide?: SlideModel;
+  /** 当前幻灯片的演讲者备注。 */
   notes?: SpeakerNotesModel;
+  /** 加载状态相关文案。 */
   loading: boolean;
+  /** 当前操作产生的错误；未提供表示没有错误。 */
   error?: Error;
 };
 

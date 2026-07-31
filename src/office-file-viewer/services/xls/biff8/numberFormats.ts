@@ -1,3 +1,4 @@
+/** Excel 内置数字格式编号到格式代码的映射。 */
 export const BUILTIN_NUMBER_FORMATS: Record<number, string> = {
   0: 'General',
   1: '0',
@@ -33,12 +34,10 @@ export const BUILTIN_NUMBER_FORMATS: Record<number, string> = {
   49: '@',
 };
 
-/** 执行 `pad` 封装的XLS/BIFF8 解析处理步骤。 */
 function pad(value: number, length = 2) {
   return String(value).padStart(length, '0');
 }
 
-/** 执行 `stripFormatLiterals` 封装的XLS/BIFF8 解析处理步骤。 */
 function stripFormatLiterals(format: string) {
   return format
     .replace(/"[^"]*"/g, '')
@@ -53,7 +52,6 @@ export function isDateFormat(format: string) {
   return /(^|[^a-z])[ymdhis]+([^a-z]|$)/.test(normalized);
 }
 
-/** 执行 `excelSerialToDate` 封装的XLS/BIFF8 解析处理步骤。 */
 function excelSerialToDate(serial: number, date1904: boolean) {
   const wholeDays = Math.floor(serial);
   const fraction = serial - wholeDays;
@@ -138,6 +136,12 @@ function formatFraction(value: number, format: string) {
   return `${whole || ''}${whole ? ' ' : ''}${bestNumerator}/${bestDenominator}`;
 }
 
+/** 按 Excel 的 15 位有效数字上限清理二进制浮点尾差。 */
+function formatGeneralNumber(value: number) {
+  if (!Number.isFinite(value) || Number.isInteger(value)) return String(value);
+  return String(Number(value.toPrecision(15)));
+}
+
 /** 按常用 BIFF8 数字格式生成展示文本，不执行任何公式计算。 */
 export function formatBiff8Value(
   value: string | number | boolean | null,
@@ -146,9 +150,8 @@ export function formatBiff8Value(
 ) {
   if (value === null) return '';
   if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
-  if (typeof value === 'string' || !format || format === 'General') {
-    return String(value);
-  }
+  if (typeof value === 'string') return value;
+  if (!format || format === 'General') return formatGeneralNumber(value);
   if (isDateFormat(format)) return formatDate(value, format, date1904);
   if (format.includes('%')) {
     const decimals = /\.([0]+)/.exec(format)?.[1].length ?? 0;

@@ -2,13 +2,12 @@
 import React, { memo } from 'react';
 import type { TableElement } from '../../../services/pptx/types';
 
-/** 定义 TableRenderer 组件可接收的属性。 */
+/** 表格渲染器组件属性。 */
 type TableRendererProps = {
-  /** TableRendererProps 当前负责渲染的演示文稿元素模型。 */
+  /** 当前处理或渲染的演示文稿元素。 */
   element: TableElement;
 };
 
-/** 执行 `colorWithOpacity` 封装的演示文稿渲染处理步骤。 */
 function colorWithOpacity(color?: string, opacity?: number) {
   if (!color || opacity === undefined || opacity >= 1) return color;
   const normalized = color.replace('#', '');
@@ -20,7 +19,7 @@ function colorWithOpacity(color?: string, opacity?: number) {
   return `rgba(${r}, ${g}, ${b}, ${opacity})`;
 }
 
-/** 渲染 TableRendererComponent 组件。 */
+/** 渲染表格渲染器。 */
 function TableRendererComponent({ element }: TableRendererProps) {
   const columnWidths = element.columnWidths ?? [];
   const rowHeights = element.rowHeights ?? [];

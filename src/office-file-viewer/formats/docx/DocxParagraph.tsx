@@ -10,17 +10,17 @@ import {
 } from './docxRenderUtils';
 import { calculatePositionStyle } from './positionUtils';
 
-/** 定义 DocxParagraph 组件可接收的属性。 */
+/** DOCX段落组件属性。 */
 type DocxParagraphProps = {
-  /** DocxParagraphProps 当前负责渲染的文档块模型。 */
+  /** 当前负责处理或渲染的内容块。 */
   block: DocxParagraphBlock;
-  /** 是否启用 compact 对应的格式选项；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 是否使用紧凑段落布局。 */
   compact?: boolean;
-  /** 是否启用 asDiv 对应的格式选项；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 是否使用 div 元素承载当前段落。 */
   asDiv?: boolean; // 强制使用 div 而不是 p,用于避免嵌套问题
 };
 
-/** 渲染 DocxParagraphComponent 组件。 */
+/** 渲染DOCX段落。 */
 function DocxParagraphComponent({
   block,
   compact = false,

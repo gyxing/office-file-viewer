@@ -14,7 +14,7 @@ import {
   textContent,
 } from './xml';
 
-/** 描述 OfficeChartType 在 OOXML 公共解析中的数据结构。 */
+/** 标准图表模型支持的图表类型。 */
 export type OfficeChartType =
   | 'line'
   | 'bar'
@@ -28,169 +28,170 @@ export type OfficeChartType =
   | 'map'
   | 'unknown';
 
-/** 描述 OfficeChartSeries 在 OOXML 公共解析中的数据结构。 */
+/** 标准图表模型中的单个数据系列。 */
 export type OfficeChartSeries = {
-  /** OfficeChartSeries 的可读名称。 */
+  /** 面向用户展示的名称。 */
   name: string;
-  /** OfficeChartSeries 包含的 values 有序集合。 */
+  /** 按数据点顺序排列的系列纵轴值。 */
   values: number[];
-  /** OfficeChartSeries 包含的 xValues 有序集合。 */
+  /** 散点图或气泡图使用的横轴数值。 */
   xValues?: number[];
-  /** OfficeChartSeries 包含的 bubbleSizes 有序集合。 */
+  /** 气泡图各数据点对应的气泡大小。 */
   bubbleSizes?: number[];
-  /** 用于区分 OfficeChartSeries 不同结构分支的类型标识。 */
+  /** 当前数据系列采用的标准图表类型。 */
   type?: OfficeChartType;
-  /** OfficeChartSeries 关联的 stacking 结构；字段形状由 'stacked' | 'percentStacked' 定义；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 数据系列的堆积方式。 */
   stacking?: 'stacked' | 'percentStacked';
-  /** OfficeChartSeries 的 stackGroup 文本值。 */
+  /** 组合图表中参与同组堆积的标识。 */
   stackGroup?: string;
-  /** OfficeChartSeries 的 gapWidth 图表布局参数，数值语义遵循 Office 图表规范；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 相邻分类组之间的间距百分比。 */
   gapWidth?: number;
-  /** OfficeChartSeries 的 overlap 图表布局参数，数值语义遵循 Office 图表规范；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 同一分类中各数据系列的重叠百分比。 */
   overlap?: number;
-  /** OfficeChartSeries 的前景或文本颜色，使用标准化 CSS 颜色值；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 前景或文字颜色，使用 CSS 颜色值。 */
   color?: string;
-  /** OfficeChartSeries 包含的 pointColors 有序集合。 */
+  /** 按数据点顺序覆盖的颜色。 */
   pointColors?: string[];
-  /** OfficeChartSeries 包含的 pointLabels 有序集合。 */
+  /** 按数据点顺序覆盖的标签文本。 */
   pointLabels?: string[];
-  /** OfficeChartSeries 包含的 pointStyles 有序集合。 */
+  /** 按数据点顺序覆盖的填充和边框样式。 */
   pointStyles?: Array<{
-    /** OfficeChartSeries 的前景或文本颜色，使用标准化 CSS 颜色值；未提供时沿用来源格式或渲染器的默认规则。 */
+    /** 前景或文字颜色，使用 CSS 颜色值。 */
     color?: OfficeChartColor;
-    /** OfficeChartSeries 的 borderColor 文本值。 */
+    /** 边框颜色。 */
     borderColor?: string;
-    /** OfficeChartSeries 的 borderWidth 渲染数值，单位为标准化渲染像素。 */
+    /** 边框宽度，单位为标准化渲染像素。 */
     borderWidth?: number;
   }>;
-  /** OfficeChartSeries 的图表数据标签显示配置；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 图表数据标签显示配置。 */
   dataLabels?: OfficeDataLabels;
-  /** 是否使用平滑曲线连接数据点；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 是否使用平滑曲线连接数据点。 */
   smooth?: boolean;
-  /** OfficeChartSeries 的 lineWidth 渲染尺寸，单位为标准化像素；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 数据系列线条宽度，单位为标准化像素。 */
   lineWidth?: number;
   /** 数据系列的数据点标记样式；未提供时不绘制标记。 */
   marker?: {
-    /** OfficeChartSeries 的 symbol 文本值。 */
+    /** 数据点标记使用的图形名称。 */
     symbol?: string;
-    /** OfficeChartSeries 的 size 数值；具体语义遵循对应源文件格式；未提供时使用来源格式或渲染器的默认行为。 */
+    /** 当前数据占用的空间大小。 */
     size?: number;
   };
 };
 
-/** 描述 OfficeDataLabels 在 OOXML 公共解析中的数据结构。 */
+/** 图表数据标签的内容和显示规则。 */
 export type OfficeDataLabels = {
-  /** 是否按源文件指示隐藏当前图表元素；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 是否按源文件指示隐藏当前图表元素。 */
   delete?: boolean;
-  /** OfficeDataLabels 的定位信息及其参考坐标系。 */
+  /** 对象的定位信息及其参考坐标系。 */
   position?: string;
-  /** OfficeDataLabels 的 separator 文本值。 */
+  /** 同时显示多个标签值时使用的分隔文本。 */
   separator?: string;
-  /** 是否显示 LegendKey 对应的图表或界面元素；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 数据标签是否显示对应系列的图例标记。 */
   showLegendKey?: boolean;
-  /** 是否显示 Val 对应的图表或界面元素；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 数据标签是否显示数据点数值。 */
   showVal?: boolean;
-  /** 是否显示 CatName 对应的图表或界面元素；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 数据标签是否显示分类名称。 */
   showCatName?: boolean;
-  /** 是否显示 SerName 对应的图表或界面元素；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 数据标签是否显示系列名称。 */
   showSerName?: boolean;
-  /** 是否显示 Percent 对应的图表或界面元素；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 数据标签是否显示百分比。 */
   showPercent?: boolean;
-  /** 是否显示 BubbleSize 对应的图表或界面元素；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 数据标签是否显示气泡大小。 */
   showBubbleSize?: boolean;
-  /** 是否显示 LeaderLines 对应的图表或界面元素；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 数据标签是否显示引导线。 */
   showLeaderLines?: boolean;
 };
 
-/** 描述 OOXML 公共解析使用的标准化模型。 */
+/** 跨 PPT、PPTX、XLS 和 XLSX 共用的标准图表模型。 */
 export type OfficeChartModel = {
-  /** 用于区分 OfficeChartModel 不同结构分支的类型标识。 */
+  /** 图表采用的标准类型。 */
   type: OfficeChartType;
-  /** OfficeChartModel 对外展示的标题。 */
+  /** 面向用户展示的标题。 */
   title?: string;
-  /** OfficeChartModel 包含的 categories 有序集合。 */
+  /** 分类轴使用的标签。 */
   categories: string[];
-  /** OfficeChartModel 包含的 series 有序集合。 */
+  /** 按绘制顺序排列的数据系列。 */
   series: OfficeChartSeries[];
-  /** OfficeChartModel 的图表数据标签显示配置；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 图表数据标签显示配置。 */
   dataLabels?: OfficeDataLabels;
-  /** 是否显示图表图例；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 是否显示图表图例。 */
   showLegend?: boolean;
-  /** OfficeChartModel 的图例停靠位置；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 图例停靠位置。 */
   legendPosition?: 'top' | 'bottom' | 'left' | 'right';
-  /** OfficeChartModel 的图例尺寸和文字样式；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 图例尺寸和文字样式。 */
   legendStyle?: {
-    /** OfficeChartModel 的 itemWidth 渲染尺寸，单位为标准化像素；未提供时使用来源格式或渲染器的默认行为。 */
+    /** 图例标记区域宽度，单位为标准化像素。 */
     itemWidth?: number;
-    /** OfficeChartModel 的 itemHeight 渲染尺寸，单位为标准化像素；未提供时使用来源格式或渲染器的默认行为。 */
+    /** 图例标记区域高度，单位为标准化像素。 */
     itemHeight?: number;
     /** 图例文本的字体与颜色样式；未提供时沿用图表主题。 */
     textStyle?: {
-      /** OfficeChartModel 的前景或文本颜色，使用标准化 CSS 颜色值；未提供时沿用来源格式或渲染器的默认规则。 */
+      /** 前景或文字颜色，使用 CSS 颜色值。 */
       color?: string;
-      /** OfficeChartModel 的字体族名称；未提供时沿用来源格式或渲染器的默认规则。 */
+      /** 字体族名称。 */
       fontFamily?: string;
-      /** OfficeChartModel 的字号，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+      /** 字号，单位为标准化渲染像素。 */
       fontSize?: number;
-      /** OfficeChartModel 的字体样式；未提供时沿用来源格式或渲染器的默认规则。 */
+      /** 字体样式。 */
       fontStyle?: 'normal' | 'italic' | 'oblique';
-      /** OfficeChartModel 的字体粗细值；未提供时沿用来源格式或渲染器的默认规则。 */
+      /** 字体粗细。 */
       fontWeight?: 'normal' | 'bold' | 'bolder' | 'lighter' | number;
     };
   };
-  /** 是否显示图表数据标签；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 是否显示图表数据标签。 */
   showDataLabels?: boolean;
-  /** OfficeChartModel 的 holeSize 图表布局参数，数值语义遵循 Office 图表规范；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 环形图中心孔径占图表直径的百分比。 */
   holeSize?: number;
-  /** OfficeChartModel 的旋转或起始角度，单位为度；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 饼图第一扇区的起始角度，单位为度。 */
   startAngle?: number;
-  /** OfficeChartModel 关联的 ofPieType 结构；字段形状由 'bar' | 'pie' 定义；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 复合饼图第二绘图区采用条形还是饼形。 */
   ofPieType?: 'bar' | 'pie';
-  /** OfficeChartModel 对应项目的数量。 */
+  /** 复合饼图第二绘图区包含的数据点数量。 */
   ofPieSecondPlotCount?: number;
-  /** OfficeChartModel 的 secondPieSize 图表布局参数，数值语义遵循 Office 图表规范；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 复合饼图第二绘图区相对主饼图的尺寸百分比。 */
   secondPieSize?: number;
-  /** OfficeChartModel 的 gapWidth 图表布局参数，数值语义遵循 Office 图表规范；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 相邻分类组之间的间距百分比。 */
   gapWidth?: number;
-  /** OfficeChartModel 的 overlap 图表布局参数，数值语义遵循 Office 图表规范；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 同一分类中各数据系列的重叠百分比。 */
   overlap?: number;
-  /** OfficeChartModel 关联的 roseType 结构；字段形状由 'radius' | 'area' 定义；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 玫瑰图按半径还是面积编码数值。 */
   roseType?: 'radius' | 'area';
-  /** OfficeChartModel 关联的 radius 结构；字段形状由 [string, string] 定义；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 饼图或环形图使用的内外半径。 */
   radius?: [string, string];
-  /** OfficeChartModel 的 radarStyle 文本值。 */
+  /** 雷达图的来源样式名称。 */
   radarStyle?: string;
-  /** OfficeChartModel 的 radarRadius 文本值。 */
+  /** 雷达图相对容器的显示半径。 */
   radarRadius?: string;
-  /** OfficeChartModel 的旋转或起始角度，单位为度；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 雷达图第一个维度的起始角度，单位为度。 */
   radarStartAngle?: number;
-  /** OfficeChartModel 的 radarSplitNumber 数值；具体语义遵循对应源文件格式；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 雷达图半径轴划分的分段数量。 */
   radarSplitNumber?: number;
-  /** OfficeChartModel 包含的 radarIndicators 有序集合。 */
+  /** 雷达图各维度的名称和最大值。 */
   radarIndicators?: Array<{
-    /** OfficeChartModel 的可读名称。 */
+    /** 面向用户展示的名称。 */
     name: string;
-    /** OfficeChartModel 的 max 数值；具体语义遵循对应源文件格式。 */
+    /** 雷达图当前维度允许的最大值。 */
     max: number;
   }>;
-  /** OfficeChartModel 的 mapSeriesName 文本值。 */
+  /** 地图图表显示的数据系列名称。 */
   mapSeriesName?: string;
-  /** OfficeChartModel 的 mapRegion 文本值。 */
+  /** 地图图表对应的地区名称。 */
   mapRegion?: string;
-  /** OfficeChartModel 的 mapName 文本值。 */
+  /** 图表运行时注册的地图名称。 */
   mapName?: string;
-  /** OfficeChartModel 的 mapGeoJsonUrl 文本值。 */
+  /** 地图图表按需加载的 GeoJSON 地址。 */
   mapGeoJsonUrl?: string;
-  /** OfficeChartModel 的 snapshotSrc 文本值。 */
+  /** 交互图表不可用时使用的静态快照地址。 */
   snapshotSrc?: string;
-  /** OfficeChartModel 的 sourceType 文本值。 */
+  /** 来源文档中的原始图表类型。 */
   sourceType?: string;
-  /** OfficeChartModel 关联的 renderMode 结构；字段形状由 'interactive' | 'snapshot' 定义；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 图表使用交互渲染还是静态快照。 */
   renderMode?: 'interactive' | 'snapshot';
-  /** OfficeChartModel 的 degradedFrom 文本值。 */
+  /** 触发静态降级的原始图表类型。 */
   degradedFrom?: string;
 };
 
+/** Office 图表没有显式配色时使用的默认颜色序列。 */
 const DEFAULT_COLORS = [
   '#5470c6',
   '#91cc75',
@@ -200,41 +201,44 @@ const DEFAULT_COLORS = [
   '#3ba272',
   '#fc8452',
 ];
+/** Office 图表缺少字体信息时使用的默认字体回退栈。 */
 const OFFICE_FONT_FAMILY =
   '"Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif';
+/** Office 图表文字使用的默认颜色和字体样式。 */
 const OFFICE_TEXT_STYLE = {
   color: '#334155',
   fontFamily: OFFICE_FONT_FAMILY,
 };
 
-/** 描述 OfficeChartColorStop 在 OOXML 公共解析中的数据结构。 */
+/** 图表渐变中的单个颜色停止点。 */
 type OfficeChartColorStop = {
-  /** OfficeChartColorStop 在所属数据范围中的偏移位置。 */
+  /** 在所属数据范围中的偏移位置。 */
   offset: number;
-  /** OfficeChartColorStop 的前景或文本颜色，使用标准化 CSS 颜色值。 */
+  /** 前景或文字颜色，使用 CSS 颜色值。 */
   color: string;
 };
 
-/** 描述 OfficeChartColor 在 OOXML 公共解析中的数据结构。 */
+/** 图表支持的纯色或线性渐变颜色。 */
 type OfficeChartColor =
   | string
   | {
-      /** 用于区分 OfficeChartColor 不同结构分支的类型标识。 */
+      /** 用于区分联合类型分支的类型标识。 */
       type: 'linear';
-      /** OfficeChartColor 的 x 尺寸或坐标，单位为标准化渲染像素。 */
+      /** 相对定位区域左侧的横坐标，单位为标准化渲染像素。 */
       x: number;
-      /** OfficeChartColor 的 y 尺寸或坐标，单位为标准化渲染像素。 */
+      /** 相对定位区域顶部的纵坐标，单位为标准化渲染像素。 */
       y: number;
-      /** OfficeChartColor 在矢量图元坐标系中的 x2 几何值。 */
+      /** 在矢量图元坐标系中的 几何值。 */
       x2: number;
-      /** OfficeChartColor 在矢量图元坐标系中的 y2 几何值。 */
+      /** 在矢量图元坐标系中的 几何值。 */
       y2: number;
-      /** OfficeChartColor 包含的 colorStops 有序集合。 */
+      /** 按偏移位置排列的渐变颜色停止点。 */
       colorStops: OfficeChartColorStop[];
-      /** 渐变坐标是否相对于全局画布计算；未提供时使用来源格式或渲染器的默认行为。 */
+      /** 渐变坐标是否相对于全局画布计算。 */
       global?: boolean;
     };
 
+/** OOXML 图表节点名称到标准图表类型的映射。 */
 const CHART_NODE_TO_TYPE: Record<string, OfficeChartType> = {
   linechart: 'line',
   barchart: 'column',
@@ -264,7 +268,6 @@ export function decodeMojibake(value: string) {
   }
 }
 
-/** 执行 `firstText` 封装的 OOXML 公共解析处理步骤。 */
 function firstText(node: Element | null | undefined) {
   const value =
     textContent(descendantByLocalName(node, 't')) ||
@@ -272,7 +275,6 @@ function firstText(node: Element | null | undefined) {
   return decodeMojibake(value.trim());
 }
 
-/** 读取 `readCacheValues` 所需的源数据，供 OOXML 公共解析使用。 */
 function readCacheValues(node: Element | null | undefined, date1904 = false) {
   const strCache = descendantByLocalName(node, 'strCache');
   if (strCache) {
@@ -302,7 +304,6 @@ function readCacheValues(node: Element | null | undefined, date1904 = false) {
     });
 }
 
-/** 读取 `readNumericValues` 所需的源数据，供 OOXML 公共解析使用。 */
 function readNumericValues(node: Element | null | undefined) {
   return readCacheValues(node)
     .map((value) => Number(value))
@@ -322,7 +323,6 @@ function normalizeType(chartNode: Element | null): OfficeChartType {
   return CHART_NODE_TO_TYPE[localName] ?? 'unknown';
 }
 
-/** 读取 `readSeriesColorWithTheme` 所需的源数据，供 OOXML 公共解析使用。 */
 function readSeriesColorWithTheme(seriesNode: Element, theme: OfficeTheme) {
   const spPr = childByLocalName(seriesNode, 'spPr');
   const fillNode =
@@ -346,7 +346,6 @@ function readSeriesColorWithTheme(seriesNode: Element, theme: OfficeTheme) {
   return typeof fallback === 'string' ? fallback : undefined;
 }
 
-/** 读取 `readFillColor` 所需的源数据，供 OOXML 公共解析使用。 */
 function readFillColor(node: Element | null | undefined, theme: OfficeTheme) {
   const fillNode =
     childByLocalName(node, 'solidFill') ?? childByLocalName(node, 'gradFill');
@@ -354,7 +353,6 @@ function readFillColor(node: Element | null | undefined, theme: OfficeTheme) {
   return typeof color === 'string' ? color : undefined;
 }
 
-/** 读取 `readPointStyles` 所需的源数据，供 OOXML 公共解析使用。 */
 function readPointStyles(seriesNode: Element, theme: OfficeTheme) {
   const styles: OfficeChartSeries['pointStyles'] = [];
   childrenByLocalName(seriesNode, 'dPt').forEach((pointNode) => {
@@ -384,7 +382,6 @@ function readPointStyles(seriesNode: Element, theme: OfficeTheme) {
   return styles;
 }
 
-/** 读取 `readPointColors` 所需的源数据，供 OOXML 公共解析使用。 */
 function readPointColors(seriesNode: Element, theme: OfficeTheme) {
   const colors: string[] = [];
   childrenByLocalName(seriesNode, 'dPt').forEach((pointNode) => {
@@ -396,7 +393,6 @@ function readPointColors(seriesNode: Element, theme: OfficeTheme) {
   return colors;
 }
 
-/** 执行 `localName` 封装的 OOXML 公共解析处理步骤。 */
 function localName(node: Element | null | undefined) {
   return (
     node?.localName.split(':').pop() ??
@@ -405,12 +401,10 @@ function localName(node: Element | null | undefined) {
   ).toLowerCase();
 }
 
-/** 执行 `clamp01` 封装的 OOXML 公共解析处理步骤。 */
 function clamp01(value: number) {
   return Math.max(0, Math.min(1, value));
 }
 
-/** 执行 `clamp255` 封装的 OOXML 公共解析处理步骤。 */
 function clamp255(value: number) {
   return Math.max(0, Math.min(255, value));
 }
@@ -424,7 +418,6 @@ function normalizeHex(value?: string) {
   return undefined;
 }
 
-/** 执行 `hexToRgb` 封装的 OOXML 公共解析处理步骤。 */
 function hexToRgb(hex: string) {
   const normalized = hex.replace('#', '');
   const value = Number.parseInt(normalized, 16);
@@ -435,14 +428,12 @@ function hexToRgb(hex: string) {
   };
 }
 
-/** 执行 `rgbToHex` 封装的 OOXML 公共解析处理步骤。 */
 function rgbToHex(r: number, g: number, b: number) {
   return `#${[r, g, b]
     .map((value) => clamp255(value).toString(16).padStart(2, '0'))
     .join('')}`;
 }
 
-/** 执行 `rgbToHsl` 封装的 OOXML 公共解析处理步骤。 */
 function rgbToHsl(r: number, g: number, b: number) {
   const red = r / 255;
   const green = g / 255;
@@ -471,7 +462,6 @@ function rgbToHsl(r: number, g: number, b: number) {
   return { h: hue * 60, s: saturation, l: lightness };
 }
 
-/** 执行 `hslToRgb` 封装的 OOXML 公共解析处理步骤。 */
 function hslToRgb(h: number, s: number, l: number) {
   const hue = (((h % 360) + 360) % 360) / 360;
   if (s === 0) {
@@ -498,7 +488,6 @@ function hslToRgb(h: number, s: number, l: number) {
   };
 }
 
-/** 读取 `readColorNode` 所需的源数据，供 OOXML 公共解析使用。 */
 function readColorNode(node: Element | null | undefined, theme: OfficeTheme) {
   if (!node) return undefined;
   const kind = localName(node);
@@ -584,7 +573,6 @@ function readColorNode(node: Element | null | undefined, theme: OfficeTheme) {
     : rgbToHex(rgb.r, rgb.g, rgb.b);
 }
 
-/** 读取 `readFillValue` 所需的源数据，供 OOXML 公共解析使用。 */
 function readFillValue(
   node: Element | null | undefined,
   theme: OfficeTheme,
@@ -632,20 +620,17 @@ function readFillValue(
   return readColorNode(node, theme);
 }
 
-/** 读取 `readLineWidth` 所需的源数据，供 OOXML 公共解析使用。 */
 function readLineWidth(node: Element | null | undefined) {
   const width = Number(attr(node, 'w'));
   if (!Number.isFinite(width) || width <= 0) return undefined;
   return width / 9525;
 }
 
-/** 读取 `readPositiveNumber` 所需的源数据，供 OOXML 公共解析使用。 */
 function readPositiveNumber(node: Element | null | undefined) {
   const value = Number(attr(node, 'val'));
   return Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
-/** 读取 `readOfPieSecondPlotCount` 所需的源数据，供 OOXML 公共解析使用。 */
 function readOfPieSecondPlotCount(chartNode: Element, pointCount: number) {
   if (pointCount <= 1) return 0;
   const splitPos = readPositiveNumber(childByLocalName(chartNode, 'splitPos'));
@@ -660,12 +645,10 @@ function readOfPieSecondPlotCount(chartNode: Element, pointCount: number) {
   return Math.max(1, Math.min(pointCount - 1, 2));
 }
 
-/** 判断 `isPieLikeChart` 对应的条件是否成立。 */
 function isPieLikeChart(type: OfficeChartType, ofPieType?: 'bar' | 'pie') {
   return type === 'pie' || type === 'doughnut' || Boolean(ofPieType);
 }
 
-/** 读取 `readShowDataLabels` 所需的源数据，供 OOXML 公共解析使用。 */
 function readShowDataLabels(chartNode: Element | null) {
   return descendantsByLocalName(chartNode, 'dLbls').some((labelsNode) => {
     const showVal = childByLocalName(labelsNode, 'showVal');
@@ -673,7 +656,6 @@ function readShowDataLabels(chartNode: Element | null) {
   });
 }
 
-/** 读取 `readDataLabels` 所需的源数据，供 OOXML 公共解析使用。 */
 function readDataLabels(
   labelsNode: Element | null | undefined,
 ): OfficeDataLabels | undefined {
@@ -711,7 +693,6 @@ function readDataLabels(
   return Object.keys(dataLabels).length ? dataLabels : undefined;
 }
 
-/** 读取 `readLegendPosition` 所需的源数据，供 OOXML 公共解析使用。 */
 function readLegendPosition(chartNode: Element | null) {
   const value = attr(childByLocalName(chartNode, 'legendPos'), 'val');
   if (value === 'b') return 'bottom';
@@ -720,7 +701,6 @@ function readLegendPosition(chartNode: Element | null) {
   return 'top';
 }
 
-/** 读取 `readFontFamily` 所需的源数据，供 OOXML 公共解析使用。 */
 function readFontFamily(node: Element | null | undefined) {
   const latin = attr(childByLocalName(node, 'latin'), 'typeface');
   const eastAsia = attr(childByLocalName(node, 'ea'), 'typeface');
@@ -731,14 +711,12 @@ function readFontFamily(node: Element | null | undefined) {
   return value || undefined;
 }
 
-/** 读取 `readLegendVisible` 所需的源数据，供 OOXML 公共解析使用。 */
 function readLegendVisible(chartNode: Element | null) {
   if (!chartNode) return false;
   const deleted = attr(childByLocalName(chartNode, 'delete'), 'val');
   return deleted !== '1' && deleted !== 'true';
 }
 
-/** 读取 `readLegendStyle` 所需的源数据，供 OOXML 公共解析使用。 */
 function readLegendStyle(
   chartNode: Element | null,
   theme: OfficeTheme,
@@ -765,7 +743,6 @@ function readLegendStyle(
     : undefined;
 }
 
-/** 读取 `readSeriesMarker` 所需的源数据，供 OOXML 公共解析使用。 */
 function readSeriesMarker(seriesNode: Element) {
   const markerNode = childByLocalName(seriesNode, 'marker');
   const symbol = attr(childByLocalName(markerNode, 'symbol'), 'val');
@@ -776,7 +753,6 @@ function readSeriesMarker(seriesNode: Element) {
   };
 }
 
-/** 执行 `looksLikeDateFormat` 封装的 OOXML 公共解析处理步骤。 */
 function looksLikeDateFormat(formatCode: string) {
   return /[ymdhs]/i.test(formatCode) && !/^general$/i.test(formatCode);
 }
@@ -822,7 +798,6 @@ function formatCacheValue(
   return formatDateFromSerial(numeric, formatCode, date1904);
 }
 
-/** 读取 `readDate1904` 所需的源数据，供 OOXML 公共解析使用。 */
 function readDate1904(chartSpace: Element | null) {
   const date1904 = childByLocalName(chartSpace, 'date1904');
   return attr(date1904, 'val') === '1' || attr(date1904, 'val') === 'true';
@@ -837,7 +812,6 @@ function findChartNodes(plotArea: Element | null) {
   );
 }
 
-/** 读取 `readChartPlot` 所需的源数据，供 OOXML 公共解析使用。 */
 function readChartPlot(
   chartNode: Element,
   theme: OfficeTheme,
@@ -931,7 +905,6 @@ function readChartPlot(
   };
 }
 
-/** 执行 `niceRadarMax` 封装的 OOXML 公共解析处理步骤。 */
 function niceRadarMax(value: number) {
   if (!Number.isFinite(value) || value <= 0) return 1;
   const magnitude = 10 ** Math.floor(Math.log10(value));
@@ -940,7 +913,6 @@ function niceRadarMax(value: number) {
   return step * magnitude;
 }
 
-/** 根据输入构建 `buildRadarIndicators` 返回的标准化结果。 */
 function buildRadarIndicators(
   categories: string[],
   series: OfficeChartSeries[],
@@ -957,7 +929,7 @@ function buildRadarIndicators(
   });
 }
 
-/** 解析 `parseOfficeChartXml` 接收的数据，并返回 OOXML 公共解析结果。 */
+/** 将 OOXML 图表部件解析为标准图表模型。 */
 export function parseOfficeChartXml(
   xml: string,
   theme: OfficeTheme = DEFAULT_OFFICE_THEME,
@@ -1041,7 +1013,6 @@ function normalizeSeriesType(type: OfficeChartType) {
   return 'line';
 }
 
-/** 执行 `sanitizeMapRegionName` 封装的 OOXML 公共解析处理步骤。 */
 function sanitizeMapRegionName(name: string) {
   return name
     .replace(
@@ -1051,7 +1022,6 @@ function sanitizeMapRegionName(name: string) {
     .trim();
 }
 
-/** 执行 `scaleRoseRadius` 封装的 OOXML 公共解析处理步骤。 */
 function scaleRoseRadius(
   radius: [string, string] | undefined,
 ): [string, string] | undefined {
@@ -1068,7 +1038,6 @@ function scaleRoseRadius(
   return [`${fittedInner}%`, `${fittedOuter}%`];
 }
 
-/** 根据输入构建 `buildLegend` 返回的标准化结果。 */
 function buildLegend(chart: OfficeChartModel, itemCount = chart.series.length) {
   if (chart.showLegend === false || itemCount <= 0) return undefined;
 
@@ -1110,7 +1079,6 @@ function buildLegend(chart: OfficeChartModel, itemCount = chart.series.length) {
   }
 }
 
-/** 根据输入构建 `buildChartGrid` 返回的标准化结果。 */
 function buildChartGrid(chart: OfficeChartModel) {
   const isBottomLegend = chart.legendPosition === 'bottom';
   const isSideLegend =
@@ -1124,7 +1092,6 @@ function buildChartGrid(chart: OfficeChartModel) {
   };
 }
 
-/** 根据输入构建 `buildOfficeTitle` 返回的标准化结果。 */
 function buildOfficeTitle(chart: OfficeChartModel) {
   return chart.title
     ? {
@@ -1159,7 +1126,6 @@ function resolveOfficeRadarRadius(chart: OfficeChartModel) {
   );
 }
 
-/** 执行 `reorderRadarAxes` 封装的 OOXML 公共解析处理步骤。 */
 function reorderRadarAxes<T>(items: T[]) {
   if (items.length <= 2) return items.slice();
   return [items[0], ...items.slice(1).reverse()];
@@ -1192,7 +1158,6 @@ function resolveBarWidthFromGap(
   return Math.max(6, Math.min(46, Math.round(width)));
 }
 
-/** 读取 `readPieLabelPosition` 所需的源数据，供 OOXML 公共解析使用。 */
 function readPieLabelPosition(
   labels?: OfficeDataLabels,
   fallback: 'outside' | 'inside' = 'outside',
@@ -1204,7 +1169,6 @@ function readPieLabelPosition(
   return fallback;
 }
 
-/** 读取 `readCartesianLabelPosition` 所需的源数据，供 OOXML 公共解析使用。 */
 function readCartesianLabelPosition(
   labels?: OfficeDataLabels,
   horizontal = false,
@@ -1220,7 +1184,6 @@ function readCartesianLabelPosition(
   return horizontal ? 'right' : 'top';
 }
 
-/** 根据输入构建 `buildDataLabelFormatter` 返回的标准化结果。 */
 function buildDataLabelFormatter(
   labels: OfficeDataLabels | undefined,
   categories: string[],
@@ -1232,15 +1195,15 @@ function buildDataLabelFormatter(
   const separator = labels?.separator ?? '\n';
   return (params: unknown) => {
     const item = params as {
-      /** 图表转换配置的可读名称。 */
+      /** 当前图表数据项的显示名称。 */
       name?: string;
-      /** 当前结构 保存的解析值或业务值。 */
+      /** 图表回调参数携带的数据值。 */
       value?: unknown;
-      /** 当前结构 在所属集合中的位置索引。 */
+      /** 当前数据项在所属系列中的零基索引。 */
       dataIndex?: number;
       /** 面向界面展示的解析完成百分比。 */
       percent?: number;
-      /** 图表转换配置的 seriesName 文本值。 */
+      /** 当前数据项所属的系列名称。 */
       seriesName?: string;
     };
     const value = Array.isArray(item.value)
@@ -1259,7 +1222,6 @@ function buildDataLabelFormatter(
   };
 }
 
-/** 执行 `shouldShowDataLabels` 封装的 OOXML 公共解析处理步骤。 */
 function shouldShowDataLabels(
   labels: OfficeDataLabels | undefined,
   chartShowDataLabels?: boolean,
@@ -1276,7 +1238,6 @@ function shouldShowDataLabels(
   return Boolean(chartShowDataLabels);
 }
 
-/** 根据输入构建 `buildCartesianDataLabelConfig` 返回的标准化结果。 */
 function buildCartesianDataLabelConfig(
   labels: OfficeDataLabels | undefined,
   chartShowDataLabels: boolean | undefined,
@@ -1294,7 +1255,6 @@ function buildCartesianDataLabelConfig(
   };
 }
 
-/** 根据输入构建 `buildPieDataLabelConfig` 返回的标准化结果。 */
 function buildPieDataLabelConfig(
   labels: OfficeDataLabels | undefined,
   showDataLabels?: boolean,
@@ -1307,17 +1267,18 @@ function buildPieDataLabelConfig(
   const separator = labels?.separator ?? '\n';
   const formatter = (params: unknown) => {
     const item = params as {
-      /** 图表转换配置的可读名称。 */
+      /** 当前图表数据项的显示名称。 */
       name?: string;
-      /** 当前结构 当前步骤需要处理的原始或标准化数据。 */
+      /** 图表回调参数携带的原始或标准化数据。 */
       data?: {
-        /** 图表转换配置的可读名称。 */ name?: string;
+        /** 当前图表数据项的显示名称。 */
+        name?: string;
       };
-      /** 当前结构 保存的解析值或业务值。 */
+      /** 图表回调参数携带的数据值。 */
       value?: number;
       /** 面向界面展示的解析完成百分比。 */
       percent?: number;
-      /** 图表转换配置的 seriesName 文本值。 */
+      /** 当前数据项所属的系列名称。 */
       seriesName?: string;
     };
     const parts: string[] = [];
@@ -1348,7 +1309,6 @@ function buildPieDataLabelConfig(
   };
 }
 
-/** 根据输入构建 `buildOfPieChartOption` 返回的标准化结果。 */
 function buildOfPieChartOption(
   chart: OfficeChartModel,
   categories: string[],
@@ -1425,17 +1385,18 @@ function buildOfPieChartOption(
     },
     formatter: (params: unknown) => {
       const item = params as {
-        /** 图表转换配置的 componentSubType 文本值。 */
+        /** 当前图表组件的子类型。 */
         componentSubType?: string;
-        /** 当前结构 当前步骤需要处理的原始或标准化数据。 */
+        /** 图表回调参数携带的原始或标准化数据。 */
         data?: {
-          /** 图表转换配置的可读名称。 */ name?: string;
+          /** 当前图表数据项的显示名称。 */
+          name?: string;
         };
-        /** 图表转换配置的可读名称。 */
+        /** 当前图表数据项的显示名称。 */
         name?: string;
-        /** 图表转换配置的 seriesName 文本值。 */
+        /** 当前数据项所属的系列名称。 */
         seriesName?: string;
-        /** 当前结构 保存的解析值或业务值。 */
+        /** 图表回调参数携带的数据值。 */
         value?: unknown;
       };
       const value =
@@ -1606,7 +1567,7 @@ function buildOfPieChartOption(
   };
 }
 
-/** 根据输入构建 `buildOfficeChartOption` 返回的标准化结果。 */
+/** 将标准图表模型转换为 ECharts 配置。 */
 export function buildOfficeChartOption(chart: OfficeChartModel): EChartsOption {
   // 中间模型在这里映射为 ECharts option，PPTX/DOCX/XLSX 共用同一套图表渲染逻辑。
   const categories = resolveCategories(chart);
@@ -1711,13 +1672,14 @@ export function buildOfficeChartOption(chart: OfficeChartModel): EChartsOption {
         },
         formatter: (params: unknown) => {
           const item = params as {
-            /** 当前结构 当前步骤需要处理的原始或标准化数据。 */
+            /** 图表回调参数携带的原始或标准化数据。 */
             data?: {
-              /** 图表转换配置的 tierName 文本值。 */ tierName?: string;
+              /** 地图数据项所属的层级名称。 */
+              tierName?: string;
             };
-            /** 图表转换配置的可读名称。 */
+            /** 当前图表数据项的显示名称。 */
             name?: string;
-            /** 当前结构 保存的解析值或业务值。 */
+            /** 图表回调参数携带的数据值。 */
             value?: unknown;
           };
           const value = typeof item.value === 'number' ? item.value : '';
@@ -1785,11 +1747,12 @@ export function buildOfficeChartOption(chart: OfficeChartModel): EChartsOption {
             fontSize: 9,
             formatter: (params: unknown) => {
               const item = params as {
-                /** 当前结构 当前步骤需要处理的原始或标准化数据。 */
+                /** 图表回调参数携带的原始或标准化数据。 */
                 data?: {
-                  /** 图表转换配置的 labelName 文本值。 */ labelName?: string;
+                  /** 地图数据项的显示标签。 */
+                  labelName?: string;
                 };
-                /** 图表转换配置的可读名称。 */
+                /** 当前图表数据项的显示名称。 */
                 name?: string;
               };
               return (
@@ -2076,7 +2039,8 @@ export function buildOfficeChartOption(chart: OfficeChartModel): EChartsOption {
           ? (
               _value: unknown,
               parameters: {
-                /** 当前结构 在所属集合中的位置索引。 */ dataIndex: number;
+                /** 当前数据项在所属系列中的零基索引。 */
+                dataIndex: number;
               },
             ) =>
               Math.max(
@@ -2224,7 +2188,6 @@ export function buildOfficeChartOption(chart: OfficeChartModel): EChartsOption {
   };
 }
 
-/** 根据输入构建 `buildPieItemStyle` 返回的标准化结果。 */
 function buildPieItemStyle(
   series: OfficeChartSeries | undefined,
   index: number,

@@ -7,9 +7,9 @@ import type {
   SpreadsheetSourceSnapshot,
 } from '../../services/spreadsheet/SpreadsheetSource';
 
-/** 定义 XlsxSheetTabs 组件可接收的属性。 */
+/** Excel工作表标签栏组件属性。 */
 type XlsxSheetTabsProps = {
-  /** XlsxSheetTabsProps 当前关联的标准化工作簿。 */
+  /** 当前数据源的只读快照。 */
   snapshot: SpreadsheetSourceSnapshot;
   /** 当前选中的工作表描述符。 */
   activeSheet: SpreadsheetSheetDescriptor;
@@ -17,13 +17,15 @@ type XlsxSheetTabsProps = {
   onSelectSheet: (sheetId: string) => void;
 };
 
+/** 工作簿尚未加载时复用的空工作表页签集合。 */
 const EMPTY_TABS: Array<{
-  /** 当前内联结构 在界面列表或映射中的稳定键。 */ key: string;
-  /** 当前内联结构 面向用户展示的标签文本。 */
+  /** 用于稳定识别工作表标签项的键。 */
+  key: string;
+  /** 工作表标签显示的文本。 */
   label: string;
 }> = [];
 
-/** 渲染 XlsxSheetTabsComponent 组件。 */
+/** 渲染工作簿的工作表标签栏。 */
 function XlsxSheetTabsComponent({
   snapshot,
   activeSheet,

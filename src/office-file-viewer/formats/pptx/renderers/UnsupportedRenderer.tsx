@@ -2,13 +2,13 @@
 import React, { memo } from 'react';
 import type { UnsupportedElement } from '../../../services/pptx/types';
 
-/** 定义 UnsupportedRenderer 组件可接收的属性。 */
+/** 不支持渲染器组件属性。 */
 type UnsupportedRendererProps = {
-  /** UnsupportedRendererProps 当前负责渲染的演示文稿元素模型。 */
+  /** 当前处理或渲染的演示文稿元素。 */
   element: UnsupportedElement;
 };
 
-/** 渲染 UnsupportedRendererComponent 组件。 */
+/** 渲染暂不支持的幻灯片元素占位。 */
 function UnsupportedRendererComponent({ element }: UnsupportedRendererProps) {
   return (
     <div

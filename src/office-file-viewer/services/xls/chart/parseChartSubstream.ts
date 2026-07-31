@@ -10,7 +10,6 @@ import type {
   Biff8ChartRecordNode,
 } from './types';
 
-/** 执行 `chartType` 封装的XLS/BIFF8 解析处理步骤。 */
 function chartType(nodes: Biff8ChartRecordNode[]) {
   for (const [recordId, type] of CHART_TYPE_RECORDS) {
     const node = collectChartNodes(nodes, recordId)[0];
@@ -72,14 +71,12 @@ function chartType(nodes: Biff8ChartRecordNode[]) {
   return { type: 'unknown' };
 }
 
-/** 执行 `chartGroupTypes` 封装的XLS/BIFF8 解析处理步骤。 */
 function chartGroupTypes(nodes: Biff8ChartRecordNode[]) {
   const groups = collectChartNodes(nodes, BIFF8_RECORD.CHARTFORMAT);
   if (!groups.length) return [chartType(nodes)];
   return groups.map((group) => chartType(group.children));
 }
 
-/** 执行 `warnUnknownRecords` 封装的XLS/BIFF8 解析处理步骤。 */
 function warnUnknownRecords(
   nodes: Biff8ChartRecordNode[],
   context: Biff8ChartContext,

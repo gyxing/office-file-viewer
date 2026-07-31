@@ -1,5 +1,4 @@
 import { parseOfficeChartXml } from '../../shared/ooxml/charts';
-import { imageMimeType } from '../../shared/ooxml/media';
 import { emuToPx } from '../../shared/ooxml/units';
 import {
   attr,
@@ -16,6 +15,7 @@ import type {
   SpreadsheetChart,
   SpreadsheetImage,
 } from '../spreadsheet/types';
+import { createXlsxImageResource } from './createXlsxImageResource';
 import type {
   XlsxPackageContext,
   XlsxSheetDescriptor,
@@ -91,25 +91,13 @@ export async function loadXlsxDrawingObjects(
         ? drawingRels[imageRelationshipId]?.target
         : undefined;
       if (imagePath && context.reader.has(imagePath)) {
-        const entry = context.reader
-          .list()
-          .find((candidate) => candidate.path === imagePath);
+        const source = createXlsxImageResource(context, imagePath);
+        if (!source) return;
         images.push({
           id: `${drawingPath}-image-${index + 1}`,
           name,
           alt: name,
-          src: {
-            kind: 'lazy',
-            id: `${context.sessionId}:xlsx:${imagePath}`,
-            mimeType: imageMimeType(imagePath),
-            size: entry?.uncompressedSize ?? 0,
-            load: (resourceSignal) =>
-              context.reader.readBlob(
-                imagePath,
-                imageMimeType(imagePath),
-                resourceSignal,
-              ),
-          },
+          src: source,
           from,
           to,
           x,

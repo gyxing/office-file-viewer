@@ -59,7 +59,7 @@ export type XlsxSheetMetrics = {
 };
 
 // 单元格字体、填充、边框等来自工作簿样式表，只能在运行时转成 CSS，不能放到 Less。
-/** 根据输入构建 `buildXlsxCellStyle` 返回的标准化结果。 */
+/** 将标准单元格样式转换为 React CSS 属性。 */
 export function buildXlsxCellStyle(cell: XlsxCell): CSSProperties {
   const style = cell.style ?? {};
   const css: CSSProperties = {
@@ -73,15 +73,16 @@ export function buildXlsxCellStyle(cell: XlsxCell): CSSProperties {
     fontFamily: style.fontFamily,
     fontSize: style.fontSize,
     whiteSpace: style.wrapText ? 'pre-wrap' : 'nowrap',
-    overflowWrap: style.wrapText ? 'anywhere' : undefined,
-    wordBreak: style.wrapText ? 'break-word' : undefined,
+    // 短英文保持完整；只有单词本身超过单元格宽度时，才按 Excel 行为在字符边界换行。
+    overflowWrap: style.wrapText ? 'break-word' : undefined,
+    wordBreak: style.wrapText ? 'normal' : undefined,
   };
   return Object.fromEntries(
     Object.entries(css).filter(([, value]) => value !== undefined),
   ) as CSSProperties;
 }
 
-/** 判断 `isHighlightedXlsxCell` 对应的条件是否成立。 */
+/** 判断单元格是否包含高亮背景或边框。 */
 export function isHighlightedXlsxCell(style?: XlsxCellStyle) {
   return Boolean(style?.color?.toLowerCase() === '#ff0000' || style?.bold);
 }

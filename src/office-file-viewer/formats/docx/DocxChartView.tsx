@@ -3,8 +3,11 @@ import type { DocxChartBlock } from '../../services/docx/types';
 import { useOfficeResourceUrl } from '../../services/resource-store/useOfficeResourceUrl';
 import { OfficeChartView } from '../../shared/chart/OfficeChartView';
 
+/** DOCX 图表视图组件属性。 */
 type DocxChartViewProps = {
+  /** 当前负责处理或渲染的内容块。 */
   block: DocxChartBlock;
+  /** 当前预览缩放比例，100 表示原始大小。 */
   zoom: number;
 };
 

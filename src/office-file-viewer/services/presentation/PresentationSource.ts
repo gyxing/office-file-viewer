@@ -48,16 +48,24 @@ export type PresentationSourceSnapshot = {
 
 /** 为普通文稿和大型按需文稿提供统一的幻灯片读取协议。 */
 export interface PresentationSource {
+  /** 返回当前可观察状态的只读快照。 */
   getSnapshot(): PresentationSourceSnapshot;
+  /** 订阅状态快照变化，并返回取消订阅函数。 */
   subscribe(listener: () => void): () => void;
+  /** 读取指定索引的幻灯片模型。 */
   getSlide(index: number, signal?: AbortSignal): Promise<SlideModel>;
+  /** 读取指定幻灯片的演讲者备注。 */
   getSpeakerNotes(
     index: number,
     signal?: AbortSignal,
   ): Promise<SpeakerNotesModel | undefined>;
+  /** 确保指定内容范围已经开始加载或可用。 */
   ensureRange(start: number, end: number, signal?: AbortSignal): Promise<void>;
+  /** 保留指定可视范围并回收远离窗口的缓存内容。 */
   retainRange(start: number, end: number): () => void;
+  /** 重新加载此前失败的指定内容。 */
   retry(index: number): void;
+  /** 幂等释放当前对象持有的资源和订阅。 */
   dispose(): Promise<void>;
 }
 

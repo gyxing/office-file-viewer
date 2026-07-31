@@ -1,14 +1,14 @@
 /** 描述演示文稿标准模型过程中可继续处理的警告。 */
 export type PresentationWarning = {
-  /** PresentationWarning 的稳定代码，用于程序化识别具体情况。 */
+  /** 供程序识别当前情况的稳定代码。 */
   code: string;
-  /** PresentationWarning 面向调用方或用户展示的具体警告、错误说明。 */
+  /** 面向调用方或用户展示的说明。 */
   message: string;
   /** 幻灯片在演示文稿集合中的索引。 */
   slideIndex?: number;
-  /** PresentationWarning 的 objectId 文本值。 */
+  /** 产生警告的源对象标识。 */
   objectId?: string;
-  /** PresentationWarning 在所属数据范围中的偏移位置。 */
+  /** 在所属数据范围中的偏移位置。 */
   offset?: number;
 };
 
@@ -20,13 +20,13 @@ export type PresentationResources = {
 
 /** 描述演示文稿标准模型生成的标准化文档模型。 */
 export type PresentationDocument = {
-  /** PresentationDocument 的 width 尺寸或坐标，单位为标准化渲染像素。 */
+  /** 宽度，单位为标准化渲染像素。 */
   width: number;
-  /** PresentationDocument 的 height 尺寸或坐标，单位为标准化渲染像素。 */
+  /** 高度，单位为标准化渲染像素。 */
   height: number;
-  /** PresentationDocument 使用的主题颜色和字体配置。 */
+  /** 当前文档使用的主题颜色和字体配置。 */
   theme: ThemeModel;
-  /** PresentationDocument 包含的 slides 有序集合。 */
+  /** 按演示文稿顺序排列的幻灯片。 */
   slides: SlideModel[];
   /** 解析时产生但不阻止继续预览的警告；未提供表示没有警告。 */
   warnings?: PresentationWarning[];
@@ -50,21 +50,21 @@ export type ThemeModel = {
   colorMap?: Record<string, string>;
 };
 
-/** 描述 GradientStop 在演示文稿标准模型中的数据结构。 */
+/** 渐变中的单个颜色停止点。 */
 export type GradientStop = {
   /** 渐变停止点的位置比例，取值范围为 0 到 1。 */
   offset: number;
-  /** GradientStop 的前景或文本颜色，使用标准化 CSS 颜色值。 */
+  /** 前景或文字颜色，使用 CSS 颜色值。 */
   color: string;
 };
 
-/** 描述 GradientFill 在演示文稿标准模型中的数据结构。 */
+/** 线性渐变的角度和颜色停止点。 */
 export type GradientFill = {
-  /** 用于区分 GradientFill 不同结构分支的类型标识。 */
+  /** 用于区分联合类型分支的类型标识。 */
   type: 'linear';
-  /** GradientFill 的角度值，单位为度。 */
+  /** 角度值，单位为度。 */
   angle: number;
-  /** GradientFill 包含的 stops 有序集合。 */
+  /** 按位置排序的渐变颜色停止点。 */
   stops: GradientStop[];
 };
 
@@ -78,29 +78,29 @@ export type SpeakerNotesModel = {
 
 /** 描述演示文稿标准模型使用的标准化模型。 */
 export type SlideModel = {
-  /** SlideModel 在所属文档或任务中的唯一标识。 */
+  /** 在所属集合中的唯一标识。 */
   id: string;
   /** 幻灯片在演示文稿中的稳定顺序索引。 */
   index: number;
-  /** SlideModel 的 width 尺寸或坐标，单位为标准化渲染像素。 */
+  /** 宽度，单位为标准化渲染像素。 */
   width: number;
-  /** SlideModel 的 height 尺寸或坐标，单位为标准化渲染像素。 */
+  /** 高度，单位为标准化渲染像素。 */
   height: number;
-  /** 是否隐藏 SlideModel；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 是否隐藏当前项目。 */
   hidden?: boolean;
-  /** SlideModel 的背景填充模型；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 当前页面、幻灯片或元素的背景配置。 */
   background?: SlideBackground;
   /** 当前幻灯片关联的演讲者备注正文；未提供表示没有可展示备注。 */
   speakerNotes?: SpeakerNotesModel;
-  /** SlideModel 包含的 elements 有序集合。 */
+  /** 按绘制顺序排列的演示文稿元素。 */
   elements: SlideElement[];
 };
 
-/** 描述 SlideBackground 在演示文稿标准模型中的数据结构。 */
+/** 幻灯片使用的颜色、渐变或图片背景。 */
 export type SlideBackground = {
-  /** SlideBackground 的填充颜色、渐变或无填充标记；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 填充颜色、渐变或无填充标记。 */
   fill?: string;
-  /** SlideBackground 填充区域的透明度，取值范围为 0 到 1；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 填充区域的透明度，取值范围为 0 到 1。 */
   fillOpacity?: number;
   /** 用作幻灯片背景的媒体资源引用。 */
   imageRef?: string | OfficeResourceSource;
@@ -108,53 +108,55 @@ export type SlideBackground = {
 
 /** 描述演示文稿标准模型使用的样式参数。 */
 export type TextStyle = {
-  /** TextStyle 的字体族名称；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 字体族名称。 */
   fontFamily?: string;
-  /** TextStyle 的字号，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 字号，单位为标准化渲染像素。 */
   fontSize?: number;
-  /** 是否使用粗体渲染 TextStyle；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 是否使用粗体。 */
   bold?: boolean;
-  /** 是否使用斜体渲染 TextStyle；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 是否使用斜体。 */
   italic?: boolean;
-  /** 是否为 TextStyle 绘制下划线；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 是否绘制下划线。 */
   underline?: boolean;
-  /** TextStyle 使用的删除线类型；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 使用的删除线类型。 */
   strike?: 'none' | 'sngStrike' | 'dblStrike';
   /** 是否将小写字母以小型大写字形显示。 */
   smallCaps?: boolean;
   /** 是否将文本全部以大写字形显示。 */
   allCaps?: boolean;
-  /** TextStyle 的前景或文本颜色，使用标准化 CSS 颜色值；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 前景或文字颜色，使用 CSS 颜色值。 */
   color?: string;
-  /** TextStyle 的整体透明度，0 表示完全透明，1 表示完全不透明；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 文本字形使用的纯色或渐变填充；未提供时回退到 color。 */
+  textFill?: string | GradientFill;
+  /** 整体透明度，0 表示完全透明，1 表示完全不透明。 */
   opacity?: number;
-  /** TextStyle 的水平对齐方式；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 水平对齐方式。 */
   align?: 'left' | 'center' | 'right' | 'justify';
-  /** TextStyle 的垂直对齐方式；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 垂直对齐方式。 */
   verticalAlign?: 'top' | 'middle' | 'bottom';
   /** 文本书写方向；未提供时采用水平从上到下。 */
   writingMode?: 'horizontal-tb' | 'vertical-rl' | 'vertical-lr';
   /** 文本溢出时采用不调整、缩小文本或扩大形状的策略。 */
   fit?: 'none' | 'shrinkText' | 'resizeShape';
-  /** TextStyle 的对应间距，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 左外边距，单位为标准化渲染像素。 */
   marginLeft?: number;
-  /** TextStyle 的对应间距，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 右外边距，单位为标准化渲染像素。 */
   marginRight?: number;
-  /** TextStyle 的对应间距，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 上外边距，单位为标准化渲染像素。 */
   marginTop?: number;
-  /** TextStyle 的对应间距，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 下外边距，单位为标准化渲染像素。 */
   marginBottom?: number;
-  /** TextStyle 的行高，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 行高，单位为标准化渲染像素。 */
   lineHeight?: number;
-  /** TextStyle 的对应间距，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 段前间距，单位为标准化渲染像素。 */
   spaceBefore?: number;
-  /** TextStyle 的对应间距，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 段后间距，单位为标准化渲染像素。 */
   spaceAfter?: number;
   /** 段落首行文本缩进，单位为标准化渲染像素。 */
   textIndent?: number;
-  /** TextStyle 的 charSpace 渲染数值，单位为标准化渲染像素。 */
+  /** 字符间距，单位为标准化渲染像素。 */
   charSpace?: number;
-  /** TextStyle 的 baseline 渲染数值，单位为标准化渲染像素。 */
+  /** 文字相对基线的偏移，单位为标准化渲染像素。 */
   baseline?: number;
   /** 段落项目符号样式；未提供表示不覆盖段落级设置。 */
   bullet?: TextBulletStyle;
@@ -162,9 +164,9 @@ export type TextStyle = {
 
 /** 描述演示文稿标准模型使用的样式参数。 */
 export type TextBulletStyle = {
-  /** TextBulletStyle 的 char 文本值。 */
+  /** 项目符号使用的字符。 */
   char?: string;
-  /** TextBulletStyle 的前景或文本颜色，使用标准化 CSS 颜色值；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 前景或文字颜色，使用 CSS 颜色值。 */
   color?: string;
   /** 项目符号字号，单位为标准化渲染像素。 */
   size?: number;
@@ -172,19 +174,19 @@ export type TextBulletStyle = {
   none?: boolean;
 };
 
-/** 描述 TextRun 在演示文稿标准模型中的数据结构。 */
+/** 具有统一文字样式的连续文本片段。 */
 export type TextRun = {
-  /** TextRun 携带或渲染的文本内容。 */
+  /** 文本内容。 */
   text: string;
-  /** TextRun 使用的渲染或文本样式。 */
+  /** 当前内容使用的渲染样式。 */
   style?: TextStyle;
 };
 
-/** 描述 TextParagraph 在演示文稿标准模型中的数据结构。 */
+/** 由文本片段、段落样式和项目符号组成的段落。 */
 export type TextParagraph = {
-  /** TextParagraph 包含的 runs 有序集合。 */
+  /** 按显示顺序排列的连续文本片段。 */
   runs: TextRun[];
-  /** TextParagraph 使用的渲染或文本样式。 */
+  /** 当前内容使用的渲染样式。 */
   style?: TextStyle;
   /** 段落的大纲层级。 */
   level?: number;
@@ -192,29 +194,29 @@ export type TextParagraph = {
   bullet?: TextBulletStyle;
 };
 
-/** 描述 BaseElement 在演示文稿标准模型中的数据结构。 */
+/** 所有幻灯片绘制元素共享的几何和层叠属性。 */
 export type BaseElement = {
-  /** BaseElement 在所属文档或任务中的唯一标识。 */
+  /** 在所属集合中的唯一标识。 */
   id: string;
-  /** 用于区分 BaseElement 不同结构分支的类型标识。 */
+  /** 用于区分联合类型分支的类型标识。 */
   type: string;
-  /** BaseElement 的 x 尺寸或坐标，单位为标准化渲染像素。 */
+  /** 相对定位区域左侧的横坐标，单位为标准化渲染像素。 */
   x: number;
-  /** BaseElement 的 y 尺寸或坐标，单位为标准化渲染像素。 */
+  /** 相对定位区域顶部的纵坐标，单位为标准化渲染像素。 */
   y: number;
-  /** BaseElement 的 width 尺寸或坐标，单位为标准化渲染像素。 */
+  /** 宽度，单位为标准化渲染像素。 */
   width: number;
-  /** BaseElement 的 height 尺寸或坐标，单位为标准化渲染像素。 */
+  /** 高度，单位为标准化渲染像素。 */
   height: number;
-  /** BaseElement 的顺时针旋转角度，单位为度；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 顺时针旋转角度，单位为度。 */
   rotate?: number;
   /** 是否沿水平方向翻转对象。 */
   flipH?: boolean;
   /** 是否沿垂直方向翻转对象。 */
   flipV?: boolean;
-  /** BaseElement 的层叠顺序，数值越大越靠近前景。 */
+  /** 层叠顺序，数值越大越靠近前景。 */
   zIndex?: number;
-  /** BaseElement 的整体透明度，0 表示完全透明，1 表示完全不透明；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 整体透明度，0 表示完全透明，1 表示完全不透明。 */
   opacity?: number;
   /** 元素继承的占位符类型。 */
   placeholderType?: string;
@@ -222,166 +224,166 @@ export type BaseElement = {
   placeholderIdx?: string;
 };
 
-/** 描述 TextElement 在演示文稿标准模型中的数据结构。 */
+/** 包含段落、形状外观和文本框样式的文字元素。 */
 export type TextElement = BaseElement & {
-  /** 用于区分 TextElement 不同结构分支的类型标识。 */
+  /** 用于区分联合类型分支的类型标识。 */
   type: 'text';
-  /** TextElement 包含的 paragraphs 有序集合。 */
+  /** 按源文档顺序排列的段落。 */
   paragraphs: TextParagraph[];
-  /** TextElement 关联的 boxStyle 结构；字段形状由 TextStyle 定义；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 文本框级别的文字和排版样式。 */
   boxStyle?: TextStyle;
-  /** TextElement 的 shape 文本值。 */
+  /** 文本框外形使用的预设几何名称。 */
   shape?: string;
-  /** TextElement 在压缩包、复合文档或图形数据中的路径。 */
+  /** 在压缩包、复合文档或资源表中的路径。 */
   path?: string;
-  /** TextElement 的 viewBox 文本值。 */
+  /** 矢量路径使用的坐标范围。 */
   viewBox?: string;
-  /** TextElement 的填充颜色、渐变或无填充标记；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 填充颜色、渐变或无填充标记。 */
   fill?: string | GradientFill | null;
-  /** TextElement 填充区域的透明度，取值范围为 0 到 1；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 文本框填充透明度，取值范围为 0 到 1。 */
   fillOpacity?: number;
-  /** TextElement 的轮廓颜色；null 表示明确不绘制轮廓；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 轮廓颜色；null 表示明确不绘制轮廓。 */
   stroke?: string | null;
-  /** TextElement 轮廓的透明度，取值范围为 0 到 1；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 文本框轮廓透明度，取值范围为 0 到 1。 */
   strokeOpacity?: number;
-  /** TextElement 的轮廓宽度，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 文本框轮廓宽度，单位为标准化渲染像素。 */
   strokeWidth?: number;
-  /** TextElement 的轮廓虚线样式；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 文本框轮廓使用的虚线样式。 */
   strokeDash?: string;
-  /** TextElement 的阴影样式；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 文本框的阴影样式。 */
   shadow?: ShadowStyle;
-  /** TextElement 的 borderRadius 渲染尺寸，单位为标准化像素；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 圆角半径；数值单位为标准化渲染像素。 */
   borderRadius?: number;
 };
 
-/** 描述 ShapeElement 在演示文稿标准模型中的数据结构。 */
+/** 包含几何路径、填充、轮廓和阴影的形状元素。 */
 export type ShapeElement = BaseElement & {
-  /** 用于区分 ShapeElement 不同结构分支的类型标识。 */
+  /** 用于区分联合类型分支的类型标识。 */
   type: 'shape';
-  /** ShapeElement 的 shape 文本值。 */
+  /** 形状使用的预设几何名称。 */
   shape: string;
-  /** ShapeElement 在压缩包、复合文档或图形数据中的路径。 */
+  /** 在压缩包、复合文档或资源表中的路径。 */
   path?: string;
-  /** ShapeElement 的 viewBox 文本值。 */
+  /** 矢量路径使用的坐标范围。 */
   viewBox?: string;
-  /** ShapeElement 的填充颜色、渐变或无填充标记；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 填充颜色、渐变或无填充标记。 */
   fill?: string | GradientFill | null;
-  /** ShapeElement 填充区域的透明度，取值范围为 0 到 1；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 形状填充透明度，取值范围为 0 到 1。 */
   fillOpacity?: number;
-  /** ShapeElement 的轮廓颜色；null 表示明确不绘制轮廓；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 轮廓颜色；null 表示明确不绘制轮廓。 */
   stroke?: string | null;
-  /** ShapeElement 轮廓的透明度，取值范围为 0 到 1；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 形状轮廓透明度，取值范围为 0 到 1。 */
   strokeOpacity?: number;
-  /** ShapeElement 的轮廓宽度，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 形状轮廓宽度，单位为标准化渲染像素。 */
   strokeWidth?: number;
-  /** ShapeElement 的轮廓虚线样式；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 形状轮廓使用的虚线样式。 */
   strokeDash?: string;
-  /** ShapeElement 的阴影样式；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 形状的阴影样式。 */
   shadow?: ShadowStyle;
-  /** ShapeElement 的 borderRadius 渲染尺寸，单位为标准化像素；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 圆角半径；数值单位为标准化渲染像素。 */
   borderRadius?: number;
 };
 
-/** 描述 ImageElement 在演示文稿标准模型中的数据结构。 */
+/** 包含图片资源、替代文本和裁剪范围的图片元素。 */
 export type ImageElement = BaseElement & {
-  /** 用于区分 ImageElement 不同结构分支的类型标识。 */
+  /** 用于区分联合类型分支的类型标识。 */
   type: 'image';
-  /** ImageElement 的 src 文本值。 */
+  /** 图片资源地址或延迟资源引用。 */
   src: string | OfficeResourceSource;
-  /** ImageElement 的 alt 文本值。 */
+  /** 图片无法显示时使用的替代文本。 */
   alt?: string;
-  /** ImageElement 的图片裁剪边界；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 图片裁剪边界。 */
   crop?: ImageCrop;
 };
 
-/** 描述 TableElement 在演示文稿标准模型中的数据结构。 */
+/** 包含行列尺寸和单元格内容的表格元素。 */
 export type TableElement = BaseElement & {
-  /** 用于区分 TableElement 不同结构分支的类型标识。 */
+  /** 用于区分联合类型分支的类型标识。 */
   type: 'table';
-  /** TableElement 包含的 columnWidths 有序集合。 */
+  /** 各表格列的宽度，单位为标准化渲染像素。 */
   columnWidths?: number[];
-  /** TableElement 包含的 rowHeights 有序集合。 */
+  /** 各表格行的测量高度。 */
   rowHeights?: number[];
-  /** TableElement 包含的 rows 有序集合。 */
+  /** 按显示顺序排列的表格行。 */
   rows: TableCell[][];
 };
 
-/** 描述 TableCell 在演示文稿标准模型中的数据结构。 */
+/** 演示文稿表格单元格的内容和样式。 */
 export type TableCell = {
-  /** TableCell 携带或渲染的文本内容。 */
+  /** 文本内容。 */
   text: string;
-  /** TableCell 包含的 paragraphs 有序集合。 */
+  /** 按源文档顺序排列的段落。 */
   paragraphs?: TextParagraph[];
-  /** TableCell 使用的渲染或文本样式。 */
+  /** 当前内容使用的渲染样式。 */
   style?: TextStyle;
-  /** TableCell 的背景颜色，使用 CSS 颜色值；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 背景颜色，使用 CSS 颜色值。 */
   backgroundColor?: string | null;
-  /** TableCell 的透明度，取值范围为 0 到 1。 */
+  /** 单元格背景透明度，取值范围为 0 到 1。 */
   backgroundOpacity?: number;
-  /** TableCell 的边框颜色配置；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 边框颜色。 */
   borderColor?: string | null;
-  /** TableCell 的透明度，取值范围为 0 到 1。 */
+  /** 单元格边框透明度，取值范围为 0 到 1。 */
   borderOpacity?: number;
-  /** TableCell 的 borderWidth 渲染数值，单位为标准化渲染像素。 */
+  /** 边框宽度，单位为标准化渲染像素。 */
   borderWidth?: number;
-  /** TableCell 四个方向的内边距配置；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 四个方向的内边距配置。 */
   margins?: {
-    /** TableCell 的 left 尺寸或坐标，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+    /** 单元格左内边距，单位为标准化渲染像素。 */
     left?: number;
-    /** TableCell 的 right 尺寸或坐标，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+    /** 单元格右内边距，单位为标准化渲染像素。 */
     right?: number;
-    /** TableCell 的 top 尺寸或坐标，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+    /** 单元格上内边距，单位为标准化渲染像素。 */
     top?: number;
-    /** TableCell 的 bottom 尺寸或坐标，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+    /** 单元格下内边距，单位为标准化渲染像素。 */
     bottom?: number;
   };
-  /** TableCell 的垂直对齐方式；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 垂直对齐方式。 */
   verticalAlign?: 'top' | 'middle' | 'bottom';
 };
 
-/** 描述 GroupElement 在演示文稿标准模型中的数据结构。 */
+/** 共享变换和层叠关系的一组幻灯片元素。 */
 export type GroupElement = BaseElement & {
-  /** 用于区分 GroupElement 不同结构分支的类型标识。 */
+  /** 用于区分联合类型分支的类型标识。 */
   type: 'group';
-  /** GroupElement 包含并负责布局的 React 子节点。 */
+  /** 按绘制顺序排列的子元素。 */
   children: SlideElement[];
 };
 
-/** 描述 UnsupportedElement 在演示文稿标准模型中的数据结构。 */
+/** 暂不支持还原但需保留占位信息的幻灯片元素。 */
 export type UnsupportedElement = BaseElement & {
-  /** 用于区分 UnsupportedElement 不同结构分支的类型标识。 */
+  /** 用于区分联合类型分支的类型标识。 */
   type: 'unsupported';
-  /** UnsupportedElement 的 reason 文本值。 */
+  /** 暂不支持还原该元素的原因。 */
   reason: string;
 };
 
-/** 描述 ImageCrop 在演示文稿标准模型中的数据结构。 */
+/** 图片四个方向的裁剪范围。 */
 export type ImageCrop = {
-  /** ImageCrop 的 left 尺寸或坐标，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 左侧位置或间距，单位由所属模型定义。 */
   left?: number;
-  /** ImageCrop 的 top 尺寸或坐标，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 顶部位置或间距，单位由所属模型定义。 */
   top?: number;
-  /** ImageCrop 的 right 尺寸或坐标，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 右侧位置或间距，单位由所属模型定义。 */
   right?: number;
-  /** ImageCrop 的 bottom 尺寸或坐标，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 底部位置或间距，单位由所属模型定义。 */
   bottom?: number;
 };
 
 /** 描述演示文稿标准模型使用的样式参数。 */
 export type ShadowStyle = {
-  /** ShadowStyle 的前景或文本颜色，使用标准化 CSS 颜色值；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 前景或文字颜色，使用 CSS 颜色值。 */
   color?: string;
-  /** ShadowStyle 的整体透明度，0 表示完全透明，1 表示完全不透明；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 整体透明度，0 表示完全透明，1 表示完全不透明。 */
   opacity?: number;
-  /** ShadowStyle 的 blur 渲染尺寸，单位为标准化像素；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 阴影模糊半径，单位为标准化渲染像素。 */
   blur?: number;
-  /** ShadowStyle 在对应二进制流中的字节偏移；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 阴影的水平偏移，单位为标准化渲染像素。 */
   offsetX?: number;
-  /** ShadowStyle 在对应二进制流中的字节偏移；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 阴影的垂直偏移，单位为标准化渲染像素。 */
   offsetY?: number;
 };
 
-/** 描述 SlideElement 在演示文稿标准模型中的数据结构。 */
+/** 标准化幻灯片支持的绘制元素联合类型。 */
 export type SlideElement =
   | TextElement
   | ShapeElement
@@ -391,15 +393,15 @@ export type SlideElement =
   | GroupElement
   | UnsupportedElement;
 
-/** 描述 ChartElement 在演示文稿标准模型中的数据结构。 */
+/** 包含图表模型和按需快照的图表元素。 */
 export type ChartElement = BaseElement & {
-  /** 用于区分 ChartElement 不同结构分支的类型标识。 */
+  /** 用于区分联合类型分支的类型标识。 */
   type: 'chart';
-  /** ChartElement 当前关联的图表模型。 */
+  /** 图表渲染相关文案。 */
   chart: import('../../shared/ooxml/charts').OfficeChartModel;
-  /** ChartElement 的 chartId 文本值。 */
+  /** 图表在演示文稿中的稳定标识。 */
   chartId?: string;
-  /** ChartElement 的 chartPath 文本值。 */
+  /** 图表定义在压缩包中的路径。 */
   chartPath?: string;
   /** 图表使用的按需静态快照资源。 */
   snapshotSource?: OfficeResourceSource;

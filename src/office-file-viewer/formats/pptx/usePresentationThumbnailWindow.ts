@@ -1,12 +1,18 @@
 import { useEffect, useMemo, useState, type RefObject } from 'react';
 
+/** 缩略图虚拟列表当前挂载的索引范围。 */
 export type PresentationThumbnailRange = {
+  /** 当前范围的起始位置。 */
   start: number;
+  /** 当前范围的结束位置。 */
   end: number;
+  /** 虚拟列表顶部占位区域。 */
   topSpacer: number;
+  /** 虚拟列表底部占位区域。 */
   bottomSpacer: number;
 };
 
+/** 缩略图虚拟列表在可视区两侧额外渲染的项目数。 */
 const THUMBNAIL_OVERSCAN = 5;
 
 /** 根据缩略图侧栏自身尺寸计算虚拟窗口，不向组件公共 API 暴露高度参数。 */

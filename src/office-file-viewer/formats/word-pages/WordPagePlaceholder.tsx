@@ -1,9 +1,13 @@
 import React from 'react';
 import { useOfficeFileViewerMessages } from '../../locale';
 
+/** Word 页面加载占位组件属性。 */
 type WordPagePlaceholderProps = {
+  /** 当前加载或解析状态。 */
   status: 'loading' | 'error';
+  /** 最小高度，单位为标准化渲染像素。 */
   minHeight: number;
+  /** 在用户请求重试当前内容时触发。 */
   onRetry?(): void;
 };
 

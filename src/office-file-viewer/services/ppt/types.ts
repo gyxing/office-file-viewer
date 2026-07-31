@@ -10,148 +10,148 @@ import type {
   ThemeModel,
 } from '../presentation/types';
 
-/** 表示PPT 二进制解析读取到的一条记录。 */
+/** PPT 二进制流中的单条记录。 */
 export type PptRecord = {
   /** 消息或数据结构采用的协议版本号。 */
   version: number;
-  /** PptRecord 从源格式读取的 instance 枚举或标识值。 */
+  /** 当前二进制记录的实例字段。 */
   instance: number;
-  /** 用于区分 PptRecord 不同结构分支的类型标识。 */
+  /** PPT 二进制记录的类型编号。 */
   type: number;
-  /** PptRecord 对应二进制记录或数据块的字节长度。 */
+  /** 当前数据的长度。 */
   length: number;
-  /** PptRecord 在源二进制流中的字节偏移。 */
+  /** 在所属数据范围中的偏移位置。 */
   offset: number;
-  /** PptRecord 在对应二进制流中的字节偏移。 */
+  /** 记录正文相对源流起点的字节偏移。 */
   dataOffset: number;
-  /** PptRecord 在对应二进制流中的字节偏移。 */
+  /** 记录结束位置相对源流起点的字节偏移。 */
   endOffset: number;
-  /** PptRecord 当前步骤需要处理的原始或标准化数据。 */
+  /** 当前记录正文的原始字节。 */
   data: Uint8Array;
 };
 
-/** 汇总PPT 二进制解析当前步骤需要共享的上下文。 */
+/** 汇总 PPT 二进制解析各步骤共享的上下文。 */
 export type PptParseContext = {
-  /** PptParseContext 解析时产生但不阻止继续预览的警告集合。 */
+  /** 解析时产生但不阻止继续预览的警告。 */
   warnings: PresentationWarning[];
-  /** PptParseContext 持有的图片、字体或对象 URL 等资源；文档释放时需同步清理。 */
+  /** 持有的图片、字体或对象 URL 等资源；文档释放时需同步清理。 */
   resources: PortableResource[];
-  /** PptParseContext 用于分配后续资源或持久化标识的递增值。 */
+  /** 为解析期资源分配标识时使用的递增序号。 */
   resourceSequence: number;
-  /** PptParseContext 按业务键索引的 blipUrls 映射。 */
+  /** 按图片对象编号索引的资源地址。 */
   blipUrls: Map<number, string>;
-  /** PptParseContext 按业务键索引的 charts 映射。 */
+  /** 按图表对象编号索引的标准图表模型。 */
   charts: Map<
     number,
     {
-      /** PptParseContext 当前关联的图表模型。 */
+      /** 图表渲染相关文案。 */
       chart: OfficeChartModel;
-      /** PptParseContext 对外展示的标题。 */
+      /** 面向用户展示的标题。 */
       title?: string;
     }
   >;
-  /** PptParseContext 执行 yieldIfNeeded 操作时调用的函数。 */
+  /** 长任务主动让出主线程时间片的函数。 */
   yieldIfNeeded: () => Promise<void>;
 };
 
-/** 描述 PptPersistObjectMap 在 PPT 二进制解析中的数据结构。 */
+/** PPT 持久化对象标识到流偏移的映射。 */
 export type PptPersistObjectMap = Map<number, number>;
 
-/** 描述 PptEditChain 在 PPT 二进制解析中的数据结构。 */
+/** PPT 最近一次保存对应的持久化对象编辑链。 */
 export type PptEditChain = {
-  /** PptEditChain 在源文件记录中的数字标识。 */
+  /** PPT 根文档对象的持久化标识。 */
   documentPersistId: number;
-  /** PptEditChain 用于分配后续资源或持久化标识的递增值。 */
+  /** 分配后续持久化对象标识时使用的起始值。 */
   persistIdSeed: number;
-  /** PptEditChain 关联的 persistOffsets 结构；字段形状由 PptPersistObjectMap 定义。 */
+  /** 持久化对象标识到源流偏移的映射。 */
   persistOffsets: PptPersistObjectMap;
-  /** PptEditChain 包含的 editOffsets 有序集合。 */
+  /** 按新到旧顺序记录的 UserEditAtom 流偏移。 */
   editOffsets: number[];
 };
 
-/** 描述 PptSlideDescriptor 在 PPT 二进制解析中的数据结构。 */
+/** PPT 幻灯片的持久化标识、页面标识和顺序。 */
 export type PptSlideDescriptor = {
-  /** PptSlideDescriptor 在源文件记录中的数字标识。 */
+  /** PPT 对象在持久化目录中的标识。 */
   persistId: number;
-  /** PptSlideDescriptor 在源文件记录中的数字标识。 */
+  /** 幻灯片在 PPT 文档列表中的标识。 */
   slideId: number;
-  /** PptSlideDescriptor 在所属集合中的位置索引。 */
+  /** 在所属集合中的零基索引。 */
   index: number;
-  /** 是否隐藏 PptSlideDescriptor；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 是否隐藏当前项目。 */
   hidden?: boolean;
 };
 
-/** 描述 PPT 二进制解析使用的标准化模型。 */
+/** PPT 母版的背景、文字默认值和绘制元素。 */
 export type PptMasterModel = {
-  /** PptMasterModel 在所属文档或任务中的唯一标识。 */
+  /** 在所属集合中的唯一标识。 */
   id: number;
-  /** PptMasterModel 在源文件记录中的数字标识。 */
+  /** PPT 对象在持久化目录中的标识。 */
   persistId: number;
-  /** PptMasterModel 的背景填充模型；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 当前页面、幻灯片或元素的背景配置。 */
   background?: SlideBackground;
-  /** PptMasterModel 关联的 textDefaults 结构；字段形状由 TextStyle 定义；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 母版提供的默认文字样式。 */
   textDefaults?: TextStyle;
-  /** PptMasterModel 包含的 elements 有序集合。 */
+  /** 按绘制顺序排列的演示文稿元素。 */
   elements: SlideElement[];
 };
 
-/** 描述 PptExternalObject 在 PPT 二进制解析中的数据结构。 */
+/** PPT 外部对象及其静态预览引用。 */
 export type PptExternalObject = {
-  /** PptExternalObject 在所属文档或任务中的唯一标识。 */
+  /** 在所属集合中的唯一标识。 */
   id: number;
-  /** PptExternalObject 在源文件记录中的数字标识。 */
+  /** PPT 对象在持久化目录中的标识。 */
   persistId?: number;
-  /** PptExternalObject 的可读名称。 */
+  /** 面向用户展示的名称。 */
   name?: string;
-  /** 用于区分 PptExternalObject 不同结构分支的类型标识。 */
+  /** 用于区分联合类型分支的类型标识。 */
   type?: string;
-  /** PptExternalObject 在源文件记录中的数字标识。 */
+  /** 外部对象静态预览图片的 Blip 标识。 */
   previewBlipId?: number;
 };
 
-/** 描述 PPT 二进制解析使用的标准化模型。 */
+/** 解析后的 PPT 幻灯片模型。 */
 export type PptSlideModel = {
-  /** PptSlideModel 在所属文档或任务中的唯一标识。 */
+  /** 在所属集合中的唯一标识。 */
   id: string;
-  /** PptSlideModel 在源文件记录中的数字标识。 */
+  /** PPT 对象在持久化目录中的标识。 */
   persistId: number;
-  /** PptSlideModel 在源文件记录中的数字标识。 */
+  /** 幻灯片在 PPT 文档列表中的标识。 */
   slideId: number;
-  /** PptSlideModel 在所属集合中的位置索引。 */
+  /** 在所属集合中的零基索引。 */
   index: number;
-  /** PptSlideModel 的 width 几何值，单位遵循对应 Office 二进制记录定义。 */
+  /** 宽度，单位为标准化渲染像素。 */
   width: number;
-  /** PptSlideModel 的 height 几何值，单位遵循对应 Office 二进制记录定义。 */
+  /** 高度，单位为标准化渲染像素。 */
   height: number;
-  /** PptSlideModel 在源文件记录中的数字标识。 */
+  /** 幻灯片引用的母版标识。 */
   masterId?: number;
-  /** 是否隐藏 PptSlideModel；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 是否隐藏当前项目。 */
   hidden?: boolean;
-  /** PptSlideModel 的背景填充模型；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 当前页面、幻灯片或元素的背景配置。 */
   background?: SlideBackground;
   /** 当前幻灯片关联的演讲者备注正文。 */
   speakerNotes?: SpeakerNotesModel;
-  /** PptSlideModel 包含的 elements 有序集合。 */
+  /** 按绘制顺序排列的演示文稿元素。 */
   elements: SlideElement[];
-  /** PptSlideModel 在对应二进制流中的字节偏移。 */
+  /** 当前对象在 PowerPoint Document 流中的字节偏移。 */
   sourceOffset: number;
 };
 
-/** 描述 PPT 二进制解析生成的标准化文档模型。 */
+/** 解析后的 PPT 文档、母版和幻灯片集合。 */
 export type PptBinaryDocument = {
-  /** PptBinaryDocument 的 width 几何值，单位遵循对应 Office 二进制记录定义。 */
+  /** 宽度，单位为标准化渲染像素。 */
   width: number;
-  /** PptBinaryDocument 的 height 几何值，单位遵循对应 Office 二进制记录定义。 */
+  /** 高度，单位为标准化渲染像素。 */
   height: number;
-  /** PptBinaryDocument 使用的主题颜色和字体配置。 */
+  /** 当前文档使用的主题颜色和字体配置。 */
   theme: ThemeModel;
-  /** PptBinaryDocument 按业务键索引的 masters 映射。 */
+  /** 按母版标识索引的 PPT 母版模型。 */
   masters: Map<number, PptMasterModel>;
-  /** PptBinaryDocument 包含的 slides 有序集合。 */
+  /** 按演示文稿顺序排列的幻灯片。 */
   slides: PptSlideModel[];
-  /** PptBinaryDocument 按业务键索引的 externalObjects 映射。 */
+  /** 按对象标识索引的 PPT 外部对象。 */
   externalObjects: Map<number, PptExternalObject>;
-  /** PptBinaryDocument 解析时产生但不阻止继续预览的警告集合。 */
+  /** 解析时产生但不阻止继续预览的警告。 */
   warnings: PresentationWarning[];
 };
 
@@ -167,9 +167,9 @@ export function createPptParseContext(
     charts: new Map<
       number,
       {
-        /** 当前结构 当前关联的图表模型。 */
+        /** 关联的图表模型。 */
         chart: OfficeChartModel;
-        /** 当前结构 对外展示的标题。 */
+        /** 图表标题。 */
         title?: string;
       }
     >(),

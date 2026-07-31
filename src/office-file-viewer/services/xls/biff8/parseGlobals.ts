@@ -23,7 +23,6 @@ import {
 import { BUILTIN_NUMBER_FORMATS } from './numberFormats';
 import { readBiff8SharedStrings, readBiff8UnicodeString } from './strings';
 
-/** 执行 `validateGlobalsBof` 封装的XLS/BIFF8 解析处理步骤。 */
 function validateGlobalsBof(stream: Uint8Array) {
   const cursor = new Biff8RecordCursor(stream);
   const record = cursor.next();
@@ -54,7 +53,6 @@ function validateGlobalsBof(stream: Uint8Array) {
   return cursor;
 }
 
-/** 执行 `sheetTypeFromValue` 封装的XLS/BIFF8 解析处理步骤。 */
 function sheetTypeFromValue(value: number): Biff8SheetType {
   if (value === 0x00) return 'worksheet';
   if (value === 0x02) return 'chart';
@@ -63,7 +61,6 @@ function sheetTypeFromValue(value: number): Biff8SheetType {
   return 'unknown';
 }
 
-/** 解析 `parseBoundSheet` 接收的数据，并返回XLS/BIFF8 解析结果。 */
 function parseBoundSheet(record: Biff8Record): Biff8SheetDescriptor {
   const reader = new Biff8Reader(record.data);
   const streamOffset = reader.readUint32();
@@ -84,7 +81,6 @@ function parseBoundSheet(record: Biff8Record): Biff8SheetDescriptor {
   };
 }
 
-/** 解析 `parseFont` 接收的数据，并返回XLS/BIFF8 解析结果。 */
 function parseFont(data: Uint8Array): Biff8Font {
   const reader = new Biff8Reader(data);
   const heightTwips = reader.readUint16();
@@ -103,14 +99,15 @@ function parseFont(data: Uint8Array): Biff8Font {
   };
 }
 
-/** 解析 `parseCellFormat` 接收的数据，并返回XLS/BIFF8 解析结果。 */
 function parseCellFormat(data: Uint8Array): Biff8CellFormat {
   const reader = new Biff8Reader(data);
   const fontIndex = reader.readUint16();
   const formatIndex = reader.readUint16();
   const protection = reader.readUint16();
   const alignment = reader.readUint8();
-  reader.readBytes(3);
+  reader.readUint8();
+  const textProperties = reader.readUint8();
+  reader.readUint8();
   const borderStyles = reader.readUint16();
   const borderColors = reader.readUint16();
   const borderAndFill = reader.readUint32();
@@ -126,6 +123,7 @@ function parseCellFormat(data: Uint8Array): Biff8CellFormat {
     horizontalAlign: alignment & 0x07,
     verticalAlign: (alignment >> 4) & 0x07,
     wrapText: Boolean(alignment & 0x08),
+    shrinkToFit: Boolean(textProperties & 0x10),
     fillPattern: (borderAndFill >>> 26) & 0x3f,
     fillForegroundColorIndex: fillColors & 0x7f,
     fillBackgroundColorIndex: (fillColors >> 7) & 0x7f,
@@ -157,7 +155,6 @@ function parseCellFormat(data: Uint8Array): Biff8CellFormat {
   };
 }
 
-/** 解析 `parsePalette` 接收的数据，并返回XLS/BIFF8 解析结果。 */
 function parsePalette(data: Uint8Array) {
   const reader = new Biff8Reader(data);
   const count = reader.readUint16();
@@ -176,7 +173,6 @@ function parsePalette(data: Uint8Array) {
   return palette;
 }
 
-/** 解析 `parseDefinedName` 接收的数据，并返回XLS/BIFF8 解析结果。 */
 function parseDefinedName(data: Uint8Array, id: number) {
   const header = new Biff8Reader(data);
   header.readUint16();
@@ -206,7 +202,6 @@ function parseDefinedName(data: Uint8Array, id: number) {
   };
 }
 
-/** 执行 `validateSheetOffsets` 封装的XLS/BIFF8 解析处理步骤。 */
 function validateSheetOffsets(
   workbookStream: Uint8Array,
   sheets: Biff8SheetDescriptor[],

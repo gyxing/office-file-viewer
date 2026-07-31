@@ -2,36 +2,43 @@ import type { SpreadsheetWarning } from '../../../spreadsheet/types';
 import { XlsParseError } from '../../errors';
 import type { VectorElement, VectorScene, VectorStyle } from './types';
 
-/** 描述 EmfObject 在 XLS/BIFF8 解析中的数据结构。 */
+/** EMF 对象表中的画笔、画刷或字体。 */
 type EmfObject =
   | {
-      /** 标识 EmfObject 对应的 Office 文件或数据种类。 */
+      /** 对象表条目的种类。 */
       kind: 'pen';
-      /** EmfObject 的前景或文本颜色，使用标准化 CSS 颜色值。 */
+      /** 前景或文字颜色，使用 CSS 颜色值。 */
       color: string;
-      /** EmfObject 的 width 几何值，单位遵循对应 Office 二进制记录定义。 */
+      /** 宽度，单位为标准化渲染像素。 */
       width: number;
     }
   | {
-      /** 标识 EmfObject 对应的 Office 文件或数据种类。 */
+      /** 对象表条目的种类。 */
       kind: 'brush';
-      /** EmfObject 的前景或文本颜色，使用标准化 CSS 颜色值；未提供时沿用来源格式或渲染器的默认规则。 */
+      /** 前景或文字颜色，使用 CSS 颜色值。 */
       color?: string;
+    }
+  | {
+      /** 标识 EMF 逻辑字体对象。 */
+      kind: 'font';
+      /** 字体族名称。 */
+      family: string;
+      /** 字体高度，使用 EMF 逻辑单位。 */
+      size: number;
+      /** 字体粗细。 */
+      weight: number;
     };
 
-/** 执行 `colorRef` 封装的XLS/BIFF8 解析处理步骤。 */
 function colorRef(value: number) {
   return `#${[value & 0xff, (value >> 8) & 0xff, (value >> 16) & 0xff]
     .map((component) => component.toString(16).padStart(2, '0'))
     .join('')}`;
 }
 
-/** 读取 `readPoint` 所需的源数据，供XLS/BIFF8 解析使用。 */
 function readPoint(view: DataView, offset: number): [number, number] {
   return [view.getInt32(offset, true), view.getInt32(offset + 4, true)];
 }
 
-/** 读取 `readRect` 所需的源数据，供XLS/BIFF8 解析使用。 */
 function readRect(view: DataView, offset: number) {
   return {
     left: view.getInt32(offset, true),
@@ -41,7 +48,65 @@ function readRect(view: DataView, offset: number) {
   };
 }
 
-/** 执行 `addRectangle` 封装的XLS/BIFF8 解析处理步骤。 */
+/** 把内嵌 DIB 组装为浏览器可解码的 BMP Data URL。 */
+function readBitmapDataUrl(
+  bytes: Uint8Array,
+  recordOffset: number,
+  recordSize: number,
+  bmiOffset: number,
+  bmiSize: number,
+  bitsOffset: number,
+  bitsSize: number,
+) {
+  const recordEnd = recordOffset + recordSize;
+  const bmiStart = recordOffset + bmiOffset;
+  const bitsStart = recordOffset + bitsOffset;
+  if (
+    !bmiSize ||
+    !bitsSize ||
+    bmiStart < recordOffset ||
+    bitsStart < recordOffset ||
+    bmiStart + bmiSize > recordEnd ||
+    bitsStart + bitsSize > recordEnd
+  ) {
+    return undefined;
+  }
+  const bitmap = new Uint8Array(14 + bmiSize + bitsSize);
+  const header = new DataView(bitmap.buffer);
+  bitmap[0] = 0x42;
+  bitmap[1] = 0x4d;
+  header.setUint32(2, bitmap.length, true);
+  header.setUint32(10, 14 + bmiSize, true);
+  bitmap.set(bytes.subarray(bmiStart, bmiStart + bmiSize), 14);
+  bitmap.set(bytes.subarray(bitsStart, bitsStart + bitsSize), 14 + bmiSize);
+  let binary = '';
+  for (let offset = 0; offset < bitmap.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bitmap.subarray(offset, offset + 0x8000));
+  }
+  return `data:image/bmp;base64,${btoa(binary)}`;
+}
+
+/** 将 EMF 位图传输记录追加为 SVG 图片元素。 */
+function addBitmapElement(
+  elements: VectorElement[],
+  dataUrl: string | undefined,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  opacity = 1,
+) {
+  if (!dataUrl || !width || !height) return;
+  elements.push({
+    type: 'image',
+    x: width < 0 ? x + width : x,
+    y: height < 0 ? y + height : y,
+    width: Math.abs(width),
+    height: Math.abs(height),
+    dataUrl,
+    style: { opacity },
+  });
+}
 function addRectangle(
   elements: VectorElement[],
   rectangle: ReturnType<typeof readRect>,
@@ -58,7 +123,6 @@ function addRectangle(
   });
 }
 
-/** 执行 `warnUnknown` 封装的XLS/BIFF8 解析处理步骤。 */
 function warnUnknown(
   warnings: SpreadsheetWarning[],
   unknown: Set<number>,
@@ -150,6 +214,24 @@ export function parseEmf(bytes: Uint8Array): VectorScene {
         });
         break;
       }
+      case 82: {
+        if (size < 104) {
+          warnUnknown(warnings, unknown, type, offset);
+          break;
+        }
+        const handle = view.getUint32(offset + 8, true);
+        const familyBytes = bytes.subarray(offset + 40, offset + 104);
+        const family = new TextDecoder('utf-16le')
+          .decode(familyBytes)
+          .replace(/\0.*$/, '');
+        objects.set(handle, {
+          kind: 'font',
+          family,
+          size: Math.max(1, Math.abs(view.getInt32(offset + 12, true))),
+          weight: Math.max(100, view.getInt32(offset + 28, true) || 400),
+        });
+        break;
+      }
       case 37: {
         const handle = view.getUint32(offset + 8, true);
         if (handle === 0x80000005) {
@@ -166,6 +248,10 @@ export function parseEmf(bytes: Uint8Array): VectorScene {
           style.strokeWidth = object.width;
         } else if (object?.kind === 'brush') {
           style.fill = object.color ?? 'none';
+        } else if (object?.kind === 'font') {
+          style.fontFamily = object.family;
+          style.fontSize = object.size;
+          style.fontWeight = object.weight;
         }
         break;
       }
@@ -246,6 +332,53 @@ export function parseEmf(bytes: Uint8Array): VectorScene {
           });
         }
         break;
+      case 81: {
+        if (size < 80) {
+          warnUnknown(warnings, unknown, type, offset);
+          break;
+        }
+        addBitmapElement(
+          elements,
+          readBitmapDataUrl(
+            bytes,
+            offset,
+            size,
+            view.getUint32(offset + 48, true),
+            view.getUint32(offset + 52, true),
+            view.getUint32(offset + 56, true),
+            view.getUint32(offset + 60, true),
+          ),
+          view.getInt32(offset + 24, true),
+          view.getInt32(offset + 28, true),
+          view.getInt32(offset + 72, true),
+          view.getInt32(offset + 76, true),
+        );
+        break;
+      }
+      case 114: {
+        if (size < 108) {
+          warnUnknown(warnings, unknown, type, offset);
+          break;
+        }
+        addBitmapElement(
+          elements,
+          readBitmapDataUrl(
+            bytes,
+            offset,
+            size,
+            view.getUint32(offset + 84, true),
+            view.getUint32(offset + 88, true),
+            view.getUint32(offset + 92, true),
+            view.getUint32(offset + 96, true),
+          ),
+          view.getInt32(offset + 24, true),
+          view.getInt32(offset + 28, true),
+          view.getInt32(offset + 32, true),
+          view.getInt32(offset + 36, true),
+          view.getUint8(offset + 42) / 255,
+        );
+        break;
+      }
       case 84: {
         if (size < 76) {
           throw new XlsParseError(

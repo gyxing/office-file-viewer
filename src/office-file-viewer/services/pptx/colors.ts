@@ -9,7 +9,7 @@ export function normalizeColor(input?: string) {
   return input.trim();
 }
 
-/** 将输入转换为 `toHexColor` 返回的格式。 */
+/** 将来源颜色规范化为六位十六进制颜色。 */
 export function toHexColor(input?: string) {
   const value = normalizeColor(input);
   if (!value) {
@@ -39,12 +39,10 @@ export function resolveThemeColor(name: string | undefined, theme: ThemeModel) {
   );
 }
 
-/** 执行 `clamp255` 封装的 PPTX 解析处理步骤。 */
 function clamp255(value: number) {
   return Math.max(0, Math.min(255, value));
 }
 
-/** 执行 `hexToRgb` 封装的 PPTX 解析处理步骤。 */
 function hexToRgb(hex: string) {
   const normalized = hex.replace('#', '');
   if (!/^[0-9a-f]{6}$/i.test(normalized)) {
@@ -59,20 +57,19 @@ function hexToRgb(hex: string) {
   };
 }
 
-/** 执行 `rgbToHex` 封装的 PPTX 解析处理步骤。 */
 function rgbToHex(r: number, g: number, b: number) {
   return `#${[r, g, b]
     .map((value) => clamp255(Math.round(value)).toString(16).padStart(2, '0'))
     .join('')}`;
 }
 
-/** 执行 `transformColor` 封装的 PPTX 解析处理步骤。 */
+/** 按 OOXML 颜色变换规则计算最终颜色。 */
 export function transformColor(
   hex: string | undefined,
   transforms: Array<{
-    /** 用于区分 当前结构 不同结构分支的类型标识。 */
+    /** 用于区分联合类型分支的类型标识。 */
     type: string;
-    /** 当前局部结构 的 val 数值；具体语义遵循对应源文件格式。 */
+    /** OOXML 颜色变换的参数值。 */
     val: number;
   }>,
 ) {
@@ -116,7 +113,7 @@ export function transformColor(
   return rgbToHex(r, g, b);
 }
 
-/** 执行 `alphaToOpacity` 封装的 PPTX 解析处理步骤。 */
+/** 将 OOXML 透明度值转换为零到一的透明度。 */
 export function alphaToOpacity(alpha?: string) {
   if (!alpha) {
     return undefined;
@@ -130,7 +127,7 @@ export function alphaToOpacity(alpha?: string) {
   return Math.max(0, Math.min(1, value / 100000));
 }
 
-/** 执行 `alphaToRatio` 封装的 PPTX 解析处理步骤。 */
+/** 将 OOXML 透明度值转换为零到一的比例。 */
 export function alphaToRatio(alpha?: string) {
   if (!alpha) {
     return undefined;

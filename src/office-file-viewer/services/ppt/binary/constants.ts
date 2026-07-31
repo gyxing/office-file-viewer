@@ -23,5 +23,7 @@ export const PPT_RECORD = {
   PERSIST_PTR_INCREMENTAL_BLOCK: 0x1772,
 } as const;
 
+/** PPT Current User 流中表示未加密文档的令牌。 */
 export const PPT_CURRENT_USER_UNENCRYPTED_TOKEN = 0xe391c05f;
+/** PPT Current User 流中表示加密文档的令牌。 */
 export const PPT_CURRENT_USER_ENCRYPTED_TOKEN = 0xf3d1c4df;

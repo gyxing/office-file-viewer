@@ -11,13 +11,12 @@ let taskSequence = 0;
 
 /** 描述解析运行时失败时使用的结构化错误。 */
 type RuntimeError = Error & {
-  /** RuntimeError 的稳定代码，用于程序化识别具体情况。 */
+  /** 供程序识别当前情况的稳定代码。 */
   code: string;
   /** 表示该错误是否允许自动降级到其他解析方式。 */
   recoverable: boolean;
 };
 
-/** 创建 `createRuntimeError` 返回的对象，供解析运行时使用。 */
 function createRuntimeError(
   code: string,
   message: string,
@@ -37,7 +36,8 @@ export function isWorkerStartupError(error: unknown) {
     'code' in error &&
     (
       error as {
-        /** Worker 序列化错误对象的稳定代码，用于程序化识别具体情况。 */ code?: unknown;
+        /** Worker 序列化错误对象的稳定代码，用于程序化识别具体情况。 */
+        code?: unknown;
       }
     ).code === 'WORKER_STARTUP_FAILED'
   );

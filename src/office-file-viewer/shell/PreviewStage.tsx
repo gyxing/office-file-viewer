@@ -20,6 +20,7 @@ import {
 } from '../services/preview';
 import type { SpreadsheetSource } from '../services/spreadsheet/SpreadsheetSource';
 import type { SpreadsheetWorkbook } from '../services/spreadsheet/types';
+import { OfficeEmpty } from './Empty';
 import { OfficeError } from './Error';
 import { OfficeLoading } from './Loading';
 
@@ -44,35 +45,35 @@ const LazyDocViewer = lazy(() =>
   })),
 );
 
-/** 定义 OfficePreviewStage 组件可接收的属性。 */
+/** 按文件格式选择具体预览器的舞台组件属性。 */
 type OfficePreviewStageProps = {
   /** 文件当前是否仍在加载或解析。 */
   loading: boolean;
-  /** OfficePreviewStageProps 的 loadingTip 文本值。 */
+  /** 解析期间展示的阶段提示文字。 */
   loadingTip?: string;
   /** 当前是否已有可交付渲染器显示的内容。 */
   hasRenderableContent: boolean;
-  /** OfficePreviewStageProps 携带的结构化解析错误。 */
+  /** 阻止继续预览的错误说明。 */
   error?: string;
-  /** 当前文件识别出的预览格式。 */
-  previewKind: PreviewKind;
+  /** 当前文件识别出的预览格式；尚未选择文件时为空。 */
+  previewKind?: PreviewKind;
   /** 当前文件解析 Session，用于隔离格式内部的渐进状态。 */
   documentSessionId?: string;
-  /** 已标准化的 PPTX 演示文稿模型；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 已标准化的 PPTX 演示文稿模型。 */
   pptxDocument?: PresentationDocument;
   /** 大型 PPT/PPTX 使用的按页读取数据源。 */
   presentationPreviewSource?: PresentationSource;
-  /** 已标准化的 XLS/XLSX 工作簿模型；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 已标准化的 XLS/XLSX 工作簿模型。 */
   spreadsheetWorkbook?: SpreadsheetWorkbook;
   /** 大型 XLS/XLSX 使用的按 Sheet 数据源。 */
   spreadsheetPreviewSource?: SpreadsheetSource;
-  /** 已标准化的 DOCX 文档模型；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 已标准化的 DOCX 文档模型。 */
   docxDocument?: DocxDocument;
   /** 大型 DOCX 使用的流式页面来源。 */
   docxPreviewSource?: DocxWordPageSource;
   /** 大型 DOCX 不含完整 blocks/pages 的轻量摘要。 */
   docxPreviewSummary?: DocxWordPreviewSummary;
-  /** 已标准化的 DOC/WPS 文档模型；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 已标准化的 DOC/WPS 文档模型。 */
   docDocument?: DocDocument;
   /** 大型 DOC/WPS 使用的渐进页面来源。 */
   docPreviewSource?: DocWordPageSource;
@@ -80,19 +81,23 @@ type OfficePreviewStageProps = {
   docPreviewSummary?: DocWordPreviewSummary;
   /** 当前选中项在所属集合中的索引。 */
   activeIndex: number;
-  /** OfficePreviewStageProps 的 activeSheetId 文本值。 */
+  /** 当前选中工作表的稳定标识。 */
   activeSheetId?: string;
   /** 当前预览缩放比例。 */
   zoom: number;
   /** 演讲者备注面板当前是否展开。 */
   showSpeakerNotes: boolean;
+  /** 文字文档大纲当前是否展开。 */
+  showWordOutline: boolean;
+  /** 关闭文字文档大纲。 */
+  onCloseWordOutline: () => void;
   /** 在 SelectSlide 事件发生时调用的回调函数。 */
   onSelectSlide: (index: number) => void;
   /** 在 SelectSheet 事件发生时调用的回调函数。 */
   onSelectSheet: (sheetId: string) => void;
 };
 
-/** 渲染 OfficePreviewStageComponent 组件。 */
+/** 根据文件格式切换具体预览器，并统一处理加载态和错误态。 */
 function OfficePreviewStageComponent({
   loading,
   loadingTip,
@@ -114,6 +119,8 @@ function OfficePreviewStageComponent({
   activeSheetId,
   zoom,
   showSpeakerNotes,
+  showWordOutline,
+  onCloseWordOutline,
   onSelectSlide,
   onSelectSheet,
 }: OfficePreviewStageProps) {
@@ -121,6 +128,7 @@ function OfficePreviewStageComponent({
   if (loading && !hasRenderableContent) {
     return <OfficeLoading tip={loadingTip} />;
   }
+  if (!previewKind) return <OfficeEmpty />;
 
   // 格式 viewer 是真正的重渲染模块，按文件类型懒加载，避免首屏一次性拉取所有预览实现。
   return (
@@ -140,6 +148,8 @@ function OfficePreviewStageComponent({
           source={docxPreviewSource}
           summary={docxPreviewSummary}
           zoom={zoom}
+          showOutline={showWordOutline}
+          onCloseOutline={onCloseWordOutline}
           documentSessionId={documentSessionId ?? 'word-unloaded'}
         />
       ) : previewKind === 'doc' ? (
@@ -148,6 +158,8 @@ function OfficePreviewStageComponent({
           source={docPreviewSource}
           summary={docPreviewSummary}
           zoom={zoom}
+          showOutline={showWordOutline}
+          onCloseOutline={onCloseWordOutline}
           documentSessionId={documentSessionId ?? 'word-unloaded'}
         />
       ) : (

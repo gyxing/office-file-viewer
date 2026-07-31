@@ -3,23 +3,35 @@ import React, { memo } from 'react';
 import type { DocTextInline } from '../../services/doc/types';
 import { inlineStyleToCss } from './docRenderUtils';
 
-/** 定义 DocInlineContent 组件可接收的属性。 */
+/** DOC 行内内容组件属性。 */
 type DocInlineContentProps = {
-  /** DocInlineContentProps 包含的 inlines 有序集合。 */
+  /** 按源文档顺序排列的行内内容。 */
   inlines?: DocTextInline[];
-  /** DocInlineContentProps 的 fallback 文本值。 */
+  /** 没有可渲染行内节点时显示的回退文本。 */
   fallback: string;
-  /** 是否保留块级模型自身的字体与段落样式；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 是否保留块级模型自身的字体与段落样式。 */
   preserveBlockTypography?: boolean;
+  /** 是否使用 Word 表格的数字分隔符换行规则。 */
+  wordTableLineBreaks?: boolean;
 };
 
-/** 渲染 DocInlineContentComponent 组件。 */
+/** 恢复 Word 表格中斜杠与后续数字不拆行的排版语义。 */
+function withWordTableLineBreaks(text: string) {
+  return text.replace(/\/(?=\d)/g, '\u200b/\u2060');
+}
+
+/** 渲染 DOC 段落中的行内文字和图片。 */
 function DocInlineContentComponent({
   inlines,
   fallback,
   preserveBlockTypography,
+  wordTableLineBreaks,
 }: DocInlineContentProps) {
-  if (!inlines?.length) return <>{fallback}</>;
+  if (!inlines?.length) {
+    return (
+      <>{wordTableLineBreaks ? withWordTableLineBreaks(fallback) : fallback}</>
+    );
+  }
 
   return (
     <>
@@ -54,7 +66,9 @@ function DocInlineContentComponent({
             key={`${inline.text}-${index}`}
             style={inlineStyleToCss(inline.style, { preserveBlockTypography })}
           >
-            {inline.text}
+            {wordTableLineBreaks
+              ? withWordTableLineBreaks(inline.text)
+              : inline.text}
           </span>
         ),
       )}

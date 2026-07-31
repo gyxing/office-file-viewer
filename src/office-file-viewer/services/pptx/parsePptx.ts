@@ -19,6 +19,7 @@ import {
   parseXml,
   textContent,
 } from '../../shared/ooxml/xml';
+import { collectRenderableOfficeMedia } from '../media/officeMetafile';
 import {
   alphaToOpacity,
   alphaToRatio,
@@ -60,7 +61,7 @@ import type {
 } from './types';
 
 // PPTX 是 zip 包结构，幻灯片、母版、布局、媒体之间都通过 .rels 关系文件串联。
-/** 执行 `relationshipTargets` 封装的 PPTX 解析处理步骤。 */
+/** 提取 OOXML 关系标识到目标路径的映射。 */
 export function relationshipTargets(rels: Record<string, OfficeRelationship>) {
   const map: Record<string, string> = {};
   Object.entries(rels).forEach(([id, rel]) => {
@@ -69,7 +70,7 @@ export function relationshipTargets(rels: Record<string, OfficeRelationship>) {
   return map;
 }
 
-/** 根据输入构建 `buildPackageState` 返回的标准化结果。 */
+/** 构建 PPTX 各部件解析共享的包状态。 */
 export function buildPptxPackageState(
   entries: OfficeEntryMap,
   mediaSources?: Pick<PackageState, 'mediaByName' | 'mediaByPath'>,
@@ -93,7 +94,7 @@ export function buildPptxPackageState(
   };
 }
 
-/** 执行 `debugPptxPackage` 封装的 PPTX 解析处理步骤。 */
+/** 输出 PPTX 包结构的诊断信息。 */
 export function debugPptxPackage(entries: OfficeEntryMap) {
   const packageState = buildPptxPackageState(entries);
   return {
@@ -109,7 +110,7 @@ export function debugPptxPackage(entries: OfficeEntryMap) {
   };
 }
 
-/** 读取 `readPresentationSize` 所需的源数据，供 PPTX 解析使用。 */
+/** 读取 PPTX 页面宽高并转换为渲染像素。 */
 export function readPresentationSize(xml: string) {
   const doc = parseXml(xml);
   const sldSz = descendantByLocalName(doc.documentElement, 'sldSz');
@@ -118,7 +119,7 @@ export function readPresentationSize(xml: string) {
   return { width: emuToPx(cx), height: emuToPx(cy) };
 }
 
-/** 读取 `readTheme` 所需的源数据，供 PPTX 解析使用。 */
+/** 读取 PPTX 主题颜色和字体配置。 */
 export function readTheme(xml: string): ThemeModel {
   const doc = parseXml(xml);
   const colorScheme: Record<string, string> = {};
@@ -181,13 +182,11 @@ export function readTheme(xml: string): ThemeModel {
   return { colorScheme, fontScheme, colorMap };
 }
 
-/** 执行 `emuValue` 封装的 PPTX 解析处理步骤。 */
 function emuValue(node: Element | null, name: string) {
   const value = attr(node, name);
   return value ? emuToPx(Number(value)) : undefined;
 }
 
-/** 执行 `pointToPx` 封装的 PPTX 解析处理步骤。 */
 function pointToPx(point?: string) {
   if (!point) return undefined;
   const value = Number(point);
@@ -195,7 +194,6 @@ function pointToPx(point?: string) {
   return (value / 100) * (96 / 72);
 }
 
-/** 执行 `pctToRatio` 封装的 PPTX 解析处理步骤。 */
 function pctToRatio(value?: string) {
   if (!value) return undefined;
   const next = Number(value);
@@ -203,12 +201,10 @@ function pctToRatio(value?: string) {
   return next / 100000;
 }
 
-/** 执行 `clamp01` 封装的 PPTX 解析处理步骤。 */
 function clamp01(value: number) {
   return Math.max(0, Math.min(1, value));
 }
 
-/** 执行 `boolAttr` 封装的 PPTX 解析处理步骤。 */
 function boolAttr(node: Element | null, name: string) {
   const value = attr(node, name);
   if (value === undefined) return undefined;
@@ -265,7 +261,6 @@ function mergePlaceholderStyle(
   };
 }
 
-/** 读取 `readBodyPrStyle` 所需的源数据，供 PPTX 解析使用。 */
 function readBodyPrStyle(bodyPr: Element | null): TextStyle {
   return {
     verticalAlign:
@@ -302,20 +297,20 @@ function readBodyPrStyle(bodyPr: Element | null): TextStyle {
   };
 }
 
-/** 读取 `readDefaultRunStyle` 所需的源数据，供 PPTX 解析使用。 */
 function readDefaultRunStyle(
   node: Element | null,
   theme: ThemeModel,
 ): TextStyle {
   if (!node) return {};
   const solidFill = childByLocalName(node, 'solidFill');
+  const textFillNode = solidFill ?? childByLocalName(node, 'gradFill');
   const fontNode =
     childByLocalName(node, 'latin') ??
     childByLocalName(node, 'ea') ??
     childByLocalName(node, 'cs');
   return {
     fontFamily: attr(fontNode, 'typeface'),
-    fontSize: attr(node, 'sz') ? Number(attr(node, 'sz')) / 100 : undefined,
+    fontSize: pointToPx(attr(node, 'sz')),
     bold: boolAttr(node, 'b'),
     italic: boolAttr(node, 'i'),
     underline: attr(node, 'u') === 'sng' || attr(node, 'u') === '1',
@@ -330,15 +325,15 @@ function readDefaultRunStyle(
     smallCaps: boolAttr(node, 'smCap'),
     allCaps: boolAttr(node, 'cap'),
     color: parseColorNode(solidFill, theme),
-    opacity: parseAlphaNode(solidFill),
-    charSpace: attr(node, 'spc') ? Number(attr(node, 'spc')) / 100 : undefined,
+    textFill: parsePaintNode(textFillNode, theme),
+    opacity: parseAlphaNode(textFillNode),
+    charSpace: pointToPx(attr(node, 'spc')),
     baseline: attr(node, 'baseline')
       ? Number(attr(node, 'baseline')) / 1000
       : undefined,
   };
 }
 
-/** 读取 `readParagraphLevelStyle` 所需的源数据，供 PPTX 解析使用。 */
 function readParagraphLevelStyle(
   node: Element | null,
   theme: ThemeModel,
@@ -395,7 +390,6 @@ function readParagraphLevelStyle(
   };
 }
 
-/** 读取 `readLevelStyles` 所需的源数据，供 PPTX 解析使用。 */
 function readLevelStyles(txBody: Element | null, theme: ThemeModel) {
   const listStyle = childByLocalName(txBody, 'lstStyle');
   const levels: Record<number, TextStyle> = {};
@@ -410,7 +404,6 @@ function readLevelStyles(txBody: Element | null, theme: ThemeModel) {
   return levels;
 }
 
-/** 读取 `readTextStyleFamily` 所需的源数据，供 PPTX 解析使用。 */
 function readTextStyleFamily(
   styleNode: Element | null,
   theme: ThemeModel,
@@ -437,7 +430,6 @@ function readTextStyleFamily(
   return { text, body, levels };
 }
 
-/** 读取 `readTextPresetMap` 所需的源数据，供 PPTX 解析使用。 */
 function readTextPresetMap(txStyles: Element | null, theme: ThemeModel) {
   const presets: Record<string, PlaceholderStyle> = {};
   const titleStyle = childByLocalName(txStyles, 'titleStyle');
@@ -461,7 +453,6 @@ function readTextPresetMap(txStyles: Element | null, theme: ThemeModel) {
   return presets;
 }
 
-/** 读取 `readTableCellStyle` 所需的源数据，供 PPTX 解析使用。 */
 function readTableCellStyle(
   node: Element | null | undefined,
   theme: ThemeModel,
@@ -506,7 +497,7 @@ function readTableCellStyle(
   };
 }
 
-/** 读取 `readTableStyles` 所需的源数据，供 PPTX 解析使用。 */
+/** 读取 PPTX 表格样式及其区域变体。 */
 export function readTableStyles(xml: string, theme: ThemeModel): TableStyleMap {
   if (!xml) return {};
   const doc = parseXml(xml);
@@ -570,7 +561,6 @@ function mergeTableCellStyle(...styles: Array<TableCellStyle | undefined>) {
   }, {});
 }
 
-/** 读取 `readCustomGeometry` 所需的源数据，供 PPTX 解析使用。 */
 function readCustomGeometry(spPr: Element | null | undefined) {
   const custGeom = childByLocalName(spPr, 'custGeom');
   if (!custGeom) return {};
@@ -627,7 +617,6 @@ function readCustomGeometry(spPr: Element | null | undefined) {
   };
 }
 
-/** 读取 `readShapeVisualStyle` 所需的源数据，供 PPTX 解析使用。 */
 function readShapeVisualStyle(
   spPr: Element | null | undefined,
   theme: ThemeModel,
@@ -665,7 +654,7 @@ function readShapeVisualStyle(
       typeof fill === 'string' ? parseAlphaNode(fillNode) : undefined,
     stroke,
     strokeOpacity: parseAlphaNode(strokeNode ?? line),
-    strokeWidth: attr(line, 'w') ? Number(attr(line, 'w')) / 12700 : undefined,
+    strokeWidth: attr(line, 'w') ? emuToPx(Number(attr(line, 'w'))) : undefined,
     strokeDash: attr(line, 'prstDash') ?? undefined,
     shadow,
     rotate: attr(xfrm, 'rot') ? Number(attr(xfrm, 'rot')) / 60000 : undefined,
@@ -677,7 +666,6 @@ function readShapeVisualStyle(
   };
 }
 
-/** 读取 `readBorderRadius` 所需的源数据，供 PPTX 解析使用。 */
 function readBorderRadius(spPr: Element | null | undefined) {
   const geom = childByLocalName(spPr, 'prstGeom');
   if (attr(geom, 'prst') !== 'roundRect') return undefined;
@@ -689,7 +677,6 @@ function readBorderRadius(spPr: Element | null | undefined) {
   return ratio;
 }
 
-/** 执行 `colorWithOpacity` 封装的 PPTX 解析处理步骤。 */
 function colorWithOpacity(color: string, opacity?: number) {
   if (opacity === undefined || opacity >= 1) return color;
   const normalized = color.replace('#', '');
@@ -701,7 +688,6 @@ function colorWithOpacity(color: string, opacity?: number) {
   return `rgba(${r}, ${g}, ${b}, ${opacity})`;
 }
 
-/** 读取 `readGradientFill` 所需的源数据，供 PPTX 解析使用。 */
 function readGradientFill(
   node: Element | null | undefined,
   theme: ThemeModel,
@@ -726,9 +712,9 @@ function readGradientFill(
       (
         stop,
       ): stop is {
-        /** 当前结构 在所属数据范围中的偏移位置。 */
+        /** 在所属数据范围中的偏移位置。 */
         offset: number;
-        /** 当前内联结构 的前景或文本颜色，使用标准化 CSS 颜色值。 */
+        /** 渐变色标对应的 CSS 颜色值。 */
         color: string;
       } => Boolean(stop),
     )
@@ -743,7 +729,6 @@ function readGradientFill(
   };
 }
 
-/** 执行 `pickGradientColorNode` 封装的 PPTX 解析处理步骤。 */
 function pickGradientColorNode(node: Element | null | undefined) {
   if (!node || !matchesLocalName(node, 'gradFill')) return node;
   const stops = descendantsByLocalName(node, 'gs');
@@ -758,12 +743,10 @@ function pickGradientColorNode(node: Element | null | undefined) {
   return node;
 }
 
-/** 解析 `parsePaintNode` 接收的数据，并返回 PPTX 解析结果。 */
 function parsePaintNode(node: Element | null | undefined, theme: ThemeModel) {
   return readGradientFill(node, theme) ?? parseColorNode(node, theme);
 }
 
-/** 解析 `parseColorNode` 接收的数据，并返回 PPTX 解析结果。 */
 function parseColorNode(node: Element | null | undefined, theme: ThemeModel) {
   const sourceNode = pickGradientColorNode(node);
   if (!sourceNode) return undefined;
@@ -797,19 +780,16 @@ function parseColorNode(node: Element | null | undefined, theme: ThemeModel) {
   return raw;
 }
 
-/** 解析 `parseAlphaNode` 接收的数据，并返回 PPTX 解析结果。 */
 function parseAlphaNode(node: Element | null | undefined) {
   return alphaToOpacity(
     attr(descendantByLocalName(pickGradientColorNode(node), 'alpha'), 'val'),
   );
 }
 
-/** 解析 `parseRatioNode` 接收的数据，并返回 PPTX 解析结果。 */
 function parseRatioNode(node: Element | null | undefined) {
   return alphaToRatio(attr(descendantByLocalName(node, 'alpha'), 'val'));
 }
 
-/** 解析 `parseShadowNode` 接收的数据，并返回 PPTX 解析结果。 */
 function parseShadowNode(
   node: Element | null,
   theme: ThemeModel,
@@ -887,7 +867,6 @@ function resolveWebExtensionSnapshot(
   return resolveMediaRef(target, packageState);
 }
 
-/** 读取 `readSlideBackground` 所需的源数据，供 PPTX 解析使用。 */
 function readSlideBackground(
   bgNode: Element | null,
   theme: ThemeModel,
@@ -909,7 +888,6 @@ function readSlideBackground(
   };
 }
 
-/** 读取 `readPlaceholder` 所需的源数据，供 PPTX 解析使用。 */
 function readPlaceholder(
   node: Element | null,
   theme: ThemeModel,
@@ -973,34 +951,33 @@ function resolvePlaceholderStyle(
   return undefined;
 }
 
-/** 执行 `transformGroupedElement` 封装的 PPTX 解析处理步骤。 */
 function transformGroupedElement(
   element: {
-    /** 当前内联结构 的 x 尺寸或坐标，单位为标准化渲染像素。 */
+    /** 水平方向的坐标或缩放参数。 */
     x: number;
-    /** 当前内联结构 的 y 尺寸或坐标，单位为标准化渲染像素。 */
+    /** 垂直方向的坐标或缩放参数。 */
     y: number;
-    /** 当前内联结构 的 width 尺寸或坐标，单位为标准化渲染像素。 */
+    /** 对象宽度，单位为标准化渲染像素。 */
     width: number;
-    /** 当前内联结构 的 height 尺寸或坐标，单位为标准化渲染像素。 */
+    /** 对象高度，单位为标准化渲染像素。 */
     height: number;
   },
   group: {
-    /** 当前内联结构 的 x 尺寸或坐标，单位为标准化渲染像素。 */
+    /** 水平方向的坐标或缩放参数。 */
     x: number;
-    /** 当前内联结构 的 y 尺寸或坐标，单位为标准化渲染像素。 */
+    /** 垂直方向的坐标或缩放参数。 */
     y: number;
-    /** 当前内联结构 的 width 尺寸或坐标，单位为标准化渲染像素。 */
+    /** 对象宽度，单位为标准化渲染像素。 */
     width: number;
-    /** 当前内联结构 的 height 尺寸或坐标，单位为标准化渲染像素。 */
+    /** 对象高度，单位为标准化渲染像素。 */
     height: number;
-    /** 当前局部结构 的 childX 数值；具体语义遵循对应源文件格式。 */
+    /** 组合图形子坐标系的水平原点。 */
     childX: number;
-    /** 当前局部结构 的 childY 数值；具体语义遵循对应源文件格式。 */
+    /** 组合图形子坐标系的垂直原点。 */
     childY: number;
-    /** 当前局部结构 的 childWidth 数值；具体语义遵循对应源文件格式。 */
+    /** 组合图形子坐标系的宽度。 */
     childWidth: number;
-    /** 当前局部结构 的 childHeight 数值；具体语义遵循对应源文件格式。 */
+    /** 组合图形子坐标系的高度。 */
     childHeight: number;
   },
 ) {
@@ -1014,7 +991,6 @@ function transformGroupedElement(
   };
 }
 
-/** 解析 `parseGroupElement` 接收的数据，并返回 PPTX 解析结果。 */
 function parseGroupElement(
   node: Element,
   index: number,
@@ -1072,7 +1048,6 @@ function parseGroupElement(
   });
 }
 
-/** 解析 `parseVisualTree` 接收的数据，并返回 PPTX 解析结果。 */
 function parseVisualTree(
   spTree: Element | null,
   theme: ThemeModel,
@@ -1156,16 +1131,25 @@ function parseVisualTree(
     const inherited = ph
       ? resolvePlaceholderStyle(ph, placeholderStyles)
       : undefined;
-    const hasText = Boolean(childByLocalName(node, 'txBody'));
+    const txBody = childByLocalName(node, 'txBody');
+    const hasText = Boolean(txBody);
+    const hasTextContent = Boolean(
+      txBody &&
+        descendantsByLocalName(txBody, 't').some((textNode) =>
+          Boolean(textNode.textContent?.trim()),
+        ),
+    );
     const visualNode = childByLocalName(node, 'spPr');
+    const imageFill = descendantByLocalName(visualNode, 'blipFill');
     const visual = visualNode
       ? readShapeVisualStyle(visualNode, theme)
       : undefined;
     const hasVisibleVisual = Boolean(
-      visual &&
-        ((visual.fill !== undefined && visual.fill !== null) ||
-          (visual.stroke !== undefined && visual.stroke !== null) ||
-          visual.shadow),
+      imageFill ||
+        (visual &&
+          ((visual.fill !== undefined && visual.fill !== null) ||
+            (visual.stroke !== undefined && visual.stroke !== null) ||
+            visual.shadow)),
     );
     if (ph && !placeholderStyles && !hasText && !hasVisibleVisual) {
       return;
@@ -1179,6 +1163,14 @@ function parseVisualTree(
     ) {
       return;
     }
+    if (imageFill) {
+      const image = parseImageElement(node, elementIndex, packageState, rels);
+      image.id = `${sourcePrefix}-image-fill-${elementIndex}`;
+      elements.push(image);
+      // 图片填充是形状的视觉底层；仅当文本框确有内容时继续叠加文字。
+      if (!hasTextContent) return;
+    }
+
     elements.push(
       hasText
         ? parseTextElement(node, elementIndex, theme, inherited)
@@ -1192,7 +1184,6 @@ function parseVisualTree(
   return elements;
 }
 
-/** 读取 `readMaster` 所需的源数据，供 PPTX 解析使用。 */
 function readMaster(
   xml: string,
   theme: ThemeModel,
@@ -1230,7 +1221,6 @@ function readMaster(
   return { path: relPath, placeholders, textPresets, background, elements };
 }
 
-/** 读取 `readLayout` 所需的源数据，供 PPTX 解析使用。 */
 function readLayout(
   xml: string,
   theme: ThemeModel,
@@ -1276,7 +1266,7 @@ function readLayout(
   };
 }
 
-/** 读取 `readPresentationLayouts` 所需的源数据，供 PPTX 解析使用。 */
+/** 读取 PPTX 母版、版式和占位符继承关系。 */
 export function readPresentationLayouts(
   entries: OfficeEntryMap,
   packageState: PackageState,
@@ -1341,7 +1331,6 @@ function mergePlaceholder(
   );
 }
 
-/** 解析 `parseTextElement` 接收的数据，并返回 PPTX 解析结果。 */
 function parseTextElement(
   node: Element,
   index: number,
@@ -1488,7 +1477,6 @@ function parseTextElement(
   };
 }
 
-/** 解析 `parseShapeElement` 接收的数据，并返回 PPTX 解析结果。 */
 function parseShapeElement(
   node: Element,
   index: number,
@@ -1529,7 +1517,6 @@ function parseShapeElement(
   };
 }
 
-/** 解析 `parseImageElement` 接收的数据，并返回 PPTX 解析结果。 */
 function parseImageElement(
   node: Element,
   index: number,
@@ -1539,7 +1526,7 @@ function parseImageElement(
   const xfrm = childByLocalName(childByLocalName(node, 'spPr') ?? node, 'xfrm');
   const blip = descendantByLocalName(node, 'blip');
   const svgBlip = descendantByLocalName(node, 'svgBlip');
-  const blipFill = childByLocalName(node, 'blipFill');
+  const blipFill = descendantByLocalName(node, 'blipFill');
   const srcRect = childByLocalName(blipFill, 'srcRect');
   const embed =
     attr(svgBlip, 'r:embed') ??
@@ -1581,7 +1568,6 @@ function parseImageElement(
   };
 }
 
-/** 解析 `parseWpsWebExtensionChart` 接收的数据，并返回 PPTX 解析结果。 */
 function parseWpsWebExtensionChart(
   node: Element,
   index: number,
@@ -1629,7 +1615,6 @@ function parseWpsWebExtensionChart(
   };
 }
 
-/** 解析 `parseChartElement` 接收的数据，并返回 PPTX 解析结果。 */
 function parseChartElement(
   node: Element,
   index: number,
@@ -1664,7 +1649,6 @@ function parseChartElement(
   };
 }
 
-/** 解析 `parseTableCellText` 接收的数据，并返回 PPTX 解析结果。 */
 function parseTableCellText(cellNode: Element, theme: ThemeModel) {
   const txBody = childByLocalName(cellNode, 'txBody');
   const paragraphs = childrenByLocalName(txBody, 'p').map((paragraphNode) => {
@@ -1725,7 +1709,6 @@ function parseTableCellText(cellNode: Element, theme: ThemeModel) {
   return { text, paragraphs, firstRunStyle };
 }
 
-/** 解析 `parseTableBorder` 接收的数据，并返回 PPTX 解析结果。 */
 function parseTableBorder(tcPr: Element | null, theme: ThemeModel) {
   const line =
     childByLocalName(tcPr, 'ln') ??
@@ -1747,7 +1730,6 @@ function parseTableBorder(tcPr: Element | null, theme: ThemeModel) {
   };
 }
 
-/** 执行 `tableFlag` 封装的 PPTX 解析处理步骤。 */
 function tableFlag(node: Element | null, name: string) {
   return attr(node, name) === '1' || attr(node, name) === 'true';
 }
@@ -1793,7 +1775,6 @@ function resolveTableCellStyle(
   );
 }
 
-/** 解析 `parseTableElement` 接收的数据，并返回 PPTX 解析结果。 */
 function parseTableElement(
   node: Element,
   index: number,
@@ -1893,7 +1874,6 @@ function parseTableElement(
   };
 }
 
-/** 解析 `parseUnsupportedElement` 接收的数据，并返回 PPTX 解析结果。 */
 function parseUnsupportedElement(
   index: number,
   reason: string,
@@ -1926,7 +1906,7 @@ function findLayoutForSlide(
   );
 }
 
-/** 解析 `parseSlideXml` 接收的数据，并返回 PPTX 解析结果。 */
+/** 解析单张 PPTX 幻灯片及其关系部件。 */
 export function parseSlideXml(
   xml: string,
   index: number,
@@ -2014,6 +1994,7 @@ export function parseSlideXml(
   };
 }
 
+/** 在取消信号已触发时抛出标准的 AbortError。 */
 export function throwIfPptxParseAborted(signal?: AbortSignal) {
   if (!signal?.aborted) return;
   const error = new Error('PPTX 解析已取消');
@@ -2030,7 +2011,7 @@ async function pptxParseCheckpoint(signal?: AbortSignal) {
   throwIfPptxParseAborted(signal);
 }
 
-/** 解析 `parsePptx` 接收的数据，并返回 PPTX 解析结果。 */
+/** 解析 PPTX 包并返回标准演示文稿模型。 */
 export async function parsePptx(
   file: File,
   signal?: AbortSignal,
@@ -2039,7 +2020,12 @@ export async function parsePptx(
   throwIfPptxParseAborted(signal);
   const entries = await loadOfficeEntries(file, { signal });
   await pptxParseCheckpoint(signal);
-  const packageState = buildPptxPackageState(entries);
+  const media = await collectRenderableOfficeMedia(entries, 'ppt/media/');
+  await pptxParseCheckpoint(signal);
+  const packageState = buildPptxPackageState(entries, {
+    mediaByName: media.byName,
+    mediaByPath: media.byPath,
+  });
   const presentationXml = readXml(entries, 'ppt/presentation.xml');
   const presentationDoc = parseXml(presentationXml);
   const themeXml = readXml(entries, 'ppt/theme/theme1.xml');

@@ -27,7 +27,11 @@ import {
   type ProfiledPptArchive,
 } from './readPptStructure';
 
-type SlideStoreMeta = { index: number };
+/** 幻灯片按需存储中的位置和元素统计信息。 */
+type SlideStoreMeta = {
+  /** 幻灯片在演示文稿中的零基索引。 */
+  index: number;
+};
 
 function waitForPptResult<T>(promise: Promise<T>, signal?: AbortSignal) {
   if (!signal) return promise;

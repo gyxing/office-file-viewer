@@ -5,22 +5,22 @@ import type { DocxImageInline } from '../../services/docx/types';
 import { useOfficeResourceUrl } from '../../services/resource-store/useOfficeResourceUrl';
 import { calculatePositionStyle } from './positionUtils';
 
-/** 定义 DocxImage 组件可接收的属性。 */
+/** DOCX图片组件属性。 */
 type DocxImageProps = {
-  /** DocxImageProps 当前负责渲染的行内内容模型。 */
+  /** 当前负责渲染的行内内容模型。 */
   inline: DocxImageInline;
 };
 
 // 自定义变量把解析后的图片尺寸交给 Less，避免静态样式散落在 JSX 中。
-/** 描述 DOCX 渲染使用的样式参数。 */
+/** DOCX 图片渲染样式。 */
 type DocxImageStyle = CSSProperties & {
-  /** DocxImageStyle 的 --office-file-docx-inline-image-width 文本值。 */
+  /** 传递给样式表的形状宽度 CSS 自定义属性。 */
   '--office-file-docx-inline-image-width': string;
-  /** DocxImageStyle 的 --office-file-docx-inline-image-height 文本值。 */
+  /** 传递给样式表的形状高度 CSS 自定义属性。 */
   '--office-file-docx-inline-image-height': string;
 };
 
-/** 渲染 DocxImageComponent 组件。 */
+/** 渲染DOCX图片。 */
 function DocxImageComponent({ inline }: DocxImageProps) {
   const image = inline.image;
   const positionStyle = calculatePositionStyle(image.position);

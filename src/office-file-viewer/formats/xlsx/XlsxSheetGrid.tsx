@@ -9,9 +9,9 @@ import { XlsxFloatingImages } from './XlsxFloatingImages';
 import { XlsxSheetFiller } from './XlsxSheetFiller';
 import { XlsxSheetTable } from './XlsxSheetTable';
 
-/** 定义 XlsxSheetGrid 组件可接收的属性。 */
+/** Excel工作表网格组件属性。 */
 type XlsxSheetGridProps = {
-  /** XlsxSheetGridProps 当前关联的工作表。 */
+  /** 当前处理的工作表。 */
   sheet: XlsxSheet;
   /** 当前预览缩放比例。 */
   zoom: number;
@@ -25,6 +25,7 @@ type XlsxSheetViewportSize = {
   height: number;
 };
 
+/** 电子表格网格尚未测量时使用的零尺寸。 */
 const EMPTY_VIEWPORT_SIZE: XlsxSheetViewportSize = { width: 0, height: 0 };
 
 /** 将 CSS 尺寸文本转换为可参与边框盒计算的像素值。 */
@@ -54,7 +55,7 @@ function readGridViewportSize(grid: HTMLDivElement): XlsxSheetViewportSize {
   };
 }
 
-/** 渲染 XlsxSheetGridComponent 组件。 */
+/** 渲染支持大数据窗口化的工作表网格。 */
 function XlsxSheetGridComponent({ sheet, zoom }: XlsxSheetGridProps) {
   const scale = zoom / 100;
   const gridRef = useRef<HTMLDivElement>(null);

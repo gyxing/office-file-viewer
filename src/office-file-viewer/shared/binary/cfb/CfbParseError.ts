@@ -1,4 +1,4 @@
-/** 描述 CfbParseErrorCode 在 CFB 复合文档中的数据结构。 */
+/** CFB 读取失败原因的稳定代码。 */
 export type CfbParseErrorCode =
   | 'INVALID_SIGNATURE'
   | 'INVALID_HEADER'
@@ -17,9 +17,9 @@ export class CfbParseError extends Error {
     code: CfbParseErrorCode,
     message: string,
     context: {
-      /** 当前局部结构 在 CFB 扇区链中的扇区索引；未提供时使用来源格式或渲染器的默认行为。 */
+      /** 发生错误的 CFB 扇区索引。 */
       sector?: number;
-      /** 当前内联结构 在源文件记录中的数字标识。 */
+      /** 相关 CFB 目录项的标识。 */
       directoryId?: number;
     } = {},
   ) {

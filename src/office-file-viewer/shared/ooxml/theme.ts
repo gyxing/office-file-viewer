@@ -1,15 +1,16 @@
 import { attr, childByLocalName, childrenByLocalName, parseXml } from './xml';
 
-/** 描述 OfficeTheme 在 OOXML 公共解析中的数据结构。 */
+/** Office 主题。 */
 export type OfficeTheme = {
-  /** OfficeTheme 按主题槽位索引的颜色方案。 */
+  /** 按主题槽位索引的颜色方案。 */
   colorScheme: Record<string, string>;
-  /** OfficeTheme 将逻辑颜色槽映射到主题颜色槽的规则；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 将逻辑颜色槽映射到主题颜色槽的规则。 */
   colorMap?: Record<string, string>;
-  /** OfficeTheme 的主题主字体和次字体方案；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 主题主字体和次字体方案。 */
   fontScheme?: Record<string, string>;
 };
 
+/** Office 主题颜色角色到颜色槽位的默认映射。 */
 const DEFAULT_COLOR_MAP: Record<string, string> = {
   bg1: 'lt1',
   tx1: 'dk1',
@@ -25,6 +26,7 @@ const DEFAULT_COLOR_MAP: Record<string, string> = {
   folHlink: 'folHlink',
 };
 
+/** 文档缺少主题定义时使用的默认 Office 主题。 */
 export const DEFAULT_OFFICE_THEME: OfficeTheme = {
   colorMap: DEFAULT_COLOR_MAP,
   colorScheme: {
@@ -43,7 +45,6 @@ export const DEFAULT_OFFICE_THEME: OfficeTheme = {
   },
 };
 
-/** 将输入转换为 `toHexColor` 返回的格式。 */
 function toHexColor(value?: string) {
   if (!value) return undefined;
   if (value.startsWith('#')) return value;
@@ -51,7 +52,6 @@ function toHexColor(value?: string) {
   return undefined;
 }
 
-/** 读取 `readFontScheme` 所需的源数据，供 OOXML 公共解析使用。 */
 function readFontScheme(fontSchemeNode: Element | null | undefined) {
   const scheme: Record<string, string> = {};
   if (!fontSchemeNode) return scheme;
@@ -78,7 +78,7 @@ function readFontScheme(fontSchemeNode: Element | null | undefined) {
   return scheme;
 }
 
-/** 读取 `readOfficeTheme` 所需的源数据，供 OOXML 公共解析使用。 */
+/** 读取 OOXML 主题颜色和字体配置。 */
 export function readOfficeTheme(xml?: string): OfficeTheme {
   if (!xml) return DEFAULT_OFFICE_THEME;
 

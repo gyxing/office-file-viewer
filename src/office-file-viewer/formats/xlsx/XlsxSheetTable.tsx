@@ -4,11 +4,12 @@ import React, { memo, useMemo } from 'react';
 import type { XlsxSheet } from '../../services/xlsx/types';
 import { buildXlsxCellStyle, isHighlightedXlsxCell } from './sheetRenderUtils';
 import { buildXlsxVisibleTableModel } from './sheetTableUtils';
+import { buildSpreadsheetRowContentBounds } from './spreadsheetCellOverflow';
 import { SpreadsheetCellRenderer } from './SpreadsheetCellRenderer';
 
-/** 定义 XlsxSheetTable 组件可接收的属性。 */
+/** Excel工作表表格组件属性。 */
 type XlsxSheetTableProps = {
-  /** XlsxSheetTableProps 当前关联的工作表。 */
+  /** 当前处理的工作表。 */
   sheet: XlsxSheet;
   /** 过滤隐藏列后的真实表格宽度，单位为标准化像素。 */
   tableWidth: number;
@@ -20,7 +21,7 @@ type XlsxSheetTableProps = {
   tableRef: RefObject<HTMLTableElement>;
 };
 
-/** 渲染 XlsxSheetTableComponent 组件。 */
+/** 使用普通表格模式渲染小型工作表。 */
 function XlsxSheetTableComponent({
   sheet,
   tableWidth,
@@ -47,6 +48,28 @@ function XlsxSheetTableComponent({
     });
     return cache;
   }, [tableModel.rows]);
+  const rowContentBounds = useMemo(
+    () =>
+      tableModel.rows.map((row) =>
+        buildSpreadsheetRowContentBounds(
+          row.cells.map(({ cell, columnOffset, colSpan, rowSpan }) => ({
+            key: cell.ref,
+            cell,
+            columnOffset,
+            columnSpan: colSpan,
+            clipped: Boolean(
+              cell.style?.wrapText ||
+                cell.style?.shrinkToFit ||
+                colSpan ||
+                rowSpan,
+            ),
+          })),
+          row.occupiedColumns,
+          tableModel.columns.map(({ width }) => width),
+        ),
+      ),
+    [tableModel.columns, tableModel.rows],
+  );
 
   return (
     <table
@@ -81,8 +104,18 @@ function XlsxSheetTableComponent({
                 {row.index}
               </span>
             </th>
-            {cells.map(({ cell, colSpan, rowSpan }) => {
+            {cells.map(({ cell, columnOffset, colSpan, rowSpan }) => {
               const style = cell.style ?? {};
+              const merged = Boolean(colSpan || rowSpan);
+              // 自动行高允许换行文字自然撑开；手动行高和合并区域必须保持源文件边界。
+              const clipped = Boolean(
+                merged ||
+                  style.shrinkToFit ||
+                  (style.wrapText && row.customHeight),
+              );
+              const contentWidth = tableModel.columns
+                .slice(columnOffset, columnOffset + (colSpan ?? 1))
+                .reduce((sum, item) => sum + item.width, 0);
               // 合并单元格按其跨越行的总高度裁切，避免文本反向撑大源文件行高。
               const contentHeight = tableModel.rows
                 .slice(rowOffset, rowOffset + (rowSpan ?? 1))
@@ -112,8 +145,10 @@ function XlsxSheetTableComponent({
                 >
                   <SpreadsheetCellRenderer
                     cell={cell}
-                    contentHeight={contentHeight}
-                    clipped={Boolean(style.wrapText || colSpan || rowSpan)}
+                    contentWidth={contentWidth}
+                    contentHeight={clipped ? contentHeight : undefined}
+                    clipped={clipped}
+                    contentBounds={rowContentBounds[rowOffset].get(cell.ref)}
                   />
                 </td>
               );

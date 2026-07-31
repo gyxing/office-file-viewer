@@ -1,3 +1,5 @@
+import { openOfficeArchive } from '../../shared/ooxml/archive';
+import type { OfficeArchiveReader } from '../../shared/ooxml/OfficeArchiveReader';
 import { ResourceRegistry } from '../parsing/assembly/ResourceRegistry';
 import { createSpreadsheetAxisIndex } from '../spreadsheet/SpreadsheetAxisIndex';
 import {
@@ -25,6 +27,10 @@ import type {
   SpreadsheetRange,
   SpreadsheetSheet,
 } from '../spreadsheet/types';
+import {
+  loadWpsCellImages,
+  readWpsCellImagePlacement,
+} from '../spreadsheet/wpsCellImages';
 import { adaptBiff8WorksheetSparse } from './adapter';
 import { BIFF8_RECORD } from './biff8/constants';
 import { parseBiff8WorksheetChunks } from './biff8/parseWorksheetChunks';
@@ -279,6 +285,8 @@ export class XlsSpreadsheetSource implements SpreadsheetSource {
   private readonly stores = new Map<string, SpreadsheetSheetStore>();
   private readonly requests = new Map<string, Promise<void>>();
   private readonly resources = new ResourceRegistry();
+  private cellImageArchive?: OfficeArchiveReader;
+  private cellImageArchivePromise?: Promise<OfficeArchiveReader | undefined>;
   // Sheet 切换只取消调用方等待；底层解析由 Source 生命周期统一管理并继续预热缓存。
   private readonly lifecycleController = new AbortController();
   private revision = 1;
@@ -309,6 +317,22 @@ export class XlsSpreadsheetSource implements SpreadsheetSource {
   private getDescriptor(sheetId: string) {
     this.ensureAvailable(sheetId);
     return this.descriptors.find((descriptor) => descriptor.id === sheetId)!;
+  }
+
+  private getCellImageArchive(signal: AbortSignal) {
+    if (!this.cellImageArchivePromise) {
+      this.cellImageArchivePromise = (async () => {
+        const stream = this.structure.reader.openStream('ETCellImageData');
+        if (!stream) return undefined;
+        const reader = await openOfficeArchive(
+          await stream.materialize(signal),
+          { signal },
+        );
+        this.cellImageArchive = reader;
+        return reader;
+      })().catch(() => undefined);
+    }
+    return this.cellImageArchivePromise;
   }
 
   private createSnapshot(): SpreadsheetSourceSnapshot {
@@ -430,6 +454,13 @@ export class XlsSpreadsheetSource implements SpreadsheetSource {
           warnings: [...worksheet.warnings],
         };
         const sparse = adaptBiff8WorksheetSparse(workbook, worksheet);
+        const cellImagePlacements = sparse.cells.flatMap((cell) => {
+          const placement = readWpsCellImagePlacement(cell);
+          if (!placement) return [];
+          // DISPIMG 的缓存值只是兼容公式文本；成功与否都不应作为正文显示。
+          cell.value = '';
+          return [placement];
+        });
         const objects = await loadXlsObjects(
           this.structure,
           workbook,
@@ -437,6 +468,19 @@ export class XlsSpreadsheetSource implements SpreadsheetSource {
           sparse,
           this.resources,
         );
+        const cellImageArchive = cellImagePlacements.length
+          ? await this.getCellImageArchive(taskSignal)
+          : undefined;
+        const cellImages = cellImageArchive
+          ? await loadWpsCellImages(
+              cellImageArchive,
+              this.structure.sessionId,
+              cellImagePlacements,
+              sparse,
+              sparse.merges,
+              taskSignal,
+            )
+          : [];
         const revision = descriptor.revision + 1;
         store.putStructure({
           revision,
@@ -447,7 +491,7 @@ export class XlsSpreadsheetSource implements SpreadsheetSource {
           rows: sparse.rows,
           columns: sparse.columns,
           merges: sparse.merges,
-          images: objects.images,
+          images: [...objects.images, ...cellImages],
           charts: objects.charts,
         });
         await Promise.all(
@@ -621,6 +665,7 @@ export class XlsSpreadsheetSource implements SpreadsheetSource {
         Promise.allSettled([
           ...[...this.stores.values()].map((store) => store.dispose()),
           this.structure.sharedStrings.dispose(),
+          this.cellImageArchive?.close(),
           this.structure.reader.close(),
         ]),
       )

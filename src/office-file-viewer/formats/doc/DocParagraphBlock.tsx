@@ -8,9 +8,9 @@ import type {
 import { DocInlineContent } from './DocInlineContent';
 import { docTextStyleToCss } from './docRenderUtils';
 
-/** 定义 DocParagraphBlock 组件可接收的属性。 */
+/** DOC段落内容块组件属性。 */
 type DocParagraphBlockProps = {
-  /** DocParagraphBlockProps 当前负责渲染的文档块模型。 */
+  /** 当前负责处理或渲染的内容块。 */
   block: DocParagraphBlockModel;
 };
 
@@ -44,20 +44,25 @@ function splitTableOfContentsInlines(inlines?: DocTextInline[]) {
   return { left, right };
 }
 
-/** 渲染 DocParagraphBlockComponent 组件。 */
+/** 渲染DOC段落内容块。 */
 function DocParagraphBlockComponent({ block }: DocParagraphBlockProps) {
   const isTitle = block.role === 'title';
   const isHeading = block.role === 'heading';
-  const paragraphStyle = useMemo<CSSProperties>(
-    () => ({
+  const paragraphStyle = useMemo<CSSProperties>(() => {
+    const sourceStyle = docTextStyleToCss(block.style);
+    if (block.style?.borderStyle || block.style?.borderWidth) {
+      // Word 段落边框贴正文版心，左右缩进只影响边框内文字，不能再次收窄边框外框。
+      sourceStyle.marginLeft = 0;
+      sourceStyle.marginRight = 0;
+    }
+    return {
       marginBottom: isTitle ? 18 : isHeading ? 14 : 12,
       fontSize: isTitle ? 22 : isHeading ? 16 : 14,
       lineHeight: isTitle ? 1.45 : isHeading ? 1.65 : 1.8,
       fontWeight: isTitle || isHeading ? 700 : 400,
-      ...docTextStyleToCss(block.style),
-    }),
-    [block.style, isHeading, isTitle],
-  );
+      ...sourceStyle,
+    };
+  }, [block.style, isHeading, isTitle]);
   const tocInlines = block.isTableOfContents
     ? splitTableOfContentsInlines(block.inlines)
     : undefined;

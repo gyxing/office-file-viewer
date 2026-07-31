@@ -4,7 +4,6 @@ import { chunkDocBlocks, documentMetadataFromDoc } from './chunkDocBlocks';
 import { parseDocCore } from './parseDocCore';
 import type { DocDocument } from './types';
 
-/** 创建 `createYieldIfNeeded` 返回的对象，供DOC 二进制解析使用。 */
 function createYieldIfNeeded() {
   let deadline = Date.now() + 12;
   return async () => {

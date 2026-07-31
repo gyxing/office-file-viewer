@@ -1,5 +1,5 @@
 import type { OfficeEntryMap } from '../../shared/ooxml/archive';
-import { readXml } from '../../shared/ooxml/archive';
+import { readBinary, readXml } from '../../shared/ooxml/archive';
 import { parseOfficeChartXml } from '../../shared/ooxml/charts';
 import {
   collectMedia,
@@ -23,7 +23,14 @@ import {
   textContent,
 } from '../../shared/ooxml/xml';
 import type { SpreadsheetDiagonalBorder } from '../spreadsheet/types';
+import {
+  parseWpsCellImageDefinitions,
+  readWpsCellImageId,
+  type WpsCellImagePlacement,
+} from '../spreadsheet/wpsCellImages';
 import { loadXlsxEntries } from './archive';
+import { xlsxImageBytesToDataUrl } from './createXlsxImageResource';
+import { mergeXlsxPreviewImages } from './loadXlsxOlePreviewImages';
 import type {
   XlsxCell,
   XlsxCellStyle,
@@ -36,25 +43,25 @@ import type {
   XlsxWorkbook,
 } from './types';
 
-/** 描述 XLSX 解析使用的样式参数。 */
+/** XLSX 单元格格式引用的字体、填充、边框和对齐。 */
 export type ParsedStyle = {
-  /** ParsedStyle 在源文件记录中的数字标识。 */
+  /** 当前单元格格式引用的字体索引。 */
   fontId?: number;
-  /** ParsedStyle 在源文件记录中的数字标识。 */
+  /** 当前单元格格式引用的填充索引。 */
   fillId?: number;
-  /** ParsedStyle 在源文件记录中的数字标识。 */
+  /** 当前单元格格式引用的边框索引。 */
   borderId?: number;
-  /** ParsedStyle 解析出的单元格水平、垂直对齐与换行配置；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 解析出的单元格水平、垂直对齐与换行配置。 */
   alignment?: XlsxCellStyle;
 };
 
-/** 描述 StyleBook 在 XLSX 解析中的数据结构。 */
+/** XLSX 工作簿共享的字体、填充、边框和单元格格式表。 */
 export type StyleBook = {
-  /** StyleBook 包含的 fonts 有序集合。 */
+  /** 按字体索引排列的文字样式。 */
   fonts: XlsxCellStyle[];
-  /** StyleBook 包含的 fills 有序集合。 */
+  /** 按填充索引排列的背景样式。 */
   fills: Array<Pick<XlsxCellStyle, 'backgroundColor'>>;
-  /** StyleBook 包含的 borders 有序集合。 */
+  /** 按边框索引排列的单元格边框样式。 */
   borders: Array<
     Pick<
       XlsxCellStyle,
@@ -68,38 +75,44 @@ export type StyleBook = {
       | 'diagonalBorder'
     >
   >;
-  /** StyleBook 包含的 styles 有序集合。 */
+  /** 按样式索引排列的单元格格式引用。 */
   styles: ParsedStyle[];
 };
 
-/** 描述 CellAddress 在 XLSX 解析中的数据结构。 */
+/** 完成解析的零基单元格坐标。 */
 type CellAddress = {
-  /** CellAddress 使用的零基行列索引。 */
+  /** 单元格的零基行索引。 */
   row: number;
-  /** CellAddress 使用的零基行列索引。 */
+  /** 单元格的零基列索引。 */
   column: number;
 };
 
-/** 枚举XLSX 解析可能处于的状态。 */
+/** 枚举 XLSX 解析可能处于的状态。 */
 type XlsxPackageState = {
-  /** XlsxPackageState 按压缩包路径索引的文件条目映射。 */
+  /** 按包内路径索引的 OOXML 条目。 */
   entries: OfficeEntryMap;
-  /** XlsxPackageState 解析得到的 OOXML 关系映射。 */
+  /** 按关系文件路径组织的 OOXML 关系映射。 */
   relationships: Record<string, Record<string, OfficeRelationship>>;
   /** 按 OOXML 包内路径索引的媒体资源映射。 */
   mediaByPath: Record<string, string>;
   /** 按媒体文件名索引的资源映射。 */
   mediaByName: Record<string, string>;
-  /** XlsxPackageState 使用的主题颜色和字体配置。 */
+  /** 当前文档使用的主题颜色和字体配置。 */
   theme: OfficeTheme;
 };
 
+/** Excel 默认行高，单位为磅。 */
 const DEFAULT_ROW_HEIGHT_POINTS = 15;
+/** Excel 默认列宽，单位为标准化渲染像素。 */
 const DEFAULT_COLUMN_WIDTH = 64;
+/** Excel 默认行高，单位为标准化渲染像素。 */
 const DEFAULT_ROW_HEIGHT = 20;
+/** 解析工作表尺寸时允许补充渲染的最大空白行数。 */
 const MAX_RENDERED_EMPTY_ROWS = 200;
+/** 解析工作表尺寸时允许补充渲染的最大空白列数。 */
 const MAX_RENDERED_EMPTY_COLUMNS = 80;
 
+/** Excel 主题颜色索引对应的主题槽位顺序。 */
 const THEME_COLOR_INDEXES = [
   'lt1',
   'dk1',
@@ -114,6 +127,7 @@ const THEME_COLOR_INDEXES = [
   'hlink',
   'folHlink',
 ];
+/** Excel 内置颜色索引对应的 RGB 颜色表。 */
 const INDEXED_COLORS = [
   '000000',
   'FFFFFF',
@@ -181,18 +195,17 @@ const INDEXED_COLORS = [
   '333333',
 ];
 
-/** 描述 SheetMetrics 在 XLSX 解析中的数据结构。 */
+/** 还原 XLSX 行高和列宽所需的默认度量。 */
 type SheetMetrics = {
-  /** SheetMetrics 的 defaultColumnWidth 渲染尺寸，单位为标准化像素。 */
+  /** 工作表默认列宽，单位为标准化渲染像素。 */
   defaultColumnWidth: number;
-  /** SheetMetrics 的 defaultRowHeight 渲染尺寸，单位为标准化像素。 */
+  /** 工作表默认行高，单位为标准化渲染像素。 */
   defaultRowHeight: number;
   /** Normal 字体中数字 0 的最大像素宽度，用于还原 OOXML 字符列宽。 */
   maxDigitWidth: number;
 };
 
 // XLSX 中工作表、drawing、chart、media 分散在不同 XML，通过关系表统一解析引用路径。
-/** 根据输入构建 `buildPackageState` 返回的标准化结果。 */
 function buildPackageState(entries: OfficeEntryMap): XlsxPackageState {
   const relationships: XlsxPackageState['relationships'] = {};
 
@@ -203,6 +216,19 @@ function buildPackageState(entries: OfficeEntryMap): XlsxPackageState {
   }
 
   const media = collectMedia(entries, 'xl/media/');
+  // 浏览器不原生支持 metafile；物化路径在建包时一次转换，按需路径则延迟到图片可见时转换。
+  for (const [path] of entries) {
+    if (!/^xl\/media\/.*\.(?:emf|wmf)$/i.test(path)) continue;
+    const binary = readBinary(entries, path);
+    if (!binary) continue;
+    try {
+      const dataUrl = xlsxImageBytesToDataUrl(path, binary);
+      media.byPath[path] = dataUrl;
+      media.byName[path.split('/').pop() ?? path] = dataUrl;
+    } catch {
+      // 个别损坏的 metafile 保留原资源，不能阻断其余工作表解析。
+    }
+  }
 
   return {
     entries,
@@ -230,7 +256,6 @@ export function decodeMojibake(value: string) {
   }
 }
 
-/** 读取 `readPlainText` 所需的源数据，供 XLSX 解析使用。 */
 function readPlainText(node: Element | null | undefined) {
   if (!node) return '';
   return decodeMojibake(
@@ -240,21 +265,20 @@ function readPlainText(node: Element | null | undefined) {
   );
 }
 
-/** 读取 `readSharedStrings` 所需的源数据，供 XLSX 解析使用。 */
 function readSharedStrings(xml: string) {
   if (!xml) return [];
   const doc = parseXml(xml);
   return childrenByLocalName(doc.documentElement, 'si').map(readPlainText);
 }
 
-/** 执行 `columnLabelToIndex` 封装的 XLSX 解析处理步骤。 */
+/** 将 Excel 列标签转换为零基列索引。 */
 export function columnLabelToIndex(label: string) {
   return label
     .split('')
     .reduce((acc, char) => acc * 26 + char.charCodeAt(0) - 64, 0);
 }
 
-/** 执行 `columnIndexToLabel` 封装的 XLSX 解析处理步骤。 */
+/** 将零基列索引转换为 Excel 列标签。 */
 export function columnIndexToLabel(index: number) {
   let value = index;
   let label = '';
@@ -266,7 +290,7 @@ export function columnIndexToLabel(index: number) {
   return label;
 }
 
-/** 解析 `parseCellRef` 接收的数据，并返回 XLSX 解析结果。 */
+/** 解析 A1 单元格引用并返回零基坐标。 */
 export function parseCellRef(ref: string): CellAddress {
   const match = ref.match(/^([A-Z]+)(\d+)$/i);
   if (!match) return { row: 1, column: 1 };
@@ -276,7 +300,7 @@ export function parseCellRef(ref: string): CellAddress {
   };
 }
 
-/** 解析 `parseRange` 接收的数据，并返回 XLSX 解析结果。 */
+/** 解析 A1 区域引用并返回行列边界。 */
 export function parseRange(range?: string) {
   if (!range) return undefined;
   const [start, end = start] = range.replace(/\$/g, '').split(':');
@@ -298,12 +322,10 @@ function normalizeHexColor(value?: string) {
   return `#${normalized.length === 8 ? normalized.slice(2) : normalized}`;
 }
 
-/** 执行 `clamp255` 封装的 XLSX 解析处理步骤。 */
 function clamp255(value: number) {
   return Math.max(0, Math.min(255, Math.round(value)));
 }
 
-/** 执行 `hexToRgb` 封装的 XLSX 解析处理步骤。 */
 function hexToRgb(hex: string) {
   const normalized = hex.replace('#', '');
   const value = Number.parseInt(normalized, 16);
@@ -314,7 +336,6 @@ function hexToRgb(hex: string) {
   };
 }
 
-/** 执行 `rgbToHex` 封装的 XLSX 解析处理步骤。 */
 function rgbToHex(r: number, g: number, b: number) {
   return `#${[r, g, b]
     .map((value) => clamp255(value).toString(16).padStart(2, '0'))
@@ -338,7 +359,6 @@ function applyTint(hex: string | undefined, tintValue?: string) {
   );
 }
 
-/** 解析 `parseColor` 接收的数据，并返回 XLSX 解析结果。 */
 function parseColor(node: Element | null | undefined, theme: OfficeTheme) {
   if (!node) return undefined;
   if (attr(node, 'auto') === '1') return '#000000';
@@ -355,7 +375,6 @@ function parseColor(node: Element | null | undefined, theme: OfficeTheme) {
   return applyTint(base, attr(node, 'tint'));
 }
 
-/** 解析 `parseBorderStyle` 接收的数据，并返回 XLSX 解析结果。 */
 function parseBorderStyle(
   node: Element | null | undefined,
   theme: OfficeTheme,
@@ -378,7 +397,6 @@ function parseBorderStyle(
   };
 }
 
-/** 执行 `borderToCss` 封装的 XLSX 解析处理步骤。 */
 function borderToCss(border?: ReturnType<typeof parseBorderStyle>) {
   if (!border) return undefined;
   const cssStyle =
@@ -413,13 +431,12 @@ function normalizeDiagonalLineStyle(
     : 'thin';
 }
 
-/** 执行 `pointToCssPx` 封装的 XLSX 解析处理步骤。 */
 function pointToCssPx(point?: number) {
   if (!point || !Number.isFinite(point)) return undefined;
   return point * (96 / 72);
 }
 
-/** 解析 `parseStyles` 接收的数据，并返回 XLSX 解析结果。 */
+/** 读取 XLSX 样式表并建立字体、填充和边框索引。 */
 export function parseStyles(xml: string, theme: OfficeTheme): StyleBook {
   if (!xml) return { fonts: [], fills: [], borders: [], styles: [] };
   const doc = parseXml(xml);
@@ -529,6 +546,7 @@ export function parseStyles(xml: string, theme: OfficeTheme): StyleBook {
               ? 'middle'
               : undefined,
           wrapText: attr(alignment, 'wrapText') === '1',
+          shrinkToFit: attr(alignment, 'shrinkToFit') === '1',
         },
       };
     },
@@ -560,7 +578,7 @@ export function resolveStyle(
   ) as XlsxCellStyle;
 }
 
-/** 执行 `excelWidthToPx` 封装的 XLSX 解析处理步骤。 */
+/** 将 Excel 字符列宽换算为标准化渲染像素。 */
 export function excelWidthToPx(
   width?: number,
   fallback = DEFAULT_COLUMN_WIDTH,
@@ -576,11 +594,18 @@ export function excelWidthToPx(
   );
 }
 
+// Excel 使用 Normal 字体的最大数字宽度换算字符列宽，CJK 字体的数字通常比西文字体估值更宽。
+/** 识别中日韩字体族名称的正则表达式。 */
+const CJK_FONT_FAMILY_PATTERN =
+  /宋体|新宋体|仿宋|黑体|微软雅黑|simsun|nsimsun|fangsong|simhei|microsoft yahei|ms mincho|mingliu|meiryo|malgun gothic/i;
+
 /** 按 Normal 字体估算 Excel 列宽算法使用的最大数字宽度。 */
 export function resolveXlsxMaxDigitWidth(font: XlsxCellStyle | undefined) {
   const fontSize = font?.fontSize ?? 11 * (96 / 72);
   const family = font?.fontFamily?.toLowerCase() ?? '';
-  const ratio = /arial narrow/.test(family)
+  const ratio = CJK_FONT_FAMILY_PATTERN.test(family)
+    ? 0.55
+    : /arial narrow/.test(family)
     ? 0.45
     : /calibri/.test(family)
     ? 0.48
@@ -592,7 +617,7 @@ export function resolveXlsxMaxDigitWidth(font: XlsxCellStyle | undefined) {
   return Math.max(1, Math.floor(fontSize * ratio));
 }
 
-/** 执行 `pointToPx` 封装的 XLSX 解析处理步骤。 */
+/** 将磅值换算为标准化渲染像素。 */
 export function pointToPx(point?: number, fallback = DEFAULT_ROW_HEIGHT) {
   if (!point || !Number.isFinite(point)) return fallback;
   return Math.max(1, Math.round(point * (96 / 72)));
@@ -616,16 +641,15 @@ function getRowHeight(
   return rowHeights.get(rowIndex) ?? metrics.defaultRowHeight;
 }
 
-/** 执行 `anchorPosition` 封装的 XLSX 解析处理步骤。 */
 function anchorPosition(
   anchor: {
-    /** 当前局部结构 使用的零基行列索引。 */
+    /** 锚点单元格的零基行索引。 */
     row: number;
-    /** 当前局部结构 使用的零基行列索引。 */
+    /** 锚点单元格的零基列索引。 */
     column: number;
-    /** 当前局部结构 在锚点单元格内的相对偏移。 */
+    /** 锚点在单元格内的纵向偏移。 */
     rowOffset: number;
-    /** 当前局部结构 在锚点单元格内的相对偏移。 */
+    /** 锚点在单元格内的横向偏移。 */
     columnOffset: number;
   },
   columns: XlsxColumn[],
@@ -648,7 +672,6 @@ function anchorPosition(
   };
 }
 
-/** 读取 `readSheetMetrics` 所需的源数据，供 XLSX 解析使用。 */
 function readSheetMetrics(
   sheetNode: Element,
   styleBook: StyleBook,
@@ -673,7 +696,6 @@ function readSheetMetrics(
   };
 }
 
-/** 读取 `readColumns` 所需的源数据，供 XLSX 解析使用。 */
 function readColumns(
   sheetNode: Element,
   maxColumn: number,
@@ -712,7 +734,6 @@ function readColumns(
   });
 }
 
-/** 读取 `readAnchorPoint` 所需的源数据，供 XLSX 解析使用。 */
 function readAnchorPoint(node: Element | null) {
   return {
     column: Number(textContent(childByLocalName(node, 'col'))) + 1,
@@ -750,7 +771,6 @@ function resolveXmlTarget(
   return packageState.entries.get(normalized) ? normalized : target;
 }
 
-/** 读取 `readDrawingXml` 所需的源数据，供 XLSX 解析使用。 */
 function readDrawingXml(
   sheetNode: Element,
   sheetPath: string,
@@ -771,7 +791,6 @@ function readDrawingXml(
   return drawingPath && drawingXml ? { drawingPath, drawingXml } : undefined;
 }
 
-/** 读取 `readDrawingBounds` 所需的源数据，供 XLSX 解析使用。 */
 function readDrawingBounds(
   sheetNode: Element,
   sheetPath: string,
@@ -792,7 +811,18 @@ function readDrawingBounds(
   return maxRow || maxColumn ? { maxRow, maxColumn } : undefined;
 }
 
-/** 读取 `readSheetCharts` 所需的源数据，供 XLSX 解析使用。 */
+/** 读取 worksheet/objectPr 预览图的最远锚点。 */
+function readOlePreviewBounds(sheetNode: Element) {
+  let maxRow = 0;
+  let maxColumn = 0;
+  descendantsByLocalName(sheetNode, 'objectPr').forEach((objectPr) => {
+    const anchor = descendantByLocalName(objectPr, 'anchor');
+    const to = readAnchorPoint(childByLocalName(anchor, 'to'));
+    maxRow = Math.max(maxRow, to.row);
+    maxColumn = Math.max(maxColumn, to.column);
+  });
+  return maxRow || maxColumn ? { maxRow, maxColumn } : undefined;
+}
 function readSheetCharts(
   sheetNode: Element,
   sheetPath: string,
@@ -844,7 +874,6 @@ function readSheetCharts(
     .filter(Boolean) as XlsxChart[];
 }
 
-/** 读取 `readSheetImages` 所需的源数据，供 XLSX 解析使用。 */
 function readSheetImages(
   sheetNode: Element,
   sheetPath: string,
@@ -892,7 +921,131 @@ function readSheetImages(
     .filter(Boolean) as XlsxImage[];
 }
 
-/** 读取 `readCellValue` 所需的源数据，供 XLSX 解析使用。 */
+/** 读取嵌入对象 objectPr 记录的预览图及单元格锚点。 */
+function readSheetOlePreviewImages(
+  sheetNode: Element,
+  sheetPath: string,
+  packageState: XlsxPackageState,
+  columns: XlsxColumn[],
+  rowHeights: Map<number, number>,
+  metrics: SheetMetrics,
+) {
+  const sheetRelPath = sheetPath
+    .replace(/^xl\/worksheets\//, 'xl/worksheets/_rels/')
+    .concat('.rels');
+  const relationships = packageState.relationships[sheetRelPath] ?? {};
+  return descendantsByLocalName(sheetNode, 'objectPr')
+    .map((objectPr, index): XlsxImage | undefined => {
+      const relationshipId = attr(objectPr, 'r:id') ?? attr(objectPr, 'id');
+      const target = relationshipId
+        ? relationships[relationshipId]?.target
+        : undefined;
+      const src = resolveMediaRef(target, packageState);
+      const anchor = descendantByLocalName(objectPr, 'anchor');
+      if (!src || !anchor) return undefined;
+      const from = readAnchorPoint(childByLocalName(anchor, 'from'));
+      const to = readAnchorPoint(childByLocalName(anchor, 'to'));
+      const start = anchorPosition(from, columns, rowHeights, metrics);
+      const end = anchorPosition(to, columns, rowHeights, metrics);
+      return {
+        id: `${sheetPath}-ole-preview-${index + 1}`,
+        name: '嵌入对象预览',
+        alt: '嵌入对象预览',
+        src,
+        from,
+        to,
+        x: start.x,
+        y: start.y,
+        width: Math.max(1, end.x - start.x),
+        height: Math.max(1, end.y - start.y),
+      };
+    })
+    .filter(Boolean) as XlsxImage[];
+}
+function findPackagePath(entries: OfficeEntryMap, expectedPath: string) {
+  const normalized = expectedPath.toLowerCase();
+  return [...entries.keys()].find((path) => path.toLowerCase() === normalized);
+}
+
+function cellImageRelationshipPath(partPath: string) {
+  const parts = partPath.split('/');
+  const fileName = parts.pop() ?? partPath;
+  return `${parts.join('/')}/_rels/${fileName}.rels`;
+}
+
+/** 读取 WPS DISPIMG 单元格图片，并按公式所在合并区域建立锚点。 */
+function readSheetCellImages(
+  placements: readonly WpsCellImagePlacement[],
+  merges: readonly XlsxMerge[],
+  packageState: XlsxPackageState,
+  columns: XlsxColumn[],
+  rowHeights: Map<number, number>,
+  metrics: SheetMetrics,
+) {
+  if (!placements.length) return [];
+  const partPath = [...packageState.entries.keys()].find((path) =>
+    /(^|\/)cellimages\.xml$/i.test(path),
+  );
+  if (!partPath) return [];
+  const relsPath = findPackagePath(
+    packageState.entries,
+    cellImageRelationshipPath(partPath),
+  );
+  const partXml = packageState.entries.get(partPath);
+  const relsXml = relsPath ? packageState.entries.get(relsPath) : undefined;
+  if (typeof partXml !== 'string' || typeof relsXml !== 'string') return [];
+  const definitions = parseWpsCellImageDefinitions(
+    partXml,
+    relsXml,
+    relsPath!,
+    (target) => findPackagePath(packageState.entries, target),
+  );
+  return placements.flatMap((placement, index): XlsxImage[] => {
+    const definition = definitions.get(placement.imageId);
+    const src = resolveMediaRef(definition?.imagePath, packageState);
+    if (!definition || !src) return [];
+    const merge = merges.find(
+      (item) =>
+        placement.row >= item.startRow &&
+        placement.row <= item.endRow &&
+        placement.column >= item.startColumn &&
+        placement.column <= item.endColumn,
+    );
+    const startRow = merge?.startRow ?? placement.row;
+    const startColumn = merge?.startColumn ?? placement.column;
+    const endRow = merge?.endRow ?? placement.row;
+    const endColumn = merge?.endColumn ?? placement.column;
+    const from = {
+      row: startRow,
+      column: startColumn,
+      rowOffset: 0,
+      columnOffset: 0,
+    };
+    const to = {
+      row: endRow + 1,
+      column: endColumn + 1,
+      rowOffset: 0,
+      columnOffset: 0,
+    };
+    const start = anchorPosition(from, columns, rowHeights, metrics);
+    const end = anchorPosition(to, columns, rowHeights, metrics);
+    return [
+      {
+        id: `${partPath}-${placement.imageId}-${placement.row}-${placement.column}-${index}`,
+        name: definition.name,
+        alt: definition.alt,
+        src,
+        from,
+        to,
+        x: start.x,
+        y: start.y,
+        width: Math.max(1, end.x - start.x),
+        height: Math.max(1, end.y - start.y),
+      },
+    ];
+  });
+}
+
 function readCellValue(cellNode: Element, sharedStrings: string[]) {
   const type = attr(cellNode, 't');
   const valueNode = childByLocalName(cellNode, 'v');
@@ -925,7 +1078,6 @@ function readCellValue(cellNode: Element, sharedStrings: string[]) {
   };
 }
 
-/** 读取 `readMerges` 所需的源数据，供 XLSX 解析使用。 */
 function readMerges(sheetNode: Element) {
   const mergeCells = descendantByLocalName(sheetNode, 'mergeCells');
   return childrenByLocalName(mergeCells, 'mergeCell')
@@ -974,7 +1126,6 @@ function applyMerges(cells: Map<string, XlsxCell>, merges: XlsxMerge[]) {
   });
 }
 
-/** 读取 `readSheet` 所需的源数据，供 XLSX 解析使用。 */
 function readSheet(
   xml: string,
   sheetInfo: Pick<XlsxSheet, 'id' | 'name' | 'path'>,
@@ -989,6 +1140,7 @@ function readSheet(
   const parsedRange = parseRange(range);
   const metrics = readSheetMetrics(sheetNode, styleBook);
   const cells = new Map<string, XlsxCell>();
+  const cellImagePlacements: WpsCellImagePlacement[] = [];
   let maxRow = parsedRange?.endRow ?? 0;
   let maxColumn = parsedRange?.endColumn ?? 0;
 
@@ -999,16 +1151,26 @@ function readSheet(
       ? Number(attr(cellNode, 's'))
       : undefined;
     const value = readCellValue(cellNode, sharedStrings);
+    const formula = textContent(childByLocalName(cellNode, 'f'));
+    const cellImageId = readWpsCellImageId(formula, value.value);
     const cell: XlsxCell = {
       ref,
       rowIndex: address.row,
       columnIndex: address.column,
-      value: value.value,
+      value: cellImageId ? '' : value.value,
       rawValue: value.rawValue,
       type: attr(cellNode, 't'),
       styleId,
       style: resolveStyle(styleId, styleBook),
+      formula: formula || undefined,
     };
+    if (cellImageId) {
+      cellImagePlacements.push({
+        imageId: cellImageId,
+        row: address.row,
+        column: address.column,
+      });
+    }
     cells.set(ref, cell);
     maxRow = Math.max(maxRow, address.row);
     maxColumn = Math.max(maxColumn, address.column);
@@ -1030,6 +1192,11 @@ function readSheet(
     maxRow = Math.max(maxRow, drawingBounds.maxRow);
     maxColumn = Math.max(maxColumn, drawingBounds.maxColumn);
   }
+  const olePreviewBounds = readOlePreviewBounds(sheetNode);
+  if (olePreviewBounds) {
+    maxRow = Math.max(maxRow, olePreviewBounds.maxRow);
+    maxColumn = Math.max(maxColumn, olePreviewBounds.maxColumn);
+  }
 
   maxRow = Math.min(Math.max(maxRow, 1), MAX_RENDERED_EMPTY_ROWS);
   maxColumn = Math.min(Math.max(maxColumn, 1), MAX_RENDERED_EMPTY_COLUMNS);
@@ -1037,14 +1204,24 @@ function readSheet(
   applyMerges(cells, merges);
 
   const rowHeights = new Map<number, number>();
+  const customRowHeights = new Set<number>();
+  const hiddenRows = new Set<number>();
   descendantsByLocalName(sheetNode, 'row').forEach((rowNode) => {
     const rowIndex = Number(attr(rowNode, 'r') ?? 0);
-    if (rowIndex) {
+    if (!rowIndex) return;
+    const sourceHeight = attr(rowNode, 'ht');
+    if (sourceHeight !== undefined) {
       rowHeights.set(
         rowIndex,
-        pointToPx(Number(attr(rowNode, 'ht')), metrics.defaultRowHeight),
+        pointToPx(Number(sourceHeight), metrics.defaultRowHeight),
       );
     }
+    const customHeight = attr(rowNode, 'customHeight');
+    if (customHeight === '1' || customHeight === 'true') {
+      customRowHeights.add(rowIndex);
+    }
+    const hidden = attr(rowNode, 'hidden');
+    if (hidden === '1' || hidden === 'true') hiddenRows.add(rowIndex);
   });
   const columns = readColumns(sheetNode, maxColumn, metrics);
 
@@ -1053,6 +1230,8 @@ function readSheet(
     return {
       index: rowIndex,
       height: rowHeights.get(rowIndex) ?? metrics.defaultRowHeight,
+      customHeight: customRowHeights.has(rowIndex),
+      hidden: hiddenRows.has(rowIndex),
       cells: Array.from({ length: maxColumn }, (_, columnOffset) => {
         const columnIndex = columnOffset + 1;
         const ref = `${columnIndexToLabel(columnIndex)}${rowIndex}`;
@@ -1068,6 +1247,22 @@ function readSheet(
     };
   });
 
+  const drawingImages = readSheetImages(
+    sheetNode,
+    sheetInfo.path,
+    packageState,
+    columns,
+    rowHeights,
+    metrics,
+  );
+  const olePreviewImages = readSheetOlePreviewImages(
+    sheetNode,
+    sheetInfo.path,
+    packageState,
+    columns,
+    rowHeights,
+    metrics,
+  );
   return {
     ...sheetInfo,
     defaultColumnWidth: metrics.defaultColumnWidth,
@@ -1078,14 +1273,17 @@ function readSheet(
     columns,
     rows,
     merges,
-    images: readSheetImages(
-      sheetNode,
-      sheetInfo.path,
-      packageState,
-      columns,
-      rowHeights,
-      metrics,
-    ),
+    images: [
+      ...mergeXlsxPreviewImages(drawingImages, olePreviewImages),
+      ...readSheetCellImages(
+        cellImagePlacements,
+        merges,
+        packageState,
+        columns,
+        rowHeights,
+        metrics,
+      ),
+    ],
     charts: readSheetCharts(
       sheetNode,
       sheetInfo.path,
@@ -1113,7 +1311,7 @@ async function xlsxParseCheckpoint(signal?: AbortSignal) {
   throwIfXlsxParseAborted(signal);
 }
 
-/** 解析 `parseXlsx` 接收的数据，并返回 XLSX 解析结果。 */
+/** 解析 XLSX 包并返回标准工作簿模型。 */
 export async function parseXlsx(
   file: File,
   signal?: AbortSignal,
@@ -1134,23 +1332,31 @@ export async function parseXlsx(
     packageState.theme,
   );
   const workbookDoc = parseXml(workbookXml);
-  const sheetNodes = childrenByLocalName(
+  const sheetEntries = childrenByLocalName(
     childByLocalName(workbookDoc.documentElement, 'sheets'),
     'sheet',
-  );
+  )
+    .map((node, sourceIndex) => ({ node, sourceIndex }))
+    .filter(({ node }) => {
+      // Excel/WPS 的隐藏工作表不属于用户可见预览内容。
+      const state = attr(node, 'state');
+      return state !== 'hidden' && state !== 'veryHidden';
+    });
   const sheets: XlsxSheet[] = [];
-  for (let index = 0; index < sheetNodes.length; index += 1) {
+  for (let index = 0; index < sheetEntries.length; index += 1) {
     await xlsxParseCheckpoint(signal);
-    const sheetNode = sheetNodes[index];
+    const { node: sheetNode, sourceIndex } = sheetEntries[index];
     const relId = attr(sheetNode, 'r:id') ?? attr(sheetNode, 'id') ?? '';
     const rel = workbookRels[relId];
-    const path = rel?.target ?? `xl/worksheets/sheet${index + 1}.xml`;
+    const path = rel?.target ?? `xl/worksheets/sheet${sourceIndex + 1}.xml`;
     sheets.push(
       readSheet(
         readXml(entries, path),
         {
-          id: attr(sheetNode, 'sheetId') ?? String(index + 1),
-          name: decodeMojibake(attr(sheetNode, 'name') ?? `Sheet ${index + 1}`),
+          id: attr(sheetNode, 'sheetId') ?? String(sourceIndex + 1),
+          name: decodeMojibake(
+            attr(sheetNode, 'name') ?? `Sheet ${sourceIndex + 1}`,
+          ),
           path,
         },
         sharedStrings,

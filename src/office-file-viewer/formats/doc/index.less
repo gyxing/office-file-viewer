@@ -43,6 +43,8 @@
 
 .office-file-doc-page-frame__article {
   position: relative;
+  display: flex;
+  flex-direction: column;
   box-sizing: border-box;
   background: #fff;
   box-shadow: 0 14px 30px rgba(15, 23, 42, 14%);
@@ -96,7 +98,7 @@
   height: 1px;
   min-width: 18px;
   margin: 0 6px 0.28em;
-  border-bottom: 1px dotted currentColor;
+  border-bottom: 1px dotted currentcolor;
 }
 
 .office-file-doc-paragraph__toc-page {
@@ -136,6 +138,11 @@
   white-space: pre-wrap;
   word-break: break-word;
   vertical-align: top;
+}
+
+.office-file-doc-table--document-grid .office-file-doc-table__cell {
+  // Word 二进制表格按字符宽度换行，避免浏览器标点规则额外拆出一行。
+  word-break: break-all;
 }
 
 .office-file-doc-list {

@@ -12,24 +12,23 @@ import type {
 import { OFFICE_PARSER_PROTOCOL_VERSION } from '../../protocol/version';
 import { createParseAbortError } from '../types';
 
-/** 描述 WorkerMessageEvent 在解析运行时中的数据结构。 */
+/** 解析 Worker 接收消息时使用的最小事件结构。 */
 type WorkerMessageEvent = {
-  /** WorkerMessageEvent 当前步骤需要处理的原始或标准化数据。 */
+  /** Worker 收到的解析协议消息。 */
   data: MainToWorkerMessage;
 };
 
-/** 描述 ParserWorkerScope 在解析运行时中的数据结构。 */
+/** 解析 Worker 依赖的消息发送和监听接口。 */
 type ParserWorkerScope = {
-  /** 执行 ParserWorkerScope 的 postMessage 操作。 */
+  /** 向主线程发送解析 Worker 协议消息。 */
   postMessage(message: WorkerToMainMessage, transfer?: Transferable[]): void;
-  /** 执行 ParserWorkerScope 的 addEventListener 操作。 */
+  /** 监听主线程发送给解析 Worker 的消息。 */
   addEventListener(
     type: 'message',
     listener: (event: WorkerMessageEvent) => void,
   ): void;
 };
 
-/** 执行 `resourceTransferList` 封装的解析运行时处理步骤。 */
 function resourceTransferList(resource: PortableResource): Transferable[] {
   return resource.encoding === 'text' ? [] : [resource.buffer];
 }
@@ -56,42 +55,42 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
       | Extract<
           WorkerToMainMessage,
           {
-            /** 用于区分 当前结构 不同结构分支的类型标识。 */
+            /** 固定为 `parse-resource`，用于区分联合类型分支。 */
             type: 'parse-resource';
           }
         >
       | Extract<
           WorkerToMainMessage,
           {
-            /** 用于区分 当前结构 不同结构分支的类型标识。 */
+            /** 固定为 `parse-sheet`，用于区分联合类型分支。 */
             type: 'parse-sheet';
           }
         >
       | Extract<
           WorkerToMainMessage,
           {
-            /** 用于区分 当前结构 不同结构分支的类型标识。 */
+            /** 固定为 `parse-presentation-meta`，用于区分联合类型分支。 */
             type: 'parse-presentation-meta';
           }
         >
       | Extract<
           WorkerToMainMessage,
           {
-            /** 用于区分 当前结构 不同结构分支的类型标识。 */
+            /** 固定为 `parse-slide`，用于区分联合类型分支。 */
             type: 'parse-slide';
           }
         >
       | Extract<
           WorkerToMainMessage,
           {
-            /** 用于区分 当前结构 不同结构分支的类型标识。 */
+            /** 固定为 `parse-document-meta`，用于区分联合类型分支。 */
             type: 'parse-document-meta';
           }
         >
       | Extract<
           WorkerToMainMessage,
           {
-            /** 用于区分 当前结构 不同结构分支的类型标识。 */
+            /** 固定为 `parse-document-blocks`，用于区分联合类型分支。 */
             type: 'parse-document-blocks';
           }
         >,
@@ -106,7 +105,8 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
     message: Extract<
       MainToWorkerMessage,
       {
-        /** 用于区分 当前结构 不同结构分支的类型标识。 */ type: 'parse-start';
+        /** 固定为 `parse-start`，用于区分联合类型分支。 */
+        type: 'parse-start';
       }
     >,
   ) {
@@ -190,7 +190,8 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
     message: Extract<
       MainToWorkerMessage,
       {
-        /** 用于区分 当前结构 不同结构分支的类型标识。 */ type: 'parse-start';
+        /** 固定为 `parse-start`，用于区分联合类型分支。 */
+        type: 'parse-start';
       }
     >,
   ) {
@@ -282,7 +283,8 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
     message: Extract<
       MainToWorkerMessage,
       {
-        /** 用于区分 当前结构 不同结构分支的类型标识。 */ type: 'parse-start';
+        /** 固定为 `parse-start`，用于区分联合类型分支。 */
+        type: 'parse-start';
       }
     >,
   ) {

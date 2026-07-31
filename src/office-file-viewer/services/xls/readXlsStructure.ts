@@ -17,30 +17,49 @@ import type { Biff8SheetDescriptor, Biff8WorkbookGlobals } from './types';
 
 /** XLS Source 使用的 Sheet 子流描述符。 */
 export type XlsSheetDescriptor = Biff8SheetDescriptor & {
+  /** 记录结束位置相对源流起点的字节偏移。 */
   endOffset: number;
+  /** 行数量。 */
   rowCount: number;
+  /** 列数量。 */
   columnCount: number;
+  /** 数据源变更时递增的修订号。 */
   revision: number;
+  /** 当前加载或解析状态。 */
   status: 'estimated' | 'ready' | 'error';
+  /** 当前错误对应的可读说明。 */
   errorMessage?: string;
+  /** 当前文档的性能统计信息。 */
   performance: SpreadsheetPerformanceProfile;
 };
 
 /** XLS 大文件共享的随机访问结构。 */
 export type XlsStructure = {
+  /** 当前解析或预览会话的标识。 */
   sessionId: string;
+  /** 用于按需读取源数据的读取器。 */
   reader: CfbRandomAccessReader;
+  /** 支持随机访问的 Workbook 主数据流。 */
   workbookStream: CfbStreamReader;
+  /** 工作簿共享的字体、样式和字符串表。 */
   globals: Biff8WorkbookGlobals;
+  /** 按源顺序排列的轻量描述信息。 */
   descriptors: XlsSheetDescriptor[];
+  /** 支持按索引读取的 BIFF8 共享字符串源。 */
   sharedStrings: ReturnType<typeof createBiff8SharedStringSource>;
+  /** 源文件总大小，单位为字节。 */
   fileSize: number;
+  /** 主文档数据流大小，单位为字节。 */
   mainStreamSize: number;
 };
 
+/** 附带性能档案的 XLS 复合文档读取器。 */
 export type ProfiledXlsArchive = {
+  /** 用于按需读取源数据的读取器。 */
   reader: CfbRandomAccessReader;
+  /** 源文件总大小，单位为字节。 */
   fileSize: number;
+  /** 主文档数据流大小，单位为字节。 */
   mainStreamSize: number;
 };
 
@@ -212,10 +231,13 @@ export async function readXlsStructure(
       fileSize: archive.fileSize,
       mainStreamSize: archive.mainStreamSize,
     },
-    requiresSource: descriptors.some(
-      (descriptor) =>
-        descriptor.performance.sheetMode === 'lazy' ||
-        descriptor.performance.gridMode !== 'table',
-    ),
+    requiresSource:
+      // WPS 将 DISPIMG 资源保存在独立 CFB 流中，需由 Source 延续其按需读取生命周期。
+      archive.reader.hasEntry('ETCellImageData') ||
+      descriptors.some(
+        (descriptor) =>
+          descriptor.performance.sheetMode === 'lazy' ||
+          descriptor.performance.gridMode !== 'table',
+      ),
   };
 }

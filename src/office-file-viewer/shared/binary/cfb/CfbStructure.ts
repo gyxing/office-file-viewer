@@ -13,22 +13,34 @@ import {
 } from './constants';
 import type { CfbDirectoryEntry, CfbObjectType, CfbReadOptions } from './types';
 
-/** 描述 CFB Header 中后续随机读取必需的结构信息。 */
+/** CFB 文件头中定位扇区链和目录所需的字段。 */
 export type CfbHeader = {
+  /** 决定扇区尺寸规则的 CFB 主版本号。 */
   majorVersion: number;
+  /** 扇区大小，单位为字节。 */
   sectorSize: number;
+  /** 扇区数量。 */
   sectorCount: number;
+  /** FAT 占用的扇区数量。 */
   fatSectorCount: number;
+  /** 目录流首个扇区的索引。 */
   directoryStartSector: number;
+  /** 目录 扇区数量。 */
   directorySectorCount: number;
+  /** 迷你 FAT 首个扇区的索引。 */
   miniFatStartSector: number;
+  /** 迷你 FAT 占用的扇区数量。 */
   miniFatSectorCount: number;
+  /** DIFAT 扩展链首个扇区的索引。 */
   difatStartSector: number;
+  /** DIFAT 扩展链占用的扇区数量。 */
   difatSectorCount: number;
 };
 
+/** 从 CFB 目录流读取的原始目录项。 */
 type RawDirectoryEntry = Omit<CfbDirectoryEntry, 'path'>;
 
+/** 按扇区索引异步读取 CFB 原始数据的函数。 */
 export type CfbSectorReader = (
   sector: number,
   signal?: AbortSignal,
@@ -36,9 +48,13 @@ export type CfbSectorReader = (
 
 /** 保存随机 Reader 和完整物化路径共用的 CFB 结构索引。 */
 export type CfbStructure = {
+  /** 表头。 */
   header: CfbHeader;
+  /** 普通数据流使用的扇区链表。 */
   fat: number[];
+  /** 迷你数据流使用的扇区链表。 */
   miniFat: number[];
+  /** 压缩包或复合文档包含的条目。 */
   entries: CfbDirectoryEntry[];
 };
 

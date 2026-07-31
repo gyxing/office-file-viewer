@@ -1,15 +1,22 @@
 /** 二进制 DOC 的单级列表格式。 */
 type DocListLevel = {
+  /** 当前范围的起始位置。 */
   start: number;
+  /** 源文件的格式标识。 */
   format: number;
+  /** 文本内容。 */
   text: string;
+  /** 列表编号与正文之间使用的后缀类型。 */
   suffix: 'tab' | 'space' | 'nothing';
 };
 
 /** 二进制 DOC 列表定义、覆盖实例与当前计数状态。 */
 export type DocNumberingCatalog = {
+  /** 按列表标识索引的多级编号定义。 */
   lists: Map<number, DocListLevel[]>;
+  /** 各列表实例引用的列表定义标识。 */
   instanceListIds: number[];
+  /** 按列表实例保存的各级当前计数器。 */
   counters: Map<number, number[]>;
 };
 
@@ -179,11 +186,12 @@ function toRoman(value: number) {
   ];
   let rest = Math.max(1, value);
   return symbols.reduce((result, [unit, symbol]) => {
+    let nextResult = result;
     while (rest >= unit) {
-      result += symbol;
+      nextResult += symbol;
       rest -= unit;
     }
-    return result;
+    return nextResult;
   }, '');
 }
 

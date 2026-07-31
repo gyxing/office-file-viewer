@@ -1,31 +1,30 @@
 import type { OfficeEntryMap } from './archive';
 import { readBinary } from './archive';
 
-/** 描述 MediaStore 在 OOXML 公共解析中的数据结构。 */
+/** 按包内路径和文件名索引的 OOXML 媒体地址。 */
 export type MediaStore = {
-  /** MediaStore 按包内完整路径索引的媒体资源映射。 */
+  /** 按 OOXML 包内完整路径索引的媒体地址。 */
   byPath: Record<string, string>;
-  /** MediaStore 按文件名索引的媒体资源映射。 */
+  /** 按媒体文件名索引的媒体地址。 */
   byName: Record<string, string>;
 };
 
-/** 描述 OfficeRelationship 在 OOXML 公共解析中的数据结构。 */
+/** OOXML 关系标识、目标路径和内容类型。 */
 export type OfficeRelationship = {
-  /** OfficeRelationship 在所属文档或任务中的唯一标识。 */
+  /** 在所属集合中的唯一标识。 */
   id: string;
-  /** OfficeRelationship 的 target 文本值。 */
+  /** 关系指向的包内路径或外部地址。 */
   target: string;
-  /** 用于区分 OfficeRelationship 不同结构分支的类型标识。 */
+  /** 关系定义的目标内容类型。 */
   type?: string;
 };
 
-/** 描述 OfficeRelationshipMap 在 OOXML 公共解析中的数据结构。 */
+/** 按关系文件路径和关系标识组织的 OOXML 关系。 */
 export type OfficeRelationshipMap = Record<
   string,
   Record<string, OfficeRelationship>
 >;
 
-/** 执行 `bytesToBase64` 封装的 OOXML 公共解析处理步骤。 */
 function bytesToBase64(bytes: Uint8Array) {
   let binary = '';
   for (let index = 0; index < bytes.length; index += 1) {
@@ -34,22 +33,25 @@ function bytesToBase64(bytes: Uint8Array) {
   return btoa(binary);
 }
 
-/** 执行 `bytesToDataUrl` 封装的 OOXML 公共解析处理步骤。 */
+/** 将二进制资源转换为可直接使用的数据地址。 */
 export function bytesToDataUrl(bytes: Uint8Array, contentType = 'image/png') {
   return `data:${contentType};base64,${bytesToBase64(bytes)}`;
 }
 
-/** 执行 `imageMimeType` 封装的 OOXML 公共解析处理步骤。 */
+/** 根据文件扩展名返回浏览器可识别的图片 MIME 类型。 */
 export function imageMimeType(path: string) {
   const lower = path.toLowerCase();
   if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
   if (lower.endsWith('.gif')) return 'image/gif';
   if (lower.endsWith('.svg')) return 'image/svg+xml';
   if (lower.endsWith('.webp')) return 'image/webp';
+  if (lower.endsWith('.bmp') || lower.endsWith('.dib')) return 'image/bmp';
+  if (lower.endsWith('.emf')) return 'image/x-emf';
+  if (lower.endsWith('.wmf')) return 'image/x-wmf';
   return 'image/png';
 }
 
-/** 创建 `createMediaStore` 返回的对象，供 OOXML 公共解析使用。 */
+/** 创建可按包内路径和文件名查询的媒体存储。 */
 export function createMediaStore() {
   const store: MediaStore = {
     byPath: {},

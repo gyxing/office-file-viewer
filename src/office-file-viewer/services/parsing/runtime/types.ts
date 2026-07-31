@@ -14,7 +14,9 @@ import type { ParseProgress } from '../types';
 
 /** 为同一次解析运行时提供稳定会话标识和统一取消信号。 */
 export type RuntimeContext = {
+  /** 当前文档解析会话的标识。 */
   documentSessionId: string;
+  /** 用于取消当前异步操作的信号。 */
   signal: AbortSignal;
 };
 
@@ -24,7 +26,7 @@ export type RuntimeSink = {
   progress(progress: ParseProgress): void;
   /** 接收解析器产生的可移植资源分块。 */
   resource(resource: PortableResource): Promise<void>;
-  /** RuntimeSink 当前关联的工作表。 */
+  /** 接收解析产生的单张工作表。 */
   sheet(
     index: number,
     revision: number,
@@ -32,7 +34,7 @@ export type RuntimeSink = {
   ): Promise<void>;
   /** 接收演示文稿的主体元数据。 */
   presentationMetadata(metadata: PortablePresentationMetadata): Promise<void>;
-  /** RuntimeSink 当前关联的幻灯片。 */
+  /** 接收解析产生的单张幻灯片。 */
   slide(index: number, slide: SlideModel): Promise<void>;
   /** 接收文字文档的主体元数据。 */
   documentMetadata(metadata: PortableDocMetadata): Promise<void>;

@@ -14,24 +14,25 @@ import { TableRenderer } from './renderers/TableRenderer';
 import { TextRenderer } from './renderers/TextRenderer';
 import { UnsupportedRenderer } from './renderers/UnsupportedRenderer';
 
-/** 定义 PptxSlide 组件可接收的属性。 */
+/** PPTX幻灯片组件属性。 */
 type PptxSlideProps = {
-  /** PptxSlideProps 当前关联的幻灯片。 */
+  /** 当前处理或展示的幻灯片。 */
   slide: SlideModel;
   /** 当前预览缩放比例。 */
   zoom: number;
-  /** PptxSlideProps 的 renderKey 文本值。 */
+  /** 内容变化时用于刷新渲染结果的键。 */
   renderKey?: string;
 };
 
 const ChartFrame = memo(function ChartFrame({
   element,
 }: {
-  /** 当前局部结构 当前负责渲染的演示文稿元素模型。 */
+  /** 当前负责渲染的演示文稿元素。 */
   element: Extract<
     SlideElement,
     {
-      /** 用于区分 当前结构 不同结构分支的类型标识。 */ type: 'chart';
+      /** 固定为 `chart`，用于区分联合类型分支。 */
+      type: 'chart';
     }
   >;
 }) {
@@ -64,13 +65,16 @@ const ChartFrame = memo(function ChartFrame({
   );
 });
 
-/** 渲染 PptxSlideComponent 组件。 */
+/** 渲染PPTX幻灯片。 */
 function PptxSlideComponent({ slide, zoom, renderKey }: PptxSlideProps) {
   const scale = zoom / 100;
-  const backgroundSource: OfficeResourceSource | undefined =
-    typeof slide.background?.imageRef === 'string'
-      ? { kind: 'url', url: slide.background.imageRef }
-      : slide.background?.imageRef;
+  const backgroundSource = useMemo<OfficeResourceSource | undefined>(
+    () =>
+      typeof slide.background?.imageRef === 'string'
+        ? { kind: 'url', url: slide.background.imageRef }
+        : slide.background?.imageRef,
+    [slide.background?.imageRef],
+  );
   const backgroundResource = useOfficeResourceUrl(backgroundSource);
   // renderKey 会参与 SVG 渐变 id，缩略图和主画布同时渲染同一页时必须保持 id 隔离。
   const slideRenderKey = renderKey ?? `slide-${slide.id}`;

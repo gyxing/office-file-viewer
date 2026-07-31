@@ -4,14 +4,19 @@ import type { DocxBlock } from '../../services/docx/types';
 import { DocxPageFrame } from './DocxPageFrame';
 import type { DocxMeasuredBlock, DocxMeasurementBatch } from './docxPagination';
 
+/** DOCX 隐藏测量容器组件属性。 */
 type DocxMeasureHostProps = {
+  /** 当前提交测量或解析的内容批次。 */
   batch?: DocxMeasurementBatch;
+  /** 渲染待测量的单个 DOCX 内容块。 */
   renderBlock(block: DocxBlock): ReactNode;
+  /** 接收完成排版测量的内容块结果。 */
   onMeasured(
     batch: DocxMeasurementBatch,
     blocks: readonly DocxMeasuredBlock[],
     durationMs: number,
   ): void;
+  /** 报告页面测量过程中发生的错误。 */
   onError(batch: DocxMeasurementBatch, error: unknown): void;
 };
 

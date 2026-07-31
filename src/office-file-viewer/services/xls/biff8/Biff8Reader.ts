@@ -2,15 +2,15 @@ import { XlsParseError } from '../errors';
 
 /** 表示XLS/BIFF8 解析读取到的一条记录。 */
 export type Biff8Record = {
-  /** Biff8Record 在所属文档或任务中的唯一标识。 */
+  /** BIFF8 记录类型编号。 */
   id: number;
-  /** Biff8Record 在源二进制流中的字节偏移。 */
+  /** 在所属数据范围中的偏移位置。 */
   offset: number;
-  /** Biff8Record 在对应二进制流中的字节偏移。 */
+  /** 记录正文相对源流起点的字节偏移。 */
   dataOffset: number;
-  /** Biff8Record 对应二进制记录或数据块的字节长度。 */
+  /** 当前数据占用的空间大小。 */
   size: number;
-  /** Biff8Record 当前步骤需要处理的原始或标准化数据。 */
+  /** 当前 BIFF8 记录正文的原始字节。 */
   data: Uint8Array;
 };
 
@@ -176,15 +176,14 @@ export class Biff8RecordCursor {
 
 /** 枚举XLS/BIFF8 解析可能处于的状态。 */
 export type ParseYieldState = {
-  /** ParseYieldState 用于控制主线程让步时机的毫秒值。 */
+  /** 最近一次让出主线程时的时间戳。 */
   lastYieldAt: number;
-  /** ParseYieldState 用于控制主线程让步时机的毫秒值。 */
+  /** 单个同步解析时间片允许占用的毫秒数。 */
   budgetMs: number;
-  /** ParseYieldState 执行 checkpoint 操作时调用的函数。 */
+  /** 时间片耗尽时执行的异步检查点。 */
   checkpoint?: () => Promise<void>;
 };
 
-/** 执行 `currentTime` 封装的XLS/BIFF8 解析处理步骤。 */
 function currentTime() {
   return typeof performance !== 'undefined' ? performance.now() : Date.now();
 }

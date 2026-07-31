@@ -13,125 +13,125 @@ import type {
   Biff8Worksheet,
 } from '../types';
 
-/** 描述 Biff8ChartRecordNode 在 XLS/BIFF8 解析中的数据结构。 */
+/** 按 BEGIN/END 层级组织的 BIFF8 图表记录。 */
 export type Biff8ChartRecordNode = {
-  /** Biff8ChartRecordNode 在所属文档或任务中的唯一标识。 */
+  /** 在所属集合中的唯一标识。 */
   id: number;
-  /** Biff8ChartRecordNode 在源二进制流中的字节偏移。 */
+  /** 在所属数据范围中的偏移位置。 */
   offset: number;
-  /** Biff8ChartRecordNode 当前步骤需要处理的原始或标准化数据。 */
+  /** 当前图表记录正文的原始字节。 */
   data: Uint8Array;
-  /** Biff8ChartRecordNode 包含并负责布局的 React 子节点。 */
+  /** 位于当前 BEGIN/END 容器内的子记录。 */
   children: Biff8ChartRecordNode[];
 };
 
-/** 描述 Biff8ChartSeries 在 XLS/BIFF8 解析中的数据结构。 */
+/** BIFF8 图表中的单个数据系列。 */
 export type Biff8ChartSeries = {
-  /** Biff8ChartSeries 的可读名称。 */
+  /** 面向用户展示的名称。 */
   name: string;
-  /** Biff8ChartSeries 在所属集合中的位置索引。 */
+  /** 数据系列所属图表组的零基索引。 */
   groupIndex: number;
-  /** 用于区分 Biff8ChartSeries 不同结构分支的类型标识。 */
+  /** 当前数据系列采用的标准图表类型。 */
   type?: OfficeChartType;
-  /** Biff8ChartSeries 包含的 categories 有序集合。 */
+  /** 与数据点一一对应的分类轴标签。 */
   categories: Array<string | number | null>;
-  /** Biff8ChartSeries 包含的 values 有序集合。 */
+  /** 按数据点顺序排列的系列数值。 */
   values: Array<number | null>;
-  /** Biff8ChartSeries 包含的 bubbleSizes 有序集合。 */
+  /** 气泡图各数据点对应的气泡大小。 */
   bubbleSizes: Array<number | null>;
-  /** Biff8ChartSeries 的图表数据标签显示配置。 */
+  /** 图表数据标签显示配置。 */
   dataLabels?: OfficeDataLabels;
-  /** Biff8ChartSeries 关联的 stacking 结构；字段形状由 'stacked' | 'percentStacked' 定义；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 数据系列的堆积方式。 */
   stacking?: 'stacked' | 'percentStacked';
-  /** Biff8ChartSeries 的前景或文本颜色，使用标准化 CSS 颜色值；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 前景或文字颜色，使用 CSS 颜色值。 */
   color?: string;
   /** 数据系列的数据点标记样式；未提供时不绘制标记。 */
   marker?: {
-    /** Biff8ChartSeries 的 symbol 文本值。 */
+    /** 数据点标记使用的图形名称。 */
     symbol?: string;
-    /** Biff8ChartSeries 对应二进制记录或数据块的字节长度。 */
+    /** 当前数据占用的空间大小。 */
     size?: number;
   };
-  /** Biff8ChartSeries 的 lineWidth 渲染尺寸，单位为标准化像素；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 数据系列线条宽度，单位为标准化像素。 */
   lineWidth?: number;
 };
 
-/** 描述 XLS/BIFF8 解析使用的标准化模型。 */
+/** 从 BIFF8 图表记录恢复的中间图表模型。 */
 export type Biff8ChartModel = {
-  /** Biff8ChartModel 在所属文档或任务中的唯一标识。 */
+  /** 在所属集合中的唯一标识。 */
   id: string;
-  /** Biff8ChartModel 的 sourceType 文本值。 */
+  /** 来源 BIFF8 图表的主类型名称。 */
   sourceType: string;
-  /** Biff8ChartModel 包含的 groupTypes 有序集合。 */
+  /** 组合图表中各图表组的类型名称。 */
   groupTypes: string[];
   /** 图表是否启用三维显示。 */
   is3d: boolean;
   /** 图表是否包含次坐标轴。 */
   hasSecondaryAxis: boolean;
-  /** Biff8ChartModel 对外展示的标题。 */
+  /** 面向用户展示的标题。 */
   title?: string;
-  /** Biff8ChartModel 包含的 categories 有序集合。 */
+  /** 图表分类轴使用的标签。 */
   categories: string[];
-  /** Biff8ChartModel 包含的 series 有序集合。 */
+  /** 按绘制顺序排列的数据系列。 */
   series: Biff8ChartSeries[];
   /** 是否显示图表图例。 */
   showLegend: boolean;
-  /** Biff8ChartModel 的图例停靠位置；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 图例停靠位置。 */
   legendPosition?: 'top' | 'bottom' | 'left' | 'right';
-  /** Biff8ChartModel 的 gapWidth 图表布局参数，数值语义遵循 Office 图表规范；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 相邻分类组之间的间距百分比。 */
   gapWidth?: number;
-  /** Biff8ChartModel 的 overlap 图表布局参数，数值语义遵循 Office 图表规范；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 同一分类中各数据系列的重叠百分比。 */
   overlap?: number;
-  /** Biff8ChartModel 的 holeSize 图表布局参数，数值语义遵循 Office 图表规范；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 环形图中心孔径占图表直径的百分比。 */
   holeSize?: number;
-  /** Biff8ChartModel 在工作表或画布中的定位锚点。 */
+  /** 对象在工作表或画布中的定位锚点。 */
   anchor: Biff8Anchor;
-  /** Biff8ChartModel 的 previewImageSrc 文本值。 */
+  /** 图表静态预览图片的资源地址。 */
   previewImageSrc?: string;
-  /** Biff8ChartModel 解析时产生但不阻止继续预览的警告集合。 */
+  /** 解析时产生但不阻止继续预览的警告。 */
   warnings: SpreadsheetWarning[];
 };
 
 /** 汇总XLS/BIFF8 解析当前步骤需要共享的上下文。 */
 export type Biff8ChartContext = {
-  /** Biff8ChartContext 对应的 BIFF8 图表子流。 */
+  /** 对应的 BIFF8 图表子流。 */
   substream: Biff8ChartSubstream;
-  /** Biff8ChartContext 当前关联的标准化工作簿。 */
+  /** 当前处理的标准化工作簿。 */
   workbook: Biff8Workbook;
-  /** Biff8ChartContext 关联的 sourceSheet 结构；字段形状由 Biff8Worksheet 定义；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 解析公式引用时使用的来源工作表。 */
   sourceSheet?: Biff8Worksheet;
-  /** Biff8ChartContext 关联的 descriptor 结构；字段形状由 Biff8SheetDescriptor 定义。 */
+  /** 当前项目的轻量描述信息。 */
   descriptor: Biff8SheetDescriptor;
   /** 图表在所属图表集合中的索引。 */
   chartIndex: number;
-  /** Biff8ChartContext 在工作表或画布中的定位锚点；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 对象在工作表或画布中的定位锚点。 */
   anchor?: Biff8Anchor;
-  /** Biff8ChartContext 的 previewImageSrc 文本值。 */
+  /** 图表静态预览图片的资源地址。 */
   previewImageSrc?: string;
 };
 
-/** 描述 AdaptedBiff8Chart 在 XLS/BIFF8 解析中的数据结构。 */
+/** BIFF8 图表转换后的模型和渲染策略。 */
 export type AdaptedBiff8Chart = {
-  /** AdaptedBiff8Chart 当前关联的图表模型。 */
+  /** 转换后的标准图表模型。 */
   chart: OfficeChartModel;
-  /** AdaptedBiff8Chart 关联的 renderMode 结构；字段形状由 'interactive' | 'snapshot' 定义。 */
+  /** 图表最终使用交互渲染还是静态快照。 */
   renderMode: 'interactive' | 'snapshot';
-  /** AdaptedBiff8Chart 的 degradedFrom 文本值。 */
+  /** 触发静态降级的原始图表类型。 */
   degradedFrom?: string;
-  /** AdaptedBiff8Chart 解析时产生但不阻止继续预览的警告集合。 */
+  /** 解析时产生但不阻止继续预览的警告。 */
   warnings: SpreadsheetWarning[];
 };
 
-/** 描述 Biff8ChartCache 在 XLS/BIFF8 解析中的数据结构。 */
+/** 按工作表、行和列索引的图表数据缓存。 */
 export type Biff8ChartCache = Map<
   number,
   Map<number, Map<number, string | number | boolean | null>>
 >;
 
-/** 描述 XLS/BIFF8 解析产生的处理结果。 */
+/** BIFF8 图表子流及其记录集合。 */
 export type ChartStreamReadResult = {
-  /** ChartStreamReadResult 对应的 BIFF8 图表子流。 */
+  /** 对应的 BIFF8 图表子流。 */
   substream: Biff8ChartSubstream;
-  /** ChartStreamReadResult 包含的 records 有序集合。 */
+  /** 当前图表子流解析出的全部 BIFF8 记录。 */
   records: Biff8Record[];
 };

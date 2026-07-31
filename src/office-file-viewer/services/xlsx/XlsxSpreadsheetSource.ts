@@ -19,7 +19,12 @@ import type {
   SpreadsheetRange,
   SpreadsheetSheet,
 } from '../spreadsheet/types';
+import { loadWpsCellImages } from '../spreadsheet/wpsCellImages';
 import { loadXlsxDrawingObjects } from './loadXlsxDrawingObjects';
+import {
+  loadXlsxOlePreviewImages,
+  mergeXlsxPreviewImages,
+} from './loadXlsxOlePreviewImages';
 import { columnIndexToLabel } from './parseXlsx';
 import { parseXlsxSheetStream } from './parseXlsxSheetStream';
 import {
@@ -184,17 +189,36 @@ export class XlsxSpreadsheetSource implements SpreadsheetSource {
             onTile: (tile) => store!.putTile(tile),
           },
         );
-        const objects = await loadXlsxDrawingObjects(
-          this.context,
-          descriptor,
-          parsed.layout,
-          parsed.drawingRelationshipId,
-          taskSignal,
-        );
+        const [objects, oleImages, cellImages] = await Promise.all([
+          loadXlsxDrawingObjects(
+            this.context,
+            descriptor,
+            parsed.layout,
+            parsed.drawingRelationshipId,
+            taskSignal,
+          ),
+          loadXlsxOlePreviewImages(
+            this.context,
+            descriptor,
+            parsed.layout,
+            taskSignal,
+          ),
+          loadWpsCellImages(
+            this.context.reader,
+            this.context.sessionId,
+            parsed.cellImages,
+            parsed.layout,
+            parsed.merges,
+            taskSignal,
+          ),
+        ]);
         store.putStructure({
           ...parsed.layout,
           merges: parsed.merges,
-          images: objects.images,
+          images: [
+            ...mergeXlsxPreviewImages(objects.images, oleImages),
+            ...cellImages,
+          ],
           charts: objects.charts,
         });
         const elapsed = performance.now() - startedAt;
@@ -307,6 +331,7 @@ export class XlsxSpreadsheetSource implements SpreadsheetSource {
         return {
           index: rowIndex,
           height: metric?.height ?? layout.defaultRowHeight,
+          customHeight: metric?.customHeight,
           hidden: metric?.hidden,
           cells: Array.from(
             { length: layout.columnCount },

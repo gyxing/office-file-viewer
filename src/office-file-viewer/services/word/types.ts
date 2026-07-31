@@ -22,20 +22,32 @@ export type WordOutlineTreeNode = WordOutlineItem & {
 
 /** Word 文档提前画像和渐进解析共同维护的轻量统计。 */
 export type WordPerformanceStats = {
+  /** 根据来源分页信息估算的页面数量。 */
   estimatedPageCount?: number;
+  /** 大纲数量。 */
   outlineCount: number;
+  /** 段落数量。 */
   paragraphCount: number;
+  /** 表格 行数量。 */
   tableRowCount: number;
+  /** 图片数量。 */
   imageCount: number;
+  /** 绘图数量。 */
   drawingCount: number;
+  /** 正文包含的字符总数。 */
   textLength: number;
+  /** 压缩包内最大 XML 部件解压后的大小，单位为字节。 */
   largestXmlSize?: number;
+  /** 分页过程是否已经触发慢任务判定。 */
   slowPagination: boolean;
 };
 
 /** 根据统计结果选择大纲与页面渲染模式。 */
 export type WordPerformanceProfile = {
+  /** 用于衡量文档渲染开销的综合权重。 */
   renderWeight: number;
+  /** 大纲 模式。 */
   outlineMode: 'normal' | 'virtual';
+  /** 当前使用的页面加载模式。 */
   pageMode: 'normal' | 'windowed';
 };

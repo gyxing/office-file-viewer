@@ -1,7 +1,6 @@
 import { PptParseError } from '../errors';
 import type { PptRecord } from '../types';
 
-/** 执行 `assertRange` 封装的PPT 二进制解析处理步骤。 */
 function assertRange(
   offset: number,
   length: number,

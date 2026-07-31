@@ -4,15 +4,15 @@ import type { XlsxSheet } from '../../services/xlsx/types';
 import { OfficeChartView } from '../../shared/chart/OfficeChartView';
 import { OfficeEmpty } from '../../shell/Empty';
 
-/** 定义 XlsxChartSheet 组件可接收的属性。 */
+/** Excel图表工作表组件属性。 */
 type XlsxChartSheetProps = {
-  /** XlsxChartSheetProps 当前关联的工作表。 */
+  /** 当前处理的工作表。 */
   sheet: XlsxSheet;
   /** 当前预览缩放比例。 */
   zoom: number;
 };
 
-/** 渲染 XlsxChartSheetComponent 组件。 */
+/** 渲染Excel图表工作表。 */
 function XlsxChartSheetComponent({ sheet, zoom }: XlsxChartSheetProps) {
   const chart = sheet.charts[0];
   if (!chart) return <OfficeEmpty kind="xls" />;

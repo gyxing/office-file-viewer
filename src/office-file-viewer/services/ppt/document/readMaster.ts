@@ -5,7 +5,6 @@ import { parsePptDrawing } from '../drawing';
 import type { PptEditChain, PptMasterModel, PptParseContext } from '../types';
 import type { PptMasterDescriptor } from './readSlideLists';
 
-/** 读取 `readRgbColor` 所需的源数据，供PPT 二进制解析使用。 */
 function readRgbColor(bytes: Uint8Array, offset: number) {
   return `#${[bytes[offset + 2], bytes[offset + 1], bytes[offset]]
     .map((value) => value.toString(16).padStart(2, '0'))

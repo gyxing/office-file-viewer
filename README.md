@@ -165,20 +165,19 @@ Consider the following when using remote files:
 
 ## Component props
 
-| Prop                 | Type                                             | Default        | Description                                                             |
-| -------------------- | ------------------------------------------------ | -------------- | ----------------------------------------------------------------------- |
-| `locale`             | `'zh-CN' \| 'en-US'`                             | `'zh-CN'`      | Viewer UI language; Ant Design locale still comes from `ConfigProvider` |
-| `uri`                | `OfficeFileViewerUri`                            | -              | File source to preload; displays the file picker when omitted           |
-| `defaultFileName`    | `string`                                         | Locale message | Name displayed when no file is loaded                                   |
-| `defaultPreviewKind` | `PreviewKind`                                    | `'pptx'`       | Empty-state format used when no file is loaded                          |
-| `defaultZoom`        | `number`                                         | `100`          | Initial zoom percentage, clamped to the range from `25` to `300`        |
-| `className`          | `string`                                         | -              | Custom class name for the root container                                |
-| `height`             | `CSSProperties['height']`                        | `100%`         | Viewer height; follows the parent container when omitted                |
-| `style`              | `CSSProperties`                                  | -              | Custom styles for the root container                                    |
-| `parseOptions`       | `OfficeParseOptions`                             | `{}`           | Worker mode and custom Worker factory                                   |
-| `onParseProgress`    | `(progress: ParseProgress) => void`              | -              | Called when the parsing stage or progress changes                       |
-| `onFileParsed`       | `(parsed: ParsedOfficeFile, file: File) => void` | -              | Called once after full parsing; does not receive progressive internals  |
-| `onError`            | `(error: Error, file?: File) => void`            | -              | Called when file downloading, parsing, or fullscreen operation fails    |
+| Prop              | Type                                             | Default        | Description                                                             |
+| ----------------- | ------------------------------------------------ | -------------- | ----------------------------------------------------------------------- |
+| `locale`          | `'zh-CN' \| 'en-US'`                             | `'zh-CN'`      | Viewer UI language; Ant Design locale still comes from `ConfigProvider` |
+| `uri`             | `OfficeFileViewerUri`                            | -              | File source to preload; displays the file picker when omitted           |
+| `defaultFileName` | `string`                                         | Locale message | Name displayed when no file is loaded                                   |
+| `defaultZoom`     | `number`                                         | `100`          | Initial zoom percentage, clamped to the range from `25` to `300`        |
+| `className`       | `string`                                         | -              | Custom class name for the root container                                |
+| `height`          | `CSSProperties['height']`                        | `100%`         | Viewer height; follows the parent container when omitted                |
+| `style`           | `CSSProperties`                                  | -              | Custom styles for the root container                                    |
+| `parseOptions`    | `OfficeParseOptions`                             | `{}`           | Worker mode and custom Worker factory                                   |
+| `onParseProgress` | `(progress: ParseProgress) => void`              | -              | Called when the parsing stage or progress changes                       |
+| `onFileParsed`    | `(parsed: ParsedOfficeFile, file: File) => void` | -              | Called once after full parsing; does not receive progressive internals  |
+| `onError`         | `(error: Error, file?: File) => void`            | -              | Called when file downloading, parsing, or fullscreen operation fails    |
 
 The available `PreviewKind` values are `'docx' | 'doc' | 'xlsx' | 'xls' | 'pptx' | 'ppt'`. WPS files reuse the `'doc'` preview model.
 

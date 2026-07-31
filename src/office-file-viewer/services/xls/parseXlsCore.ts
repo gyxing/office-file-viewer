@@ -23,15 +23,15 @@ import type { Biff8Workbook } from './types';
 export type XlsCoreContext = {
   /** 在长任务检查点报告进度并响应取消信号。 */
   checkpoint(progress?: ParseProgress): Promise<void>;
-  /** XlsCoreContext 处理完成后生成的输出结果。 */
+  /** 处理完成后生成的输出结果。 */
   output?: XlsCoreOutput;
 };
 
-/** 描述 XlsCoreOutput 在 XLS/BIFF8 解析中的数据结构。 */
+/** XLS 核心解析向调用方流式提交资源和工作表的接口。 */
 export type XlsCoreOutput = {
   /** 接收解析器产生的可移植资源分块。 */
   resource(resource: PortableResource): Promise<void>;
-  /** XlsCoreOutput 当前关联的工作表。 */
+  /** 接收解析产生的单张工作表。 */
   sheet(
     index: number,
     revision: number,
@@ -39,15 +39,14 @@ export type XlsCoreOutput = {
   ): Promise<void>;
 };
 
-/** 描述 XLS/BIFF8 解析产生的处理结果。 */
+/** XLS 核心解析生成的工作簿和可移植资源。 */
 export type XlsCoreResult = {
-  /** XlsCoreResult 当前关联的标准化工作簿。 */
+  /** 当前处理的标准化工作簿。 */
   workbook: SpreadsheetWorkbook;
-  /** XlsCoreResult 持有的图片、字体或对象 URL 等资源；文档释放时需同步清理。 */
+  /** 持有的图片、字体或对象 URL 等资源；文档释放时需同步清理。 */
   resources: PortableResource[];
 };
 
-/** 把输入映射为 `mapCfbError` 返回的结构。 */
 function mapCfbError(error: CfbParseError) {
   const corruptedChain =
     error.code === 'CHAIN_CYCLE' ||
@@ -59,7 +58,6 @@ function mapCfbError(error: CfbParseError) {
   );
 }
 
-/** 判断 `hasVbaStorage` 对应的条件是否成立。 */
 function hasVbaStorage(
   entries: Awaited<ReturnType<typeof parseCfb>>['entries'],
 ) {
@@ -74,7 +72,6 @@ function hasVbaStorage(
   });
 }
 
-/** 判断 `hasSheetEnhancements` 对应的条件是否成立。 */
 function hasSheetEnhancements(
   initial: SpreadsheetWorkbook['sheets'][number] | undefined,
   current: SpreadsheetWorkbook['sheets'][number],

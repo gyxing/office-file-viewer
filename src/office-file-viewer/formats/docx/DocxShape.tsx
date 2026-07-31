@@ -5,27 +5,28 @@ import type { DocxInline } from '../../services/docx/types';
 import { DocxShapeItemRenderer } from './DocxShapeItemRenderer';
 import { calculatePositionStyle } from './positionUtils';
 
-/** 定义 DocxShape 组件可接收的属性。 */
+/** DOCX形状组件属性。 */
 type DocxShapeProps = {
-  /** DocxShapeProps 当前负责渲染的行内内容模型。 */
+  /** 当前负责渲染的行内内容模型。 */
   inline: Extract<
     DocxInline,
     {
-      /** 用于区分 DocxShapeProps 不同结构分支的类型标识。 */ type: 'shape';
+      /** 用于区分联合类型分支的类型标识。 */
+      type: 'shape';
     }
   >;
 };
 
 // 自定义变量把解析后的形状尺寸交给 Less，保持定位样式的类型约束。
-/** 描述 DOCX 渲染使用的样式参数。 */
+/** DOCX 形状渲染样式。 */
 type DocxShapeStyle = CSSProperties & {
-  /** DocxShapeStyle 的 --office-file-docx-shape-width 文本值。 */
+  /** 传递给样式表的形状宽度 CSS 自定义属性。 */
   '--office-file-docx-shape-width': string;
-  /** DocxShapeStyle 的 --office-file-docx-shape-height 文本值。 */
+  /** 传递给样式表的形状高度 CSS 自定义属性。 */
   '--office-file-docx-shape-height': string;
 };
 
-/** 渲染 DocxShapeComponent 组件。 */
+/** 渲染DOCX形状。 */
 function DocxShapeComponent({ inline }: DocxShapeProps) {
   const shape = inline.shape;
   const positionStyle = calculatePositionStyle(shape.position);

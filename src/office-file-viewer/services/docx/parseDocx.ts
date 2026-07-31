@@ -40,6 +40,7 @@ import {
 } from './parseDocxNumbering';
 import type {
   DocxBlock,
+  DocxCharacterSpacingControl,
   DocxChartBlock,
   DocxDocument,
   DocxImage,
@@ -58,11 +59,11 @@ import type {
   DocxTextStyle,
 } from './types';
 
-/** 枚举DOCX 解析可能处于的状态。 */
+/** 枚举 DOCX 解析可能处于的状态。 */
 export type DocxPackageState = {
-  /** DocxPackageState 按压缩包路径索引的文件条目映射。 */
+  /** 压缩包或复合文档包含的条目。 */
   entries: OfficeEntryMap;
-  /** DocxPackageState 解析得到的 OOXML 关系映射。 */
+  /** 按关系标识索引的 OOXML 关系。 */
   relationships: Record<string, Record<string, OfficeRelationship>>;
   /** 按 OOXML 包内路径索引的媒体资源映射。 */
   mediaByPath: Record<string, OfficeResourceSource>;
@@ -70,35 +71,38 @@ export type DocxPackageState = {
   mediaByName: Record<string, OfficeResourceSource>;
 };
 
-/** 汇总DOCX 解析当前步骤需要共享的上下文。 */
+/** 汇总 DOCX 解析各步骤共享的上下文。 */
 export type DocxParseContext = {
-  /** ParseContext 关联的 packageState 结构；字段形状由 DocxPackageState 定义。 */
+  /** 解析各 DOCX 部件时共享的包状态。 */
   packageState: DocxPackageState;
-  /** ParseContext 按业务键索引的 documentRels 映射。 */
+  /** 按关系标识索引的 DOCX 主文档关系。 */
   documentRels: Record<string, OfficeRelationship>;
-  /** ParseContext 使用的主题颜色和字体配置。 */
+  /** 文档使用的主题颜色和字体配置。 */
   theme: OfficeTheme;
   /** 文档网格推导出的默认正文行高，单位为标准化渲染像素。 */
   defaultLineHeight?: number;
   /** 文档网格单行的实际高度，供表格等局部排版遵循吸附规则。 */
   documentGridLineHeight?: number;
+  /** 源文档声明的东亚标点字符间距压缩方式。 */
+  characterSpacingControl?: DocxCharacterSpacingControl;
   /** DOCX 自动编号定义及当前解析计数状态。 */
   numbering: DocxNumberingCatalog;
-  /** ParseContext 关联的 styles 结构；字段形状由 DocxStyleCatalog 定义。 */
+  /** 按样式标识索引的 DOCX 样式目录。 */
   styles: DocxStyleCatalog;
-  /** ParseContext 包含的 images 有序集合。 */
+  /** 解析过程中已收集的图片资源。 */
   images: DocxImage[];
-  /** ParseContext 在所属集合中的位置索引。 */
+  /** 下一张图片使用的零基索引。 */
   imageIndex: number;
   /** 图表在所属图表集合中的索引。 */
   chartIndex: number;
-  /** ParseContext 在所属集合中的位置索引。 */
+  /** 下一个形状使用的零基索引。 */
   shapeIndex: number;
 };
 
+/** DOCX 主解析流程共享的样式、关系和资源上下文。 */
 type ParseContext = DocxParseContext;
 
-/** 定义DOCX 解析的可选配置。 */
+/** 读取 DOCX 容器节点下块级内容时使用的选项。 */
 type ReadBlockChildrenOptions = {
   /** 是否位于形状内部；用于选择局部坐标和排版规则。 */
   insideShape?: boolean;
@@ -108,13 +112,13 @@ type ReadBlockChildrenOptions = {
   insidePageRegion?: boolean;
 };
 
-/** 描述 DocxStyleDefinition 在 DOCX 解析中的数据结构。 */
+/** DOCX 单个段落或字符样式的继承和排版属性。 */
 type DocxStyleDefinition = {
-  /** 标识 DocxStyleDefinition 对应的 Office 文件或数据种类。 */
+  /** 样式适用的对象类型。 */
   kind: 'paragraph' | 'character' | 'table';
   /** 源 styles.xml 中声明的样式名称。 */
   name?: string;
-  /** DocxStyleDefinition 的 basedOn 文本值。 */
+  /** 当前样式继承的父样式标识。 */
   basedOn?: string;
   /** 样式直接声明的大纲级别，使用从 0 开始的内部表示。 */
   outlineLevel?: number;
@@ -124,24 +128,24 @@ type DocxStyleDefinition = {
   tabStops?: DocxTabStop[];
   /** 样式是否要求文字吸附文档网格。 */
   snapToGrid?: boolean;
-  /** DocxStyleDefinition 使用的渲染或文本样式。 */
+  /** 当前内容使用的渲染样式。 */
   style: DocxTextStyle;
 };
 
-/** 描述 DocxStyleCatalog 在 DOCX 解析中的数据结构。 */
+/** 按样式标识索引的 DOCX 样式目录。 */
 type DocxStyleCatalog = {
-  /** DocxStyleCatalog 的默认段落、文本与样式标识配置。 */
+  /** 默认段落、文本与样式标识配置。 */
   defaults: {
-    /** DocxStyleCatalog 关联的 paragraph 结构；字段形状由 DocxTextStyle 定义；未提供时使用来源格式或渲染器的默认行为。 */
+    /** 默认段落样式。 */
     paragraph?: DocxTextStyle;
-    /** DocxStyleCatalog 关联的 run 结构；字段形状由 DocxTextStyle 定义；未提供时使用来源格式或渲染器的默认行为。 */
+    /** 默认文字样式。 */
     run?: DocxTextStyle;
-    /** DocxStyleCatalog 的 paragraphStyleId 文本值。 */
+    /** 默认段落样式标识。 */
     paragraphStyleId?: string;
-    /** DocxStyleCatalog 的 tableStyleId 文本值。 */
+    /** 默认表格样式标识。 */
     tableStyleId?: string;
   };
-  /** DocxStyleCatalog 按业务键索引的 styles 映射。 */
+  /** 按业务键索引的 映射。 */
   styles: Record<string, DocxStyleDefinition>;
   /** 按样式缓存继承后的大纲级别，null 表示没有大纲语义。 */
   outlineLevelCache: Map<string, number | null>;
@@ -149,6 +153,7 @@ type DocxStyleCatalog = {
   tocStyleCache: Map<string, boolean>;
 };
 
+/** DOCX 缺少页面设置时使用的默认页面尺寸和边距。 */
 const DEFAULT_PAGE: DocxPage = {
   width: 794,
   minHeight: 1123,
@@ -159,10 +164,13 @@ const DEFAULT_PAGE: DocxPage = {
 };
 
 // Word 的正文流表格会在文档网格边界后保留约 6pt，浏览器表格需显式补回。
+/** DOCX 流式表格相对正文顶部的视觉修正量。 */
 const DOCX_FLOW_TABLE_TOP_OFFSET = 8;
 // 百分比表宽不包含首尾默认单元格边距，Word 会把两侧各约 7px 绘制到正文边界外。
+/** DOCX 表格缺少边缘设置时使用的默认修正量。 */
 const DOCX_DEFAULT_TABLE_EDGE_OFFSET = 7;
 
+/** DOCX 缺少字体信息时使用的默认字体回退栈。 */
 const DEFAULT_DOCX_FONT_FAMILY =
   '"Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif';
 
@@ -209,34 +217,29 @@ export function buildDocxPackageState(
   };
 }
 
-/** 执行 `twipToPx` 封装的 DOCX 解析处理步骤。 */
 function twipToPx(value?: string | number) {
   const numberValue = Number(value);
   if (!Number.isFinite(numberValue)) return undefined;
   return (numberValue / 1440) * 96;
 }
 
-/** 执行 `pointToPx` 封装的 DOCX 解析处理步骤。 */
 function pointToPx(value?: string | number) {
   const numberValue = Number(value);
   if (!Number.isFinite(numberValue)) return undefined;
   return numberValue * (96 / 72);
 }
 
-/** 执行 `positiveTwipToPx` 封装的 DOCX 解析处理步骤。 */
 function positiveTwipToPx(value?: string | number) {
   const result = twipToPx(value);
   return result !== undefined && result >= 0 ? result : undefined;
 }
 
-/** 执行 `eighthPointToPx` 封装的 DOCX 解析处理步骤。 */
 function eighthPointToPx(value?: string | number) {
   const numberValue = Number(value);
   if (!Number.isFinite(numberValue) || numberValue <= 0) return undefined;
   return (numberValue / 8) * (96 / 72);
 }
 
-/** 执行 `vmlUnitToPx` 封装的 DOCX 解析处理步骤。 */
 function vmlUnitToPx(value?: string | number) {
   const raw = String(value ?? '').trim();
   if (!raw) return undefined;
@@ -253,7 +256,6 @@ function vmlUnitToPx(value?: string | number) {
   return emuToPx(numberValue);
 }
 
-/** 读取 `readCssDeclaration` 所需的源数据，供 DOCX 解析使用。 */
 function readCssDeclaration(style: string | undefined, name: string) {
   if (!style) return undefined;
   const match = style.match(
@@ -262,7 +264,6 @@ function readCssDeclaration(style: string | undefined, name: string) {
   return match?.[1]?.trim();
 }
 
-/** 读取 `readCssSize` 所需的源数据，供 DOCX 解析使用。 */
 function readCssSize(style: string | undefined, name: string, scale?: number) {
   const raw = readCssDeclaration(style, name);
   if (!raw) return undefined;
@@ -272,12 +273,10 @@ function readCssSize(style: string | undefined, name: string, scale?: number) {
   return vmlUnitToPx(raw);
 }
 
-/** 读取 `readCssPosition` 所需的源数据，供 DOCX 解析使用。 */
 function readCssPosition(style: string | undefined, name: 'left' | 'top') {
   return readCssSize(style, `margin-${name}`) ?? readCssSize(style, name);
 }
 
-/** 读取 `readDocxLineHeight` 所需的源数据，供 DOCX 解析使用。 */
 function readDocxLineHeight(spacingNode: Element | null | undefined) {
   const value = Number(
     attr(spacingNode, 'w:line') ?? attr(spacingNode, 'line'),
@@ -290,14 +289,12 @@ function readDocxLineHeight(spacingNode: Element | null | undefined) {
   return value / 240;
 }
 
-/** 执行 `halfPointToPx` 封装的 DOCX 解析处理步骤。 */
 function halfPointToPx(value?: string) {
   const numberValue = Number(value);
   if (!Number.isFinite(numberValue)) return undefined;
   return (numberValue / 2) * (96 / 72);
 }
 
-/** 解析 `parseHexColor` 接收的数据，并返回 DOCX 解析结果。 */
 function parseHexColor(value?: string) {
   if (!value || value === 'auto' || value === 'none') return undefined;
   // 提取颜色值，忽略额外的信息（如 "#41719C [3204]"）
@@ -312,11 +309,11 @@ function normalizeCssColor(value?: string) {
   return value.startsWith('#') ? value : parseHexColor(value);
 }
 
-/** 读取 `readVal` 所需的源数据，供 DOCX 解析使用。 */
 function readVal(node: Element | null | undefined) {
   return attr(node, 'w:val') ?? attr(node, 'val');
 }
 
+/** Word 高亮颜色名称到 CSS 颜色值的映射。 */
 const WORD_HIGHLIGHT_COLORS: Record<string, string> = {
   black: '#000000',
   blue: '#0000ff',
@@ -336,12 +333,10 @@ const WORD_HIGHLIGHT_COLORS: Record<string, string> = {
   lightGray: '#c0c0c0',
 };
 
-/** 执行 `clamp255` 封装的 DOCX 解析处理步骤。 */
 function clamp255(value: number) {
   return Math.max(0, Math.min(255, Math.round(value)));
 }
 
-/** 执行 `tintHexColor` 封装的 DOCX 解析处理步骤。 */
 function tintHexColor(color: string | undefined, tint?: string) {
   if (!color || !tint) return color;
   const normalized = color.replace('#', '');
@@ -362,7 +357,6 @@ function tintHexColor(color: string | undefined, tint?: string) {
     .join('')}`;
 }
 
-/** 执行 `shadeHexColor` 封装的 DOCX 解析处理步骤。 */
 function shadeHexColor(color: string | undefined, shade?: string) {
   if (!color || !shade) return color;
   const normalized = color.replace('#', '');
@@ -399,21 +393,18 @@ function resolveThemeFillColor(
   );
 }
 
-/** 读取 `readShading` 所需的源数据，供 DOCX 解析使用。 */
 function readShading(node: Element | null | undefined, theme: OfficeTheme) {
   if (!node) return undefined;
   const directFill = parseHexColor(attr(node, 'w:fill') ?? attr(node, 'fill'));
   return directFill ?? resolveThemeFillColor(node, theme);
 }
 
-/** 读取 `readHighlight` 所需的源数据，供 DOCX 解析使用。 */
 function readHighlight(node: Element | null | undefined) {
   const value = readVal(node);
   if (!value || value === 'none') return undefined;
   return WORD_HIGHLIGHT_COLORS[value] ?? parseHexColor(value);
 }
 
-/** 读取 `readBorder` 所需的源数据，供 DOCX 解析使用。 */
 function readBorder(node: Element | null | undefined) {
   const value = readVal(node);
   if (!node || !value || value === 'none' || value === 'nil') return undefined;
@@ -429,7 +420,6 @@ function readBorder(node: Element | null | undefined) {
   return `${width}px ${style} ${color}`;
 }
 
-/** 读取 `readParagraphBorders` 所需的源数据，供 DOCX 解析使用。 */
 function readParagraphBorders(pPr: Element | null | undefined) {
   const pBdr = childByLocalName(pPr, 'pBdr');
   return {
@@ -456,7 +446,6 @@ function readParagraphBorders(pPr: Element | null | undefined) {
   };
 }
 
-/** 读取 `readParagraphPropertyStyle` 所需的源数据，供 DOCX 解析使用。 */
 function readParagraphPropertyStyle(
   pPr: Element | null | undefined,
   theme: OfficeTheme,
@@ -523,7 +512,6 @@ function readParagraphTabStops(
   return stops.length ? stops : undefined;
 }
 
-/** 读取 `readOnOff` 所需的源数据，供 DOCX 解析使用。 */
 function readOnOff(node: Element | null | undefined) {
   if (!node) return undefined;
   const value = attr(node, 'w:val') ?? attr(node, 'val');
@@ -531,12 +519,10 @@ function readOnOff(node: Element | null | undefined) {
   return value !== '0' && value !== 'false' && value !== 'off';
 }
 
-/** 执行 `firstDefined` 封装的 DOCX 解析处理步骤。 */
 function firstDefined<T>(...values: Array<T | undefined>) {
   return values.find((value) => value !== undefined);
 }
 
-/** 读取 `readThemeFont` 所需的源数据，供 DOCX 解析使用。 */
 function readThemeFont(rFonts: Element | null | undefined, theme: OfficeTheme) {
   const themeFont =
     attr(rFonts, 'w:eastAsiaTheme') ??
@@ -553,7 +539,6 @@ function readThemeFont(rFonts: Element | null | undefined, theme: OfficeTheme) {
     : theme.fontScheme?.minorFont;
 }
 
-/** 执行 `quoteFontFamily` 封装的 DOCX 解析处理步骤。 */
 function quoteFontFamily(value?: string) {
   if (!value) return undefined;
   return value
@@ -566,7 +551,6 @@ function quoteFontFamily(value?: string) {
     .join(', ');
 }
 
-/** 读取 `readFontFamily` 所需的源数据，供 DOCX 解析使用。 */
 function readFontFamily(
   rPr: Element | null | undefined,
   theme: OfficeTheme,
@@ -590,7 +574,6 @@ function readFontFamily(
   );
 }
 
-/** 读取 `readDocxStyles` 所需的源数据，供 DOCX 解析使用。 */
 function readDocxStyles(
   entries: OfficeEntryMap,
   theme: OfficeTheme,
@@ -683,7 +666,6 @@ function readDocxStyles(
   };
 }
 
-/** 读取 `readUnderline` 所需的源数据，供 DOCX 解析使用。 */
 function readUnderline(rPr: Element | null | undefined) {
   const underline = childByLocalName(rPr, 'u');
   if (!underline) return undefined;
@@ -691,7 +673,6 @@ function readUnderline(rPr: Element | null | undefined) {
   return value !== 'none' && value !== '0' && value !== 'false';
 }
 
-/** 读取 `readTextStyle` 所需的源数据，供 DOCX 解析使用。 */
 function readTextStyle(
   rPr: Element | null | undefined,
   theme: OfficeTheme,
@@ -965,7 +946,6 @@ function resolveRunStyle(
   );
 }
 
-/** 执行 `inlineInheritedStyle` 封装的 DOCX 解析处理步骤。 */
 function inlineInheritedStyle(
   style: DocxTextStyle | undefined,
 ): DocxTextStyle | undefined {
@@ -992,7 +972,6 @@ function inlineInheritedStyle(
   return Object.keys(inlineStyle).length ? inlineStyle : undefined;
 }
 
-/** 把输入映射为 `mapAlignment` 返回的结构。 */
 function mapAlignment(value?: string): DocxTextStyle['align'] | undefined {
   if (
     value === 'left' ||
@@ -1028,7 +1007,6 @@ function resolveXmlTarget(
   return packageState.entries.get(normalized) ? normalized : target;
 }
 
-/** 读取 `readDrawingAnchorPosition` 所需的源数据，供 DOCX 解析使用。 */
 function readDrawingAnchorPosition(node: Element) {
   const anchor = descendantByLocalName(node, 'anchor');
   if (!anchor) return undefined;
@@ -1068,7 +1046,6 @@ function readDrawingAnchorPosition(node: Element) {
   };
 }
 
-/** 解析 `parseChartElement` 接收的数据，并返回 DOCX 解析结果。 */
 function parseChartElement(
   node: Element,
   context: ParseContext,
@@ -1121,7 +1098,6 @@ function resolveWebExtensionSnapshot(
   return resolveMediaRef(target, context.packageState);
 }
 
-/** 解析 `parseWpsWebExtensionChart` 接收的数据，并返回 DOCX 解析结果。 */
 function parseWpsWebExtensionChart(
   node: Element,
   context: ParseContext,
@@ -1171,7 +1147,6 @@ function parseWpsWebExtensionChart(
   };
 }
 
-/** 读取 `readTopLevelDrawingGraphicData` 所需的源数据，供 DOCX 解析使用。 */
 function readTopLevelDrawingGraphicData(drawingNode: Element) {
   const drawingContainer =
     childByLocalName(drawingNode, 'anchor') ??
@@ -1182,7 +1157,6 @@ function readTopLevelDrawingGraphicData(drawingNode: Element) {
   );
 }
 
-/** 判断 `isDirectDrawingPicture` 对应的条件是否成立。 */
 function isDirectDrawingPicture(drawingNode: Element) {
   const graphicData = readTopLevelDrawingGraphicData(drawingNode);
   return (
@@ -1192,7 +1166,6 @@ function isDirectDrawingPicture(drawingNode: Element) {
   );
 }
 
-/** 解析 `parseDrawingImage` 接收的数据，并返回 DOCX 解析结果。 */
 function parseDrawingImage(
   drawingNode: Element,
   context: ParseContext,
@@ -1237,14 +1210,12 @@ function parseDrawingImage(
   return image;
 }
 
-/** 执行 `untrackParsedImage` 封装的 DOCX 解析处理步骤。 */
 function untrackParsedImage(context: ParseContext, image: DocxImage) {
   if (context.images[context.images.length - 1]?.id !== image.id) return;
   context.images.pop();
   context.imageIndex = Math.max(0, context.imageIndex - 1);
 }
 
-/** 判断 `isLikelyPageSizedNestedImage` 对应的条件是否成立。 */
 function isLikelyPageSizedNestedImage(image: DocxImage) {
   return (
     image.width >= DEFAULT_PAGE.width * 0.75 &&
@@ -1252,7 +1223,6 @@ function isLikelyPageSizedNestedImage(image: DocxImage) {
   );
 }
 
-/** 解析 `parseAlternateContentImage` 接收的数据，并返回 DOCX 解析结果。 */
 function parseAlternateContentImage(
   drawingNode: Element,
   context: ParseContext,
@@ -1268,7 +1238,6 @@ function parseAlternateContentImage(
   return undefined;
 }
 
-/** 读取 `readDrawingImageTransform` 所需的源数据，供 DOCX 解析使用。 */
 function readDrawingImageTransform(
   drawingNode: Element,
 ): Pick<DocxPosition, 'flipH' | 'flipV'> {
@@ -1321,7 +1290,6 @@ function applyDrawingColorTransforms(
     .join('')}`;
 }
 
-/** 读取 `readDrawingColor` 所需的源数据，供 DOCX 解析使用。 */
 function readDrawingColor(
   node: Element | null | undefined,
   theme: OfficeTheme,
@@ -1355,12 +1323,10 @@ function readDrawingColor(
   );
 }
 
-/** 读取 `readDrawingNoFill` 所需的源数据，供 DOCX 解析使用。 */
 function readDrawingNoFill(node: Element | null | undefined) {
   return Boolean(childByLocalName(node, 'noFill'));
 }
 
-/** 读取 `readDrawingTransparentFill` 所需的源数据，供 DOCX 解析使用。 */
 function readDrawingTransparentFill(node: Element | null | undefined) {
   const solidFill =
     childByLocalName(node, 'solidFill') ??
@@ -1376,7 +1342,6 @@ function readDrawingTransparentFill(node: Element | null | undefined) {
   );
 }
 
-/** 解析 `parseDrawingLineStyle` 接收的数据，并返回 DOCX 解析结果。 */
 function parseDrawingLineStyle(
   spPr: Element | null | undefined,
   theme: OfficeTheme,
@@ -1403,7 +1368,6 @@ function parseDrawingLineStyle(
   };
 }
 
-/** 解析 `parseDrawingFillColor` 接收的数据，并返回 DOCX 解析结果。 */
 function parseDrawingFillColor(
   spPr: Element | null | undefined,
   theme: OfficeTheme,
@@ -1412,7 +1376,6 @@ function parseDrawingFillColor(
   return readDrawingColor(spPr, theme);
 }
 
-/** 解析 `parseDrawingFillImage` 接收的数据，并返回 DOCX 解析结果。 */
 function parseDrawingFillImage(
   spPr: Element | null | undefined,
   context: ParseContext,
@@ -1424,13 +1387,12 @@ function parseDrawingFillImage(
   return resolveMediaRef(target, context.packageState);
 }
 
-/** 解析 `parseDrawingXfrm` 接收的数据，并返回 DOCX 解析结果。 */
 function parseDrawingXfrm(
   node: Element | null | undefined,
   scale?: {
-    /** 当前内联结构 的 x 尺寸或坐标，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+    /** 水平方向的坐标或缩放参数。 */
     x?: number;
-    /** 当前内联结构 的 y 尺寸或坐标，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+    /** 垂直方向的坐标或缩放参数。 */
     y?: number;
   },
 ) {
@@ -1449,7 +1411,6 @@ function parseDrawingXfrm(
   };
 }
 
-/** 读取 `readWpgScale` 所需的源数据，供 DOCX 解析使用。 */
 function readWpgScale(groupNode: Element, width: number, height: number) {
   const xfrm = descendantByLocalName(
     childByLocalName(groupNode, 'grpSpPr'),
@@ -1473,7 +1434,6 @@ function readWpgScale(groupNode: Element, width: number, height: number) {
   };
 }
 
-/** 读取 `readDrawingShapeKind` 所需的源数据，供 DOCX 解析使用。 */
 function readDrawingShapeKind(
   spPr: Element | null | undefined,
 ): DocxShapeItem['kind'] {
@@ -1492,18 +1452,16 @@ function readDrawingShapeKind(
   return 'rect';
 }
 
-/** 读取 `readDrawingShapePreset` 所需的源数据，供 DOCX 解析使用。 */
 function readDrawingShapePreset(spPr: Element | null | undefined) {
   return attr(childByLocalName(spPr, 'prstGeom'), 'prst');
 }
 
-/** 读取 `readDrawingShapeBorderRadius` 所需的源数据，供 DOCX 解析使用。 */
 function readDrawingShapeBorderRadius(
   spPr: Element | null | undefined,
   size: {
-    /** 当前内联结构 的 width 尺寸或坐标，单位为标准化渲染像素。 */
+    /** 对象宽度，单位为标准化渲染像素。 */
     width: number;
-    /** 当前内联结构 的 height 尺寸或坐标，单位为标准化渲染像素。 */
+    /** 对象高度，单位为标准化渲染像素。 */
     height: number;
   },
 ) {
@@ -1512,7 +1470,6 @@ function readDrawingShapeBorderRadius(
   return Math.min(32, Math.max(8, Math.min(size.width, size.height) * 0.04));
 }
 
-/** 读取 `readDrawingTextAnchor` 所需的源数据，供 DOCX 解析使用。 */
 function readDrawingTextAnchor(
   shapeNode: Element,
 ): DocxShapeItem['textVerticalAlign'] {
@@ -1522,7 +1479,6 @@ function readDrawingTextAnchor(
   return 'top';
 }
 
-/** 读取 `readDrawingTextBehavior` 所需的源数据，供 DOCX 解析使用。 */
 function readDrawingTextBehavior(shapeNode: Element) {
   const bodyPr = childByLocalName(shapeNode, 'bodyPr');
   const wrap = attr(bodyPr, 'wrap');
@@ -1533,7 +1489,6 @@ function readDrawingTextBehavior(shapeNode: Element) {
   };
 }
 
-/** 读取 `readDrawingBodyPadding` 所需的源数据，供 DOCX 解析使用。 */
 function readDrawingBodyPadding(shapeNode: Element) {
   const bodyPr = childByLocalName(shapeNode, 'bodyPr');
   return {
@@ -1544,7 +1499,6 @@ function readDrawingBodyPadding(shapeNode: Element) {
   };
 }
 
-/** 将输入转换为 `convertDrawingCustomGeometry` 返回的格式。 */
 function convertDrawingCustomGeometry(
   spPr: Element | null | undefined,
   width: number,
@@ -1598,7 +1552,6 @@ function formatPathNumber(value: number) {
   return Number(value.toFixed(3));
 }
 
-/** 将输入转换为 `convertDrawingPresetGeometry` 返回的格式。 */
 function convertDrawingPresetGeometry(
   spPr: Element | null | undefined,
   width: number,
@@ -1672,7 +1625,6 @@ function convertDrawingPresetGeometry(
   return undefined;
 }
 
-/** 执行 `adjustInCellPresetShapePosition` 封装的 DOCX 解析处理步骤。 */
 function adjustInCellPresetShapePosition(
   node: Element,
   shapeNode: Element,
@@ -1697,21 +1649,20 @@ function adjustInCellPresetShapePosition(
   };
 }
 
-/** 解析 `parseWpgShapeItem` 接收的数据，并返回 DOCX 解析结果。 */
 function parseWpgShapeItem(
   shapeNode: Element,
   index: number,
   context: ParseContext,
   scale: {
-    /** 当前内联结构 的 x 尺寸或坐标，单位为标准化渲染像素。 */
+    /** 水平方向的坐标或缩放参数。 */
     x: number;
-    /** 当前内联结构 的 y 尺寸或坐标，单位为标准化渲染像素。 */
+    /** 垂直方向的坐标或缩放参数。 */
     y: number;
   },
   origin?: {
-    /** 当前内联结构 的 x 尺寸或坐标，单位为标准化渲染像素。 */
+    /** 水平方向的坐标或缩放参数。 */
     x: number;
-    /** 当前内联结构 的 y 尺寸或坐标，单位为标准化渲染像素。 */
+    /** 垂直方向的坐标或缩放参数。 */
     y: number;
   },
 ): DocxShapeItem | undefined {
@@ -1768,21 +1719,20 @@ function parseWpgShapeItem(
   };
 }
 
-/** 解析 `parseWpgPictureItem` 接收的数据，并返回 DOCX 解析结果。 */
 function parseWpgPictureItem(
   pictureNode: Element,
   index: number,
   context: ParseContext,
   scale: {
-    /** 当前内联结构 的 x 尺寸或坐标，单位为标准化渲染像素。 */
+    /** 水平方向的坐标或缩放参数。 */
     x: number;
-    /** 当前内联结构 的 y 尺寸或坐标，单位为标准化渲染像素。 */
+    /** 垂直方向的坐标或缩放参数。 */
     y: number;
   },
   origin?: {
-    /** 当前内联结构 的 x 尺寸或坐标，单位为标准化渲染像素。 */
+    /** 水平方向的坐标或缩放参数。 */
     x: number;
-    /** 当前内联结构 的 y 尺寸或坐标，单位为标准化渲染像素。 */
+    /** 垂直方向的坐标或缩放参数。 */
     y: number;
   },
 ): DocxShapeItem | undefined {
@@ -1826,7 +1776,6 @@ function parseWpgPictureItem(
   };
 }
 
-/** 读取 `readBlockPlainText` 所需的源数据，供 DOCX 解析使用。 */
 function readBlockPlainText(block: DocxBlock): string {
   if (block.type === 'paragraph') return block.text;
   if (block.type === 'table') {
@@ -1839,14 +1788,12 @@ function readBlockPlainText(block: DocxBlock): string {
   return '';
 }
 
-/** 读取 `readShapeItemPlainText` 所需的源数据，供 DOCX 解析使用。 */
 function readShapeItemPlainText(item: DocxShapeItem) {
   return (item.blocks ?? item.paragraphs ?? [])
     .map(readBlockPlainText)
     .join('');
 }
 
-/** 执行 `adjustWpgChecklistAdviceItems` 封装的 DOCX 解析处理步骤。 */
 function adjustWpgChecklistAdviceItems(items: DocxShapeItem[]) {
   const hasLongChecklistTable = items.some((item) =>
     (item.blocks ?? []).some(
@@ -1863,7 +1810,6 @@ function adjustWpgChecklistAdviceItems(items: DocxShapeItem[]) {
   );
 }
 
-/** 执行 `adjustStandaloneAdviceShapePosition` 封装的 DOCX 解析处理步骤。 */
 function adjustStandaloneAdviceShapePosition(
   shape: Pick<DocxShape, 'width' | 'height' | 'items'>,
   position: DocxPosition | undefined,
@@ -1884,7 +1830,6 @@ function adjustStandaloneAdviceShapePosition(
   };
 }
 
-/** 执行 `adjustStandalonePageNumberPosition` 封装的 DOCX 解析处理步骤。 */
 function adjustStandalonePageNumberPosition(
   shape: Pick<DocxShape, 'width' | 'height' | 'items'>,
   position: DocxPosition | undefined,
@@ -1899,7 +1844,6 @@ function adjustStandalonePageNumberPosition(
   };
 }
 
-/** 执行 `adjustStandaloneTextShapePosition` 封装的 DOCX 解析处理步骤。 */
 function adjustStandaloneTextShapePosition(
   shape: Pick<DocxShape, 'width' | 'height' | 'items'>,
   position: DocxPosition | undefined,
@@ -1910,7 +1854,6 @@ function adjustStandaloneTextShapePosition(
   );
 }
 
-/** 解析 `parseWpgShape` 接收的数据，并返回 DOCX 解析结果。 */
 function parseWpgShape(
   node: Element,
   context: ParseContext,
@@ -1971,7 +1914,6 @@ function parseWpgShape(
   };
 }
 
-/** 解析 `parseAlternateContentShape` 接收的数据，并返回 DOCX 解析结果。 */
 function parseAlternateContentShape(
   node: Element,
   context: ParseContext,
@@ -2025,7 +1967,6 @@ function mergeDocxPosition(
   };
 }
 
-/** 解析 `parseVmlCoordSize` 接收的数据，并返回 DOCX 解析结果。 */
 function parseVmlCoordSize(
   node: Element,
   renderedWidth: number,
@@ -2047,7 +1988,6 @@ function parseVmlCoordSize(
   };
 }
 
-/** 读取 `readVmlCoordOrigin` 所需的源数据，供 DOCX 解析使用。 */
 function readVmlCoordOrigin(node: Element | null | undefined) {
   const [x, y] = (attr(node, 'coordorigin') ?? '')
     .split(',')
@@ -2058,7 +1998,6 @@ function readVmlCoordOrigin(node: Element | null | undefined) {
   };
 }
 
-/** 读取 `readVmlCoordSize` 所需的源数据，供 DOCX 解析使用。 */
 function readVmlCoordSize(node: Element) {
   const [width, height] = (attr(node, 'coordsize') ?? '')
     .split(',')
@@ -2069,13 +2008,12 @@ function readVmlCoordSize(node: Element) {
   };
 }
 
-/** 解析 `parseVmlShapeSize` 接收的数据，并返回 DOCX 解析结果。 */
 function parseVmlShapeSize(
   node: Element,
   scale?: {
-    /** 当前内联结构 的 x 尺寸或坐标，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+    /** 水平方向的坐标或缩放参数。 */
     x?: number;
-    /** 当前内联结构 的 y 尺寸或坐标，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+    /** 垂直方向的坐标或缩放参数。 */
     y?: number;
   },
 ) {
@@ -2088,7 +2026,6 @@ function parseVmlShapeSize(
   };
 }
 
-/** 读取 `readVmlShapePosition` 所需的源数据，供 DOCX 解析使用。 */
 function readVmlShapePosition(node: Element | null | undefined) {
   const style = attr(node, 'style');
   const left = readCssPosition(style, 'left');
@@ -2122,7 +2059,6 @@ function readVmlShapePosition(node: Element | null | undefined) {
   };
 }
 
-/** 读取 `readVmlShapeContainerPosition` 所需的源数据，供 DOCX 解析使用。 */
 function readVmlShapeContainerPosition(node: Element | null | undefined) {
   if (!node) return undefined;
   const group = matchesLocalName(node, 'group')
@@ -2138,13 +2074,11 @@ function readVmlShapeContainerPosition(node: Element | null | undefined) {
   return readVmlShapePosition(shape ?? node);
 }
 
-/** 执行 `vmlOnOff` 封装的 DOCX 解析处理步骤。 */
 function vmlOnOff(value: string | undefined, fallback = true) {
   if (value === undefined) return fallback;
   return value !== 'f' && value !== 'false' && value !== '0' && value !== 'off';
 }
 
-/** 解析 `parseVmlStroke` 接收的数据，并返回 DOCX 解析结果。 */
 function parseVmlStroke(shapeNode: Element) {
   const stroke = childByLocalName(shapeNode, 'stroke');
   const stroked = attr(shapeNode, 'stroked');
@@ -2175,7 +2109,6 @@ function parseVmlStroke(shapeNode: Element) {
   return result;
 }
 
-/** 解析 `parseVmlFillColor` 接收的数据，并返回 DOCX 解析结果。 */
 function parseVmlFillColor(shapeNode: Element) {
   const fill = childByLocalName(shapeNode, 'fill');
   if (
@@ -2187,7 +2120,6 @@ function parseVmlFillColor(shapeNode: Element) {
   return normalizeCssColor(attr(fill, 'color') ?? attr(shapeNode, 'fillcolor'));
 }
 
-/** 读取 `readVmlTextAnchor` 所需的源数据，供 DOCX 解析使用。 */
 function readVmlTextAnchor(
   shapeNode: Element,
 ): DocxShapeItem['textVerticalAlign'] {
@@ -2197,7 +2129,6 @@ function readVmlTextAnchor(
   return 'top';
 }
 
-/** 读取 `readVmlTextBehavior` 所需的源数据，供 DOCX 解析使用。 */
 function readVmlTextBehavior(shapeNode: Element) {
   const shapeStyle = attr(shapeNode, 'style');
   const textboxNode = descendantByLocalName(shapeNode, 'textbox');
@@ -2213,7 +2144,6 @@ function readVmlTextBehavior(shapeNode: Element) {
   };
 }
 
-/** 将输入转换为 `convertVmlPathToSvgPath` 返回的格式。 */
 function convertVmlPathToSvgPath(
   path: string | undefined,
   width: number,
@@ -2265,7 +2195,6 @@ function convertVmlPathToSvgPath(
   return commands.length ? commands.join(' ') : undefined;
 }
 
-/** 解析 `parseVmlTextBoxParagraphs` 接收的数据，并返回 DOCX 解析结果。 */
 function parseVmlTextBoxParagraphs(
   shapeNode: Element,
   context: ParseContext,
@@ -2275,26 +2204,24 @@ function parseVmlTextBoxParagraphs(
   return readBlockChildren(textBox, id, context, { insideShape: true });
 }
 
-/** 判断 `hasVmlTextBox` 对应的条件是否成立。 */
 function hasVmlTextBox(shapeNode: Element) {
   return Boolean(descendantByLocalName(shapeNode, 'txbxContent'));
 }
 
-/** 解析 `parseVmlShapeItem` 接收的数据，并返回 DOCX 解析结果。 */
 function parseVmlShapeItem(
   shapeNode: Element,
   index: number,
   context: ParseContext,
   scale?: {
-    /** 当前内联结构 的 x 尺寸或坐标，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+    /** 水平方向的坐标或缩放参数。 */
     x?: number;
-    /** 当前内联结构 的 y 尺寸或坐标，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+    /** 垂直方向的坐标或缩放参数。 */
     y?: number;
   },
   origin?: {
-    /** 当前内联结构 的 x 尺寸或坐标，单位为标准化渲染像素。 */
+    /** 水平方向的坐标或缩放参数。 */
     x: number;
-    /** 当前内联结构 的 y 尺寸或坐标，单位为标准化渲染像素。 */
+    /** 垂直方向的坐标或缩放参数。 */
     y: number;
   },
 ): DocxShapeItem | undefined {
@@ -2345,7 +2272,6 @@ function parseVmlShapeItem(
   };
 }
 
-/** 解析 `parseVmlShape` 接收的数据，并返回 DOCX 解析结果。 */
 function parseVmlShape(
   node: Element,
   context: ParseContext,
@@ -2402,7 +2328,6 @@ function parseVmlShape(
   };
 }
 
-/** 解析 `parseRun` 接收的数据，并返回 DOCX 解析结果。 */
 function parseRun(
   runNode: Element,
   paragraphStyle: DocxTextStyle | undefined,
@@ -2489,7 +2414,6 @@ function parseRun(
   return inlines;
 }
 
-/** 读取 `readParagraphBlocks` 所需的源数据，供 DOCX 解析使用。 */
 function readParagraphBlocks(
   pNode: Element,
   id: string,
@@ -2500,29 +2424,55 @@ function readParagraphBlocks(
   return [paragraph];
 }
 
-/** 读取 `readParagraphRuns` 所需的源数据，供 DOCX 解析使用。 */
-function readParagraphRuns(
-  pNode: Element,
+/** 按“最终状态”读取段落行内内容：保留插入/移入内容，忽略删除/移出内容。 */
+function readParagraphRunChildren(
+  parentNode: Element,
   paragraphStyle: DocxTextStyle | undefined,
   context: ParseContext,
 ) {
   const inlines: DocxInline[] = [];
 
-  Array.from(pNode.children).forEach((child) => {
+  Array.from(parentNode.children).forEach((child) => {
     if (matchesLocalName(child, 'r')) {
       inlines.push(...parseRun(child, paragraphStyle, context));
+      return;
     }
-    if (matchesLocalName(child, 'hyperlink')) {
-      childrenByLocalName(child, 'r').forEach((runNode) => {
-        inlines.push(...parseRun(runNode, paragraphStyle, context));
-      });
+    if (matchesLocalName(child, 'del') || matchesLocalName(child, 'moveFrom')) {
+      return;
+    }
+    if (matchesLocalName(child, 'sdt')) {
+      const content = childByLocalName(child, 'sdtContent');
+      if (content) {
+        inlines.push(
+          ...readParagraphRunChildren(content, paragraphStyle, context),
+        );
+      }
+      return;
+    }
+    if (
+      matchesLocalName(child, 'hyperlink') ||
+      matchesLocalName(child, 'ins') ||
+      matchesLocalName(child, 'moveTo') ||
+      matchesLocalName(child, 'smartTag') ||
+      matchesLocalName(child, 'customXml') ||
+      matchesLocalName(child, 'fldSimple') ||
+      matchesLocalName(child, 'sdtContent')
+    ) {
+      inlines.push(...readParagraphRunChildren(child, paragraphStyle, context));
     }
   });
 
   return inlines;
 }
 
-/** 执行 `textFromInlines` 封装的 DOCX 解析处理步骤。 */
+function readParagraphRuns(
+  pNode: Element,
+  paragraphStyle: DocxTextStyle | undefined,
+  context: ParseContext,
+) {
+  return readParagraphRunChildren(pNode, paragraphStyle, context);
+}
+
 function textFromInlines(inlines: DocxInline[]) {
   return inlines
     .map((inline) =>
@@ -2531,7 +2481,6 @@ function textFromInlines(inlines: DocxInline[]) {
     .join('');
 }
 
-/** 解析 `parseParagraph` 接收的数据，并返回 DOCX 解析结果。 */
 function parseParagraph(
   pNode: Element,
   id: string,
@@ -2580,15 +2529,23 @@ function parseParagraph(
       ? style.outlineLevel
       : undefined;
   const fontSize = style.style?.fontSize ?? 14;
-  const gridLineHeight = options?.insideTable
-    ? context.documentGridLineHeight
-    : context.defaultLineHeight;
   const explicitLineHeightPx =
     style.lineHeight === undefined
       ? undefined
       : style.lineHeight <= 4
       ? fontSize * style.lineHeight
       : style.lineHeight;
+  // Word 会把行盒向上吸附到完整网格；按段落实际字号计算，避免正文被浏览器默认行高压缩。
+  const snappedDocumentLineHeight =
+    style.snapToGrid !== false && context.documentGridLineHeight !== undefined
+      ? Math.ceil(
+          (explicitLineHeightPx ?? fontSize * (4 / 3)) /
+            context.documentGridLineHeight,
+        ) * context.documentGridLineHeight
+      : undefined;
+  const gridLineHeight = options?.insideTable
+    ? context.documentGridLineHeight
+    : context.defaultLineHeight ?? snappedDocumentLineHeight;
   const lineHeight =
     style.snapToGrid !== false &&
     gridLineHeight !== undefined &&
@@ -2625,7 +2582,6 @@ function parseParagraph(
   };
 }
 
-/** 读取 `readCellMargins` 所需的源数据，供 DOCX 解析使用。 */
 function readCellMargins(tcPr: Element | null | undefined) {
   const tcMar =
     childByLocalName(tcPr, 'tcMar') ?? childByLocalName(tcPr, 'tblCellMar');
@@ -2660,7 +2616,6 @@ function mergeCellMargins(
   };
 }
 
-/** 读取 `readCellBorders` 所需的源数据，供 DOCX 解析使用。 */
 function readCellBorders(tcPr: Element | null | undefined) {
   const tcBorders = childByLocalName(tcPr, 'tcBorders');
   const top = childByLocalName(tcBorders, 'top');
@@ -2692,7 +2647,6 @@ function readTableBorders(tblPr: Element | null | undefined) {
   };
 }
 
-/** 读取 `readCellStyle` 所需的源数据，供 DOCX 解析使用。 */
 function readCellStyle(
   tcNode: Element,
   defaultMargins: Pick<
@@ -2721,7 +2675,6 @@ function readCellStyle(
   };
 }
 
-/** 读取 `readCellVerticalMerge` 所需的源数据，供 DOCX 解析使用。 */
 function readCellVerticalMerge(tcNode: Element) {
   const tcPr = childByLocalName(tcNode, 'tcPr');
   const vMerge = childByLocalName(tcPr, 'vMerge');
@@ -2730,7 +2683,6 @@ function readCellVerticalMerge(tcNode: Element) {
   return value === 'restart' ? 'restart' : 'continue';
 }
 
-/** 读取 `readTableRowHeightMultiplier` 所需的源数据，供 DOCX 解析使用。 */
 function readTableRowHeightMultiplier(rowNode: Element) {
   return childrenByLocalName(rowNode, 'tc').reduce(
     (maxMultiplier, cellNode) => {
@@ -2746,7 +2698,6 @@ function readTableRowHeightMultiplier(rowNode: Element) {
   );
 }
 
-/** 读取 `readTableRowHeight` 所需的源数据，供 DOCX 解析使用。 */
 function readTableRowHeight(
   rowNode: Element,
   applyGridHeight: boolean,
@@ -2778,7 +2729,6 @@ function readTableRowHeight(
   };
 }
 
-/** 读取 `readCellBlocks` 所需的源数据，供 DOCX 解析使用。 */
 function readCellBlocks(cellNode: Element, id: string, context: ParseContext) {
   const blocks = readBlockChildren(cellNode, id, context, {
     insideTable: true,
@@ -2842,7 +2792,6 @@ function getParagraphAnchorLineHeight(block: DocxParagraphBlock) {
   return block.lineHeight > 4 ? block.lineHeight : fontSize * block.lineHeight;
 }
 
-/** 判断 `isPositionedOnlyParagraph` 对应的条件是否成立。 */
 function isPositionedOnlyParagraph(
   block: DocxBlock | undefined,
 ): block is DocxParagraphBlock {
@@ -2858,7 +2807,6 @@ function isPositionedOnlyParagraph(
   });
 }
 
-/** 执行 `offsetTableAfterPositionedParagraph` 封装的 DOCX 解析处理步骤。 */
 function offsetTableAfterPositionedParagraph(
   table: DocxTableBlock,
   previousBlock: DocxBlock | undefined,
@@ -2881,7 +2829,6 @@ function offsetTableAfterPositionedParagraph(
   };
 }
 
-/** 读取 `readTableWidth` 所需的源数据，供 DOCX 解析使用。 */
 function readTableWidth(tblW: Element | null | undefined, columns: number[]) {
   const widthType = attr(tblW, 'w:type') ?? attr(tblW, 'type');
   if (widthType === 'pct' && columns.length) {
@@ -2917,7 +2864,6 @@ function offsetTopLevelFlowTable(table: DocxTableBlock) {
   };
 }
 
-/** 读取 `readTablePosition` 所需的源数据，供 DOCX 解析使用。 */
 function readTablePosition(
   tblPr: Element | null | undefined,
 ): DocxPosition | undefined {
@@ -2948,7 +2894,6 @@ function readTablePosition(
   };
 }
 
-/** 解析 `parseTable` 接收的数据，并返回 DOCX 解析结果。 */
 function parseTable(
   tblNode: Element,
   id: string,
@@ -2978,7 +2923,7 @@ function parseTable(
   const activeVerticalMerges = new Map<
     number,
     {
-      /** 局部转换过程中使用的 cell 配置。 */
+      /** 当前纵向合并链保存的表格单元格。 */
       cell: DocxTableCell;
       /** 表格单元格横向跨越的列数。 */
       colSpan: number;
@@ -3070,7 +3015,6 @@ function parseTable(
   return result;
 }
 
-/** 读取 `readBlockChildren` 所需的源数据，供 DOCX 解析使用。 */
 function readBlockChildren(
   node: Element | null | undefined,
   id: string,
@@ -3117,7 +3061,6 @@ function readBlockChildren(
   return blocks;
 }
 
-/** 读取 `readSectionPage` 所需的源数据，供 DOCX 解析使用。 */
 function readSectionPage(sectPr: Element | null | undefined): DocxPage {
   const pgSz = childByLocalName(sectPr, 'pgSz');
   const pgMar = childByLocalName(sectPr, 'pgMar');
@@ -3155,7 +3098,6 @@ function readSectionPage(sectPr: Element | null | undefined): DocxPage {
   };
 }
 
-/** 读取 `readPage` 所需的源数据，供 DOCX 解析使用。 */
 function readPage(bodyNode: Element | null | undefined): DocxPage {
   return readSectionPage(childByLocalName(bodyNode, 'sectPr'));
 }
@@ -3244,6 +3186,22 @@ function readSectionPageRegions(
   };
 }
 
+/** 读取 settings.xml 中声明的东亚标点字符间距压缩方式。 */
+function readCharacterSpacingControl(
+  entries: OfficeEntryMap,
+): DocxCharacterSpacingControl | undefined {
+  const xml = readXml(entries, 'word/settings.xml');
+  if (!xml) return undefined;
+  const value = readVal(
+    childByLocalName(parseXml(xml).documentElement, 'characterSpacingControl'),
+  );
+  return value === 'doNotCompress' ||
+    value === 'compressPunctuation' ||
+    value === 'compressPunctuationAndJapaneseKana'
+    ? value
+    : undefined;
+}
+
 /** 从 WPS 文档网格推导未显式设置行距的正文行高。 */
 function readDocumentGridLineHeight(
   bodyNode: Element | null | undefined,
@@ -3283,7 +3241,6 @@ function readDefaultGridLineHeight(
   return linePitch <= 16.1 ? gridLineHeight - 1 : gridLineHeight;
 }
 
-/** 执行 `markTitle` 封装的 DOCX 解析处理步骤。 */
 function markTitle(blocks: DocxBlock[]) {
   const firstParagraph = blocks.find(
     (block): block is DocxParagraphBlock =>
@@ -3310,7 +3267,6 @@ function applyDocxCoverTitleSpacing(blocks: DocxBlock[]) {
   }
 }
 
-/** 判断 `isEmptySpacerParagraph` 对应的条件是否成立。 */
 function isEmptySpacerParagraph(block: DocxBlock) {
   return (
     block.type === 'paragraph' &&
@@ -3320,7 +3276,6 @@ function isEmptySpacerParagraph(block: DocxBlock) {
   );
 }
 
-/** 判断 `hasRenderableBlockContent` 对应的条件是否成立。 */
 function hasRenderableBlockContent(block: DocxBlock) {
   if (block.type === 'paragraph')
     return Boolean(block.text || block.inlines.length);
@@ -3331,13 +3286,12 @@ function hasRenderableBlockContent(block: DocxBlock) {
   return true;
 }
 
-/** 判断 `isFullPagePositionedShape` 对应的条件是否成立。 */
 function isFullPagePositionedShape(
   position: DocxPosition | undefined,
   size: {
-    /** 当前内联结构 的 width 尺寸或坐标，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+    /** 对象宽度，单位为标准化渲染像素。 */
     width?: number;
-    /** 当前内联结构 的 height 尺寸或坐标，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+    /** 对象高度，单位为标准化渲染像素。 */
     height?: number;
   },
   page: DocxPage,
@@ -3348,7 +3302,6 @@ function isFullPagePositionedShape(
   );
 }
 
-/** 执行 `blockHasFullPagePositionedShape` 封装的 DOCX 解析处理步骤。 */
 function blockHasFullPagePositionedShape(block: DocxBlock, page: DocxPage) {
   if (block.type === 'chart') {
     return isFullPagePositionedShape(block.position, block, page);
@@ -3499,10 +3452,15 @@ function readTablePageBreakRows(tableNode: Element) {
     .filter((rowIndex) => rowIndex >= 0);
 }
 
+/** 创建 DOCX 主解析上下文时使用的选项。 */
 type CreateDocxParseContextOptions = {
+  /** DOCX 主文档中的正文根节点。 */
   bodyNode?: Element | null;
+  /** 解析上下文可访问的媒体资源索引。 */
   media?: {
+    /** 按压缩包路径索引的媒体资源。 */
     byPath: Record<string, OfficeResourceSource>;
+    /** 按资源文件名索引的媒体资源。 */
     byName: Record<string, OfficeResourceSource>;
   };
 };
@@ -3522,6 +3480,7 @@ export function createDocxParseContext(
     theme,
     defaultLineHeight: readDefaultGridLineHeight(options.bodyNode, styles),
     documentGridLineHeight: readDocumentGridLineHeight(options.bodyNode),
+    characterSpacingControl: readCharacterSpacingControl(entries),
     numbering: readDocxNumbering(entries),
     styles,
     images: [],
@@ -3561,7 +3520,7 @@ export const normalizeDocxPageContents = normalizeDocxPages;
 /** 从当前已解析块推导文档标题。 */
 export const markDocxTitle = markTitle;
 
-/** 解析 `parseDocx` 接收的数据，并返回 DOCX 解析结果。 */
+/** 解析 DOCX 包并返回标准文档模型。 */
 export async function parseDocx(
   file: File,
   signal?: AbortSignal,
@@ -3653,5 +3612,6 @@ export async function parseDocx(
     images: context.images,
     outline,
     preserveSectionPagination,
+    characterSpacingControl: context.characterSpacingControl,
   };
 }

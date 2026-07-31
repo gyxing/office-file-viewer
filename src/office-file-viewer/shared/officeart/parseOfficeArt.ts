@@ -2,9 +2,9 @@ import { OFFICE_ART_RECORD } from './constants';
 import { OfficeArtParseError } from './OfficeArtParseError';
 import type { OfficeArtRecord, OfficeArtWarning } from './types';
 
+/** 当前解析器能够识别的 OfficeArt 记录类型集合。 */
 const KNOWN_TYPES = new Set<number>(Object.values(OFFICE_ART_RECORD));
 
-/** 解析 `parseRecordRange` 接收的数据，并返回OfficeArt 图形解析结果。 */
 function parseRecordRange(
   bytes: Uint8Array,
   start: number,

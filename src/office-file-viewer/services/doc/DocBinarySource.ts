@@ -1,4 +1,4 @@
-/** 描述 DOC 随机读取路径中会被复用的核心流。 */
+/** DOC 二进制按需数据源。 */
 export interface DocBinarySource {
   /** 原始 CFB 文件字节数。 */
   readonly fileSize: number;

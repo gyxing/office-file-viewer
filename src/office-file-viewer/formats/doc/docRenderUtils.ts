@@ -9,26 +9,31 @@ import type {
   DocTextStyle,
 } from '../../services/doc/types';
 
+/** DOC 图片并排布局时的行内间距，单位为标准化渲染像素。 */
 export const DOC_IMAGE_ROW_GAP = 6;
 
 // 页面可用高度已扣除上下页边距；不再重复预留缓冲，避免把本应同页的图片组拆页。
+/** DOC 分页高度估算预留量，单位为标准化渲染像素。 */
 const DOC_PAGE_HEIGHT_BUFFER = 0;
 // 浏览器行盒会累计小数像素，允许极小误差可避免 1px 级伪溢出触发整页后移。
+/** DOC 分页高度比较允许的误差，单位为标准化渲染像素。 */
 const DOC_PAGE_HEIGHT_TOLERANCE = 2;
+/** DOC 图片布局相邻行之间的间距，单位为标准化渲染像素。 */
 const DOC_IMAGE_LAYOUT_ROW_GAP = 12;
+/** DOC 图片布局上下预留的空白，单位为标准化渲染像素。 */
 const DOC_IMAGE_LAYOUT_VERTICAL_MARGIN = 10;
 
 // DOC 没有 OOXML 的显式页面模型，这里记录前端估算分页后的页面块集合。
-/** 描述 PaginatedDocPage 在 DOC 渲染中的数据结构。 */
+/** 完成内容块分页后的 DOC 页面。 */
 export type PaginatedDocPage = {
-  /** PaginatedDocPage 在所属文档或任务中的唯一标识。 */
+  /** 在所属集合中的唯一标识。 */
   id: string;
-  /** PaginatedDocPage 包含的 blocks 有序集合。 */
+  /** 按源文档顺序排列的内容块。 */
   blocks: DocBlock[];
 };
 
 // DOC 解析出的文本样式字段和 React CSS 字段基本一一对应，集中转换便于后续补充新属性。
-/** 执行 `docTextStyleToCss` 封装的DOC 渲染处理步骤。 */
+/** 将 DOC 文本样式转换为 React CSS 属性。 */
 export function docTextStyleToCss(style?: DocTextStyle): CSSProperties {
   if (!style) return {};
 
@@ -64,11 +69,11 @@ export function docTextStyleToCss(style?: DocTextStyle): CSSProperties {
   ) as CSSProperties;
 }
 
-/** 执行 `inlineStyleToCss` 封装的DOC 渲染处理步骤。 */
+/** 将 DOC 行内样式转换为 React CSS 属性。 */
 export function inlineStyleToCss(
   style?: DocTextStyle,
   options?: {
-    /** 是否保留块级模型自身的字体与段落样式；未提供时使用来源格式或渲染器的默认行为。 */
+    /** 是否保留块级模型自身的字体与段落样式。 */
     preserveBlockTypography?: boolean;
   },
 ): CSSProperties {
@@ -94,7 +99,7 @@ export function inlineStyleToCss(
   return css;
 }
 
-/** 执行 `imagesFromImageOnlyParagraph` 封装的DOC 渲染处理步骤。 */
+/** 提取仅包含图片的 DOC 段落资源。 */
 export function imagesFromImageOnlyParagraph(block: DocBlock) {
   // 二进制 DOC 没有稳定的图片锚点模型，这里用“无文字且全是图片”的段落作为图片布局信号。
   if (block.type !== 'paragraph' || block.text.trim()) return [];
@@ -109,7 +114,7 @@ export function imagesFromImageOnlyParagraph(block: DocBlock) {
   return images;
 }
 
-/** 执行 `canShareImageRow` 封装的DOC 渲染处理步骤。 */
+/** 判断相邻图片能否在同一行排版。 */
 export function canShareImageRow(
   left: DocImage,
   right: DocImage,
@@ -125,7 +130,7 @@ export function canShareImageRow(
   );
 }
 
-/** 执行 `imageRows` 封装的DOC 渲染处理步骤。 */
+/** 按可用内容宽度将 DOC 图片分组为多行。 */
 export function imageRows(images: DocImage[], contentWidth: number) {
   const rows: DocImage[][] = [];
   let index = 0;
@@ -145,7 +150,6 @@ export function imageRows(images: DocImage[], contentWidth: number) {
   return rows;
 }
 
-/** 执行 `weightedTextLength` 封装的DOC 渲染处理步骤。 */
 function weightedTextLength(text: string) {
   return Array.from(text).reduce(
     (sum, char) => sum + (/[\u4e00-\u9fa5]/.test(char) ? 1 : 0.55),
@@ -153,7 +157,6 @@ function weightedTextLength(text: string) {
   );
 }
 
-/** 执行 `estimateLineCount` 封装的DOC 渲染处理步骤。 */
 function estimateLineCount(
   text: string,
   width: number,
@@ -210,7 +213,6 @@ function resolveLineHeightPx(fontSize: number, lineHeight: number) {
   return lineHeight > 4 ? lineHeight : fontSize * lineHeight;
 }
 
-/** 执行 `estimateParagraphTextHeight` 封装的DOC 渲染处理步骤。 */
 function estimateParagraphTextHeight(
   block: DocParagraphBlock,
   contentWidth: number,
@@ -243,6 +245,7 @@ export function getDocImageRenderWidth(
   contentWidth: number,
   rowLength: number,
 ) {
+  if (image.pageInsets && image.width) return image.width;
   const preferredWidth = image.width
     ? Math.min(image.width, contentWidth)
     : contentWidth;
@@ -251,7 +254,6 @@ export function getDocImageRenderWidth(
     : preferredWidth;
 }
 
-/** 执行 `estimateImageHeight` 封装的DOC 渲染处理步骤。 */
 function estimateImageHeight(
   image: DocImage,
   contentWidth: number,
@@ -260,13 +262,18 @@ function estimateImageHeight(
   const renderedWidth = getDocImageRenderWidth(image, contentWidth, rowLength);
 
   if (image.width && image.height) {
-    return (image.height * renderedWidth) / image.width;
+    const renderedHeight = (image.height * renderedWidth) / image.width;
+    return image.pageInsets
+      ? Math.max(
+          0,
+          renderedHeight - image.pageInsets.top - image.pageInsets.bottom,
+        )
+      : renderedHeight;
   }
 
   return Math.min(240, contentWidth * 0.55);
 }
 
-/** 执行 `estimateImageRowHeight` 封装的DOC 渲染处理步骤。 */
 function estimateImageRowHeight(row: DocImage[], contentWidth: number) {
   return Math.max(
     ...row.map((image) => estimateImageHeight(image, contentWidth, row.length)),
@@ -274,12 +281,12 @@ function estimateImageRowHeight(row: DocImage[], contentWidth: number) {
   );
 }
 
-/** 执行 `estimateTableHeight` 封装的DOC 渲染处理步骤。 */
 function estimateTableHeight(
   block: Extract<
     DocBlock,
     {
-      /** 用于区分 当前结构 不同结构分支的类型标识。 */ type: 'table';
+      /** 固定为 `table`，用于区分联合类型分支。 */
+      type: 'table';
     }
   >,
   contentWidth: number,
@@ -338,17 +345,18 @@ function estimateTableHeight(
   });
 
   return (
+    (block.spacingBefore ?? 0) +
     rowHeights.reduce((sum, height) => sum + height, 0) +
     (block.spacingAfter ?? 16)
   );
 }
 
-/** 执行 `estimateListHeight` 封装的DOC 渲染处理步骤。 */
 function estimateListHeight(
   block: Extract<
     DocBlock,
     {
-      /** 用于区分 当前结构 不同结构分支的类型标识。 */ type: 'list';
+      /** 固定为 `list`，用于区分联合类型分支。 */
+      type: 'list';
     }
   >,
   contentWidth: number,
@@ -367,7 +375,6 @@ function estimateListHeight(
   return itemHeight + 16;
 }
 
-/** 执行 `estimateBlockHeight` 封装的DOC 渲染处理步骤。 */
 function estimateBlockHeight(block: DocBlock, contentWidth: number) {
   if (block.type === 'table') return estimateTableHeight(block, contentWidth);
   if (block.type === 'list') return estimateListHeight(block, contentWidth);
@@ -383,14 +390,39 @@ function estimateBlockHeight(block: DocBlock, contentWidth: number) {
   return estimateParagraphTextHeight(block, contentWidth) + imageHeight;
 }
 
+/** 读取块前垂直间距，供分页时把连续空段正确消耗在当前页尾。 */
+function blockSpacingBefore(block: DocBlock) {
+  return block.type === 'table'
+    ? block.spacingBefore ?? 0
+    : block.style?.spacingBefore ?? 0;
+}
+
+/** 返回仅调整块前间距的副本，避免分页修正污染解析得到的源模型。 */
+function withBlockSpacingBefore(block: DocBlock, spacingBefore: number) {
+  if (block.type === 'table') {
+    return {
+      ...block,
+      spacingBefore: spacingBefore || undefined,
+    };
+  }
+  return {
+    ...block,
+    style: {
+      ...block.style,
+      spacingBefore: spacingBefore || undefined,
+    },
+  };
+}
+
 /** 估算“与标题同页”所需的下一块首行高度，正文剩余行仍可自然换页。 */
 function estimateLeadingBlockHeight(block: DocBlock, contentWidth: number) {
   if (imagesFromImageOnlyParagraph(block).length) {
     return estimateBlockHeight(block, contentWidth);
   }
   if (block.type === 'table') {
+    // 表头必须与首个数据行同页，避免页尾只留下标题或孤立表头。
     return estimateTableHeight(
-      { ...block, rows: block.rows.slice(0, 1) },
+      { ...block, rows: block.rows.slice(0, 2) },
       contentWidth,
     );
   }
@@ -415,7 +447,6 @@ function estimateLeadingBlockHeight(block: DocBlock, contentWidth: number) {
   );
 }
 
-/** 创建 `createImageParagraphBlock` 返回的对象，供DOC 渲染使用。 */
 function createImageParagraphBlock(
   id: string,
   images: DocImage[],
@@ -555,6 +586,18 @@ export class DocPaginationState {
   }
 
   private appendImageRows(images: DocImage[], style?: DocTextStyle) {
+    if (images.length === 1 && images[0].pageInsets) {
+      this.syntheticImageIndex += 1;
+      this.appendBlock(
+        createImageParagraphBlock(
+          `doc-image-page-group-${this.syntheticImageIndex}`,
+          images,
+          style,
+        ),
+        estimateImageHeight(images[0], this.contentWidth, 1),
+      );
+      return;
+    }
     const rows = imageRows(images, this.contentWidth);
     let pendingImages: DocImage[] = [];
     let pendingHeight = DOC_IMAGE_LAYOUT_VERTICAL_MARGIN;
@@ -591,13 +634,49 @@ export class DocPaginationState {
   private processBlocks(blocks: readonly DocBlock[]) {
     let index = 0;
     while (index < blocks.length) {
-      const currentBlock = blocks[index];
+      let currentBlock = blocks[index];
+      const leadingSpacing = blockSpacingBefore(currentBlock);
+      if (leadingSpacing > 0 && this.currentBlocks.length) {
+        const availableHeight = Math.max(
+          0,
+          this.contentHeight - this.currentHeight,
+        );
+        if (leadingSpacing >= availableHeight) {
+          // 解析器把连续空段折算为下一块的段前距；跨页时先消耗当前页剩余空间，
+          // Word 不会把段前距重复带到新页页首，清零后可避免空白逐页累积。
+          this.flushPage();
+          currentBlock = withBlockSpacingBefore(currentBlock, 0);
+        }
+      }
       if (currentBlock.type === 'paragraph' && currentBlock.pageBreakBefore) {
         this.flushPage();
         index += 1;
         continue;
       }
-      if (
+      const followingTable = blocks[index + 1];
+      const isTableCaption =
+        currentBlock.type === 'paragraph' &&
+        !currentBlock.pageBreakBefore &&
+        currentBlock.text.replace(/\s+/g, '').length <= 40 &&
+        followingTable?.type === 'table';
+      if (isTableCaption) {
+        // 单页可容纳的表格与表题整体保持；超长表格至少保留表头和首个数据行。
+        const fullTableHeight = estimateBlockHeight(
+          followingTable,
+          this.contentWidth,
+        );
+        const keepHeight =
+          estimateBlockHeight(currentBlock, this.contentWidth) +
+          (fullTableHeight <= this.contentHeight
+            ? fullTableHeight
+            : estimateLeadingBlockHeight(followingTable, this.contentWidth));
+        if (
+          this.currentBlocks.length &&
+          this.currentHeight + keepHeight > this.contentHeight
+        ) {
+          this.flushPage();
+        }
+      } else if (
         currentBlock.type === 'paragraph' &&
         currentBlock.role === 'heading'
       ) {
@@ -690,21 +769,28 @@ export class DocPaginationState {
     let rowIndex = 0;
     let partIndex = 0;
     while (rowIndex < currentBlock.rows.length) {
+      const partSpacingBefore =
+        partIndex === 0 ? currentBlock.spacingBefore ?? 0 : 0;
       let availableHeight = this.contentHeight - this.currentHeight;
       if (this.currentBlocks.length && availableHeight < 80) {
         this.flushPage();
         availableHeight = this.contentHeight;
       }
+      availableHeight = Math.max(0, availableHeight - partSpacingBefore);
       const startRowIndex = rowIndex;
       const spacingAfter = currentBlock.spacingAfter ?? 16;
       let rowsHeight = 0;
       while (rowIndex < currentBlock.rows.length) {
         const row = currentBlock.rows[rowIndex];
-        const rowHeight =
-          estimateTableHeight(
-            { ...currentBlock, rows: [row] },
-            this.contentWidth,
-          ) - spacingAfter;
+        const rowHeight = estimateTableHeight(
+          {
+            ...currentBlock,
+            rows: [row],
+            spacingBefore: 0,
+            spacingAfter: 0,
+          },
+          this.contentWidth,
+        );
         if (
           rowIndex > startRowIndex &&
           rowsHeight + rowHeight > availableHeight
@@ -725,9 +811,10 @@ export class DocPaginationState {
           id: `${currentBlock.id}-part-${partIndex}`,
           sourceBlockId: currentBlock.sourceBlockId ?? currentBlock.id,
           rows: currentBlock.rows.slice(startRowIndex, rowIndex),
+          spacingBefore: partSpacingBefore || undefined,
           spacingAfter: partSpacingAfter,
         },
-        rowsHeight + partSpacingAfter,
+        partSpacingBefore + rowsHeight + partSpacingAfter,
       );
       if (rowIndex < currentBlock.rows.length) this.flushPage();
     }

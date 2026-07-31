@@ -4,9 +4,13 @@ import type {
   WordPageSourceSnapshot,
 } from './WordPageSource';
 
+/** 创建内存 Word 页面数据源时使用的选项。 */
 export type MaterializedWordPageSourceOptions<TPage> = {
+  /** 返回页面模型的稳定标识。 */
   getId(page: TPage, index: number): string;
+  /** 估算页面正文内容高度。 */
   getEstimatedContentHeight(page: TPage, index: number): number;
+  /** 返回页面包含的源内容块标识。 */
   getSourceBlockIds(page: TPage, index: number): readonly string[];
 };
 

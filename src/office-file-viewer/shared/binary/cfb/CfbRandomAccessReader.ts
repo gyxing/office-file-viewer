@@ -18,7 +18,9 @@ import type {
   CfbStreamReader,
 } from './types';
 
+/** CFB 按需读取过程中的结构化错误。 */
 type CfbReaderError = Error & {
+  /** 供程序识别当前情况的稳定代码。 */
   code: 'CFB_READER_CLOSED' | 'INVALID_CFB_STREAM_RANGE';
 };
 

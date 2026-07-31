@@ -14,18 +14,35 @@ import {
   readDocxBodyPage,
 } from './parseDocx';
 import { parseDocxBlock, type DocxBlockParseResult } from './parseDocxBlock';
-import type { DocxBlock, DocxImage, DocxPage, DocxPageContent } from './types';
+import type {
+  DocxBlock,
+  DocxCharacterSpacingControl,
+  DocxImage,
+  DocxPage,
+  DocxPageContent,
+} from './types';
 
+/** DOCX 按需数据源预先读取的文档元数据。 */
 type DocxSourceMetadata = {
+  /** 当前关联的页面模型。 */
   page: DocxPage;
+  /** 是否保留源文档由节属性定义的物理分页。 */
   preserveSectionPagination: boolean;
+  /** Word 对东亚标点和假名采用的字符间距压缩方式。 */
+  characterSpacingControl?: DocxCharacterSpacingControl;
 };
 
+/** DOCX 按需数据源初始化后的输出。 */
 export type DocxSourceOutput = {
+  /** 接收流式 DOCX 解析产生的文档元数据。 */
   metadata(metadata: DocxSourceMetadata): void | Promise<void>;
+  /** 接收流式 DOCX 解析产生的单页模型。 */
   page(page: DocxPageContent): void | Promise<void>;
+  /** 通知接收方增量输出已经结束。 */
   complete(result: {
+    /** 面向用户展示的标题。 */
     title: string;
+    /** 当前文档或页面包含的图片资源。 */
     images: DocxImage[];
   }): void | Promise<void>;
 };
@@ -157,6 +174,7 @@ export async function parseDocxSource(
   await output.metadata({
     page: defaultPage,
     preserveSectionPagination: profile.preserveSectionPagination,
+    characterSpacingControl: context.characterSpacingControl,
   });
 
   let currentBlocks: DocxBlock[] = [];

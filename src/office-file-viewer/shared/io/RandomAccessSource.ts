@@ -14,5 +14,6 @@ export interface RandomAccessSource {
 
 /** 随机读取失败时使用的稳定错误结构。 */
 export type RandomAccessSourceError = Error & {
+  /** 供程序识别当前情况的稳定代码。 */
   code: 'INVALID_RANDOM_ACCESS_RANGE' | 'RANDOM_ACCESS_SOURCE_CLOSED';
 };

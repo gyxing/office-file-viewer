@@ -82,6 +82,7 @@ export function createMaterializedSpreadsheetSource(
     rows: sheet.rows.map((row) => ({
       index: row.index,
       height: row.height,
+      customHeight: row.customHeight,
       hidden: Boolean(row.hidden),
     })),
     columns: sheet.columns.map((column) => ({
@@ -132,6 +133,7 @@ export function createMaterializedSpreadsheetSource(
         rows: rows.map((row) => ({
           index: row.index,
           height: row.height,
+          customHeight: row.customHeight,
           hidden: Boolean(row.hidden),
         })),
         columns: sheet.columns

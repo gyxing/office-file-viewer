@@ -16,6 +16,9 @@ export const NO_STREAM = 0xffffffff;
 /** 小流与常规流的固定分界。 */
 export const MINI_STREAM_CUTOFF_SIZE = 4096;
 
+/** CFB 文件头大小，单位为字节。 */
 export const CFB_HEADER_SIZE = 512;
+/** CFB 目录项固定大小，单位为字节。 */
 export const CFB_DIRECTORY_ENTRY_SIZE = 128;
+/** CFB 迷你扇区固定大小，单位为字节。 */
 export const CFB_MINI_SECTOR_SIZE = 64;

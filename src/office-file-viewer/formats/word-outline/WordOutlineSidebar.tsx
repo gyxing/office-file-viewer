@@ -16,16 +16,13 @@ import type {
   WordOutlineItem,
   WordOutlineTreeNode,
 } from '../../services/word/types';
-import {
-  OutlineIcon,
-  PanelLeftCloseIcon,
-  PanelLeftOpenIcon,
-} from '../../shell/icons';
+import { OutlineIcon, PanelLeftCloseIcon } from '../../shell/icons';
 import type { WordBlockPageIndex } from '../word-pages/WordBlockPageIndex';
 import type { WordPageNavigationController } from '../word-pages/types';
 import './index.less';
 import { useWordOutlineNavigation } from './useWordOutlineNavigation';
 
+/** Word 大纲侧栏组件属性。 */
 type WordOutlineSidebarProps = {
   /** 源文档明确声明的大纲条目，正文定位继续使用同一稳定 ID。 */
   items: WordOutlineItem[];
@@ -49,15 +46,25 @@ type WordOutlineSidebarProps = {
   documentSessionId: string;
   /** 缩放、分页等会改变正文位置的布局键。 */
   layoutKey: string;
+  /** 关闭大纲侧栏。 */
+  onClose: () => void;
 };
 
+/** Word 大纲树组件属性。 */
 type OutlineTreeProps = {
+  /** Ant Design Tree 使用的大纲节点数据。 */
   treeData: WordOutlineTreeNode[];
+  /** 当前展开的大纲节点键。 */
   expandedKeys: Key[];
+  /** 当前选中的大纲节点键。 */
   selectedKeys: Key[];
+  /** 大纲树的无障碍名称。 */
   treeLabel: string;
+  /** 在大纲节点展开状态变化时触发。 */
   onExpand(keys: Key[]): void;
+  /** 在用户选择大纲节点时触发。 */
   onSelect(keys: Key[]): void;
+  /** 生成大纲树节点的显示内容。 */
   titleRender(node: WordOutlineTreeNode): React.ReactNode;
 };
 
@@ -112,9 +119,13 @@ function NormalOutlineTree({
   );
 }
 
+/** Word 大纲虚拟树组件属性。 */
 type VirtualOutlineTreeProps = OutlineTreeProps & {
+  /** 按需提供当前数据的接口。 */
   provider: WordOutlineProvider;
+  /** 当前文档解析会话的标识。 */
   documentSessionId: string;
+  /** 数据源变更时递增的修订号。 */
   revision: number;
 };
 
@@ -206,6 +217,7 @@ function WordOutlineSidebarComponent({
   scrollContainerRef,
   documentSessionId,
   layoutKey,
+  onClose,
 }: WordOutlineSidebarProps) {
   const messages = useOfficeFileViewerMessages();
   const snapshot = useSyncExternalStore(
@@ -224,13 +236,12 @@ function WordOutlineSidebarComponent({
         : provider.getRoots(1).map((node) => node.key),
     [normalTree, outlineMode, provider, snapshot.revision],
   );
-  const [collapsed, setCollapsed] = useState(false);
   const [expandedKeys, setExpandedKeys] = useState<Key[]>(initialExpandedKeys);
   const { activeKey, selectTarget } = useWordOutlineNavigation({
     items,
     scrollContainerRef,
     layoutKey,
-    enabled: !collapsed && snapshot.count > 0,
+    enabled: snapshot.count > 0,
     pageMode,
     pageSource,
     blockPageIndex,
@@ -239,7 +250,6 @@ function WordOutlineSidebarComponent({
   });
 
   useEffect(() => {
-    setCollapsed(false);
     setExpandedKeys(initialExpandedKeys);
   }, [documentSessionId, initialExpandedKeys, outlineMode]);
 
@@ -274,73 +284,54 @@ function WordOutlineSidebarComponent({
 
   return (
     <aside
-      className={`office-file-word-outline${
-        collapsed ? ' office-file-word-outline--collapsed' : ''
-      }`}
+      className="office-file-word-outline"
       aria-label={messages.outline.region}
       data-outline-count={snapshot.count}
       data-outline-mode={outlineMode}
     >
-      {collapsed ? (
-        <div className="office-file-word-outline__rail">
-          <button
-            type="button"
-            className="office-file-word-outline__toggle"
-            aria-label={messages.outline.expand}
-            title={messages.outline.expand}
-            onClick={() => setCollapsed(false)}
-          >
-            <PanelLeftOpenIcon />
-          </button>
-          <OutlineIcon className="office-file-word-outline__rail-icon" />
-        </div>
+      <header className="office-file-word-outline__header">
+        <span className="office-file-word-outline__title">
+          <OutlineIcon />
+          {messages.outline.title}
+        </span>
+        <span className="office-file-word-outline__count">
+          {snapshot.count}
+        </span>
+        <button
+          type="button"
+          className="office-file-word-outline__toggle"
+          aria-label={messages.outline.collapse}
+          title={messages.outline.collapse}
+          onClick={onClose}
+        >
+          <PanelLeftCloseIcon />
+        </button>
+      </header>
+      {outlineMode === 'virtual' ? (
+        <VirtualOutlineTree
+          provider={provider}
+          documentSessionId={documentSessionId}
+          revision={snapshot.revision}
+          treeData={[]}
+          expandedKeys={expandedKeys}
+          selectedKeys={activeKey ? [activeKey] : []}
+          treeLabel={messages.outline.tree}
+          onExpand={setExpandedKeys}
+          onSelect={handleSelect}
+          titleRender={titleRender}
+        />
       ) : (
-        <>
-          <header className="office-file-word-outline__header">
-            <span className="office-file-word-outline__title">
-              <OutlineIcon />
-              {messages.outline.title}
-            </span>
-            <span className="office-file-word-outline__count">
-              {snapshot.count}
-            </span>
-            <button
-              type="button"
-              className="office-file-word-outline__toggle"
-              aria-label={messages.outline.collapse}
-              title={messages.outline.collapse}
-              onClick={() => setCollapsed(true)}
-            >
-              <PanelLeftCloseIcon />
-            </button>
-          </header>
-          {outlineMode === 'virtual' ? (
-            <VirtualOutlineTree
-              provider={provider}
-              documentSessionId={documentSessionId}
-              revision={snapshot.revision}
-              treeData={[]}
-              expandedKeys={expandedKeys}
-              selectedKeys={activeKey ? [activeKey] : []}
-              treeLabel={messages.outline.tree}
-              onExpand={setExpandedKeys}
-              onSelect={handleSelect}
-              titleRender={titleRender}
-            />
-          ) : (
-            <div className="office-file-word-outline__tree-host">
-              <NormalOutlineTree
-                treeData={normalTree}
-                expandedKeys={expandedKeys}
-                selectedKeys={activeKey ? [activeKey] : []}
-                treeLabel={messages.outline.tree}
-                onExpand={setExpandedKeys}
-                onSelect={handleSelect}
-                titleRender={titleRender}
-              />
-            </div>
-          )}
-        </>
+        <div className="office-file-word-outline__tree-host">
+          <NormalOutlineTree
+            treeData={normalTree}
+            expandedKeys={expandedKeys}
+            selectedKeys={activeKey ? [activeKey] : []}
+            treeLabel={messages.outline.tree}
+            onExpand={setExpandedKeys}
+            onSelect={handleSelect}
+            titleRender={titleRender}
+          />
+        </div>
       )}
     </aside>
   );

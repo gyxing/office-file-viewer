@@ -1,4 +1,4 @@
-/** 描述 XlsParseErrorCode 在 XLS/BIFF8 解析中的数据结构。 */
+/** XLS 解析失败原因的稳定代码。 */
 export type XlsParseErrorCode =
   | 'INVALID_CFB'
   | 'UNSUPPORTED_BIFF_VERSION'
@@ -20,7 +20,7 @@ export class XlsParseError extends Error {
     context: {
       /** XlsParseError 在源二进制流中的字节偏移。 */
       offset?: number;
-      /** 当前内联结构 在源文件记录中的数字标识。 */
+      /** 发生错误的 XLS 二进制记录标识。 */
       recordId?: number;
     } = {},
   ) {

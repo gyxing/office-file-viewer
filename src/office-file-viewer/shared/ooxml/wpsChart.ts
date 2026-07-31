@@ -1,31 +1,31 @@
 import { decodeMojibake, type OfficeChartModel } from './charts';
 import { attr, descendantsByLocalName } from './xml';
 
-/** 描述 WpsJsonObject 在 OOXML 公共解析中的数据结构。 */
+/** WPS 图表扩展中结构不固定的 JSON 对象。 */
 type WpsJsonObject = Record<string, unknown>;
 
-/** 描述 WpsChartCommon 在 OOXML 公共解析中的数据结构。 */
+/** WPS 扩展图表共用的标题、图例和快照配置。 */
 type WpsChartCommon = {
-  /** WpsChartCommon 对外展示的标题。 */
+  /** 面向用户展示的标题。 */
   title?: string;
   /** 是否显示图表图例。 */
   showLegend: boolean;
-  /** WpsChartCommon 的图例停靠位置；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 图例停靠位置。 */
   legendPosition?: OfficeChartModel['legendPosition'];
-  /** WpsChartCommon 的图例尺寸和文字样式；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 图例尺寸和文字样式。 */
   legendStyle?: OfficeChartModel['legendStyle'];
   /** 是否显示图表数据标签。 */
   showDataLabels: boolean;
-  /** WpsChartCommon 的图表数据标签显示配置。 */
+  /** 图表数据标签显示配置。 */
   dataLabels: NonNullable<OfficeChartModel['dataLabels']>;
-  /** WpsChartCommon 的 snapshotSrc 文本值。 */
+  /** WPS 扩展图表的静态快照地址。 */
   snapshotSrc?: string;
 };
 
+/** WPS 中国地图图表降级渲染使用的 GeoJSON 地址。 */
 const WPS_CHINA_MAP_URL =
   'https://geo.datav.aliyun.com/areas_v3/bound/100000_full.json';
 
-/** 读取 `readWebExtensionProperties` 所需的源数据，供 OOXML 公共解析使用。 */
 function readWebExtensionProperties(webExtensionNode: Element) {
   const properties: Record<string, string> = {};
   descendantsByLocalName(webExtensionNode, 'property').forEach(
@@ -59,7 +59,6 @@ function decodeMojibakeDeep<TValue>(value: TValue): TValue {
   return value;
 }
 
-/** 解析 `parseJsonProperty` 接收的数据，并返回 OOXML 公共解析结果。 */
 function parseJsonProperty<TValue>(
   properties: Record<string, string>,
   key: string,
@@ -100,15 +99,15 @@ function normalizeChartColor(value: unknown) {
     const color =
       (
         value as {
-          /** WPS 图表样式配置 的前景或文本颜色，使用标准化 CSS 颜色值；未提供时沿用来源格式或渲染器的默认规则。 */
+          /** WPS 图表样式中的颜色值。 */
           color?: unknown;
-          /** 局部转换过程中使用的 rgb 配置；未提供时使用来源格式或渲染器的默认行为。 */
+          /** 颜色对象中的 RGB 文本值。 */
           rgb?: unknown;
         }
       ).color ??
       (
         value as {
-          /** 局部转换过程中使用的 rgb 配置；未提供时使用来源格式或渲染器的默认行为。 */
+          /** 颜色对象中的 RGB 文本值。 */
           rgb?: unknown;
         }
       ).rgb;
@@ -134,7 +133,8 @@ function collectChartColors(
 
   const fill = style.fill as
     | {
-        /** 当前结构 包含的 props 有序集合。 */ props?: unknown[];
+        /** WPS 图表样式节点携带的属性列表。 */
+        props?: unknown[];
       }
     | undefined;
   if (fallbackKey === 'fill' && Array.isArray(fill?.props)) {
@@ -144,7 +144,7 @@ function collectChartColors(
           (
             item as
               | {
-                  /** WPS 图表样式配置 的前景或文本颜色，使用标准化 CSS 颜色值；未提供时沿用来源格式或渲染器的默认规则。 */
+                  /** WPS 图表样式中的颜色值。 */
                   color?: unknown;
                 }
               | undefined
@@ -156,7 +156,6 @@ function collectChartColors(
   return [];
 }
 
-/** 读取 `readWpsLegendStyle` 所需的源数据，供 OOXML 公共解析使用。 */
 function readWpsLegendStyle(
   legend: unknown,
 ): OfficeChartModel['legendStyle'] | undefined {
@@ -208,14 +207,12 @@ function readWpsLegendStyle(
       : {}),
   };
 }
-/** 读取 `readPercent` 所需的源数据，供 OOXML 公共解析使用。 */
 function readPercent(value: unknown) {
   if (typeof value !== 'string') return undefined;
   const parsed = Number(value.replace(/%$/, ''));
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-/** 读取 `readRadiusPair` 所需的源数据，供 OOXML 公共解析使用。 */
 function readRadiusPair(value: unknown): [string, string] | undefined {
   if (
     !Array.isArray(value) ||
@@ -226,7 +223,6 @@ function readRadiusPair(value: unknown): [string, string] | undefined {
   return [value[0], value[1]];
 }
 
-/** 读取 `readWpsSeriesStyle` 所需的源数据，供 OOXML 公共解析使用。 */
 function readWpsSeriesStyle(style: WpsJsonObject | undefined) {
   return Array.isArray(style?.series) &&
     style.series[0] &&
@@ -235,7 +231,6 @@ function readWpsSeriesStyle(style: WpsJsonObject | undefined) {
     : undefined;
 }
 
-/** 读取 `readWpsPiePointStyles` 所需的源数据，供 OOXML 公共解析使用。 */
 function readWpsPiePointStyles(
   seriesStyle: WpsJsonObject | undefined,
   count: number,
@@ -245,7 +240,7 @@ function readWpsPiePointStyles(
   const borderColor = normalizeChartColor(
     (
       itemStyle as {
-        /** 当前局部结构 的边框颜色配置；未提供时使用来源格式或渲染器的默认行为。 */
+        /** 图表数据项的边框颜色。 */
         borderColor?: unknown;
       }
     ).borderColor,
@@ -253,7 +248,7 @@ function readWpsPiePointStyles(
   const borderWidth = Number(
     (
       itemStyle as {
-        /** WPS 图表样式配置的 borderWidth 渲染数值，单位为标准化渲染像素。 */
+        /** WPS 图表数据项的边框宽度，单位为标准化渲染像素。 */
         borderWidth?: unknown;
       }
     ).borderWidth,
@@ -265,7 +260,6 @@ function readWpsPiePointStyles(
   }));
 }
 
-/** 读取 `readCommonChartSettings` 所需的源数据，供 OOXML 公共解析使用。 */
 function readCommonChartSettings(
   chartStyle: WpsJsonObject | undefined,
   snapshotSrc?: string,
@@ -273,9 +267,9 @@ function readCommonChartSettings(
   const title =
     chartStyle?.title && typeof chartStyle.title === 'object'
       ? (chartStyle.title as {
-          /** 当前结构 携带或渲染的文本内容。 */
+          /** WPS 图表标题的文本内容。 */
           text?: unknown;
-          /** 局部转换过程中使用的 show 配置；未提供时使用来源格式或渲染器的默认行为。 */
+          /** WPS 图表样式节点的显示开关。 */
           show?: unknown;
         })
       : undefined;
@@ -347,7 +341,6 @@ function readCommonChartSettings(
   };
 }
 
-/** 解析 `parseDemoChart` 接收的数据，并返回 OOXML 公共解析结果。 */
 function parseDemoChart(
   properties: Record<string, string>,
   demoData: WpsJsonObject,
@@ -403,7 +396,7 @@ function parseDemoChart(
           typeof style.areaStyle === 'object' &&
           (
             style.areaStyle as {
-              /** 局部转换过程中使用的 show 配置；未提供时使用来源格式或渲染器的默认行为。 */
+              /** WPS 图表样式节点的显示开关。 */
               show?: unknown;
             }
           ).show
@@ -415,7 +408,7 @@ function parseDemoChart(
           (Array.isArray(style?.series)
             ? (
                 style.series as Array<{
-                  /** 局部转换过程中使用的 smooth 配置；未提供时使用来源格式或渲染器的默认行为。 */
+                  /** 折线是否使用平滑曲线。 */
                   smooth?: unknown;
                 }>
               )[0]?.smooth
@@ -425,7 +418,7 @@ function parseDemoChart(
         Array.isArray(style?.symbol) &&
         (
           style.symbol[0] as {
-            /** 局部转换过程中使用的 show 配置；未提供时使用来源格式或渲染器的默认行为。 */
+            /** WPS 图表样式节点的显示开关。 */
             show?: unknown;
           }
         )?.show === false
@@ -435,7 +428,7 @@ function parseDemoChart(
                 Number(
                   (
                     style.symbol[0] as {
-                      /** 局部转换过程中使用的 size 配置；未提供时使用来源格式或渲染器的默认行为。 */
+                      /** 图表数据点标记的显示尺寸。 */
                       size?: unknown;
                     }
                   )?.size,
@@ -447,7 +440,7 @@ function parseDemoChart(
                   Array.isArray(style?.series)
                     ? (
                         style.series[0] as {
-                          /** 局部转换过程中使用的 symbolSize 配置；未提供时使用来源格式或渲染器的默认行为。 */
+                          /** 图表数据点标记的显示尺寸。 */
                           symbolSize?: unknown;
                         }
                       )?.symbolSize
@@ -494,14 +487,13 @@ function parseDemoChart(
   };
 }
 
-/** 解析 `parseMapChart` 接收的数据，并返回 OOXML 公共解析结果。 */
 function parseMapChart(
   properties: Record<string, string>,
   mapData:
     | {
-        /** 当前结构 当前步骤需要处理的原始或标准化数据。 */
+        /** 图表回调参数携带的原始或标准化数据。 */
         data?: unknown[];
-        /** 局部转换过程中使用的 props 配置；未提供时使用来源格式或渲染器的默认行为。 */
+        /** WPS 图表样式节点携带的属性列表。 */
         props?: WpsJsonObject;
       }
     | undefined,
@@ -541,11 +533,11 @@ function parseMapChart(
   const mapRegion =
     chartStyle?.mapRegion && typeof chartStyle.mapRegion === 'object'
       ? (chartStyle.mapRegion as {
-          /** 局部转换过程中使用的 country 配置；未提供时使用来源格式或渲染器的默认行为。 */
+          /** 地图图表配置中的国家名称。 */
           country?: unknown;
-          /** 局部转换过程中使用的 province 配置；未提供时使用来源格式或渲染器的默认行为。 */
+          /** 地图图表配置中的省份名称。 */
           province?: unknown;
-          /** 局部转换过程中使用的 city 配置；未提供时使用来源格式或渲染器的默认行为。 */
+          /** 地图图表配置中的城市名称。 */
           city?: unknown;
         })
       : undefined;
@@ -592,11 +584,11 @@ export function parseWpsWebExtensionChartModel(
     dschart && typeof dschart === 'object'
       ? (
           dschart as {
-            /** 局部转换过程中使用的 json 配置；未提供时使用来源格式或渲染器的默认行为。 */
+            /** WPS 地图图表的数据与样式配置。 */
             json?: {
-              /** 当前结构 当前步骤需要处理的原始或标准化数据。 */
+              /** 图表回调参数携带的原始或标准化数据。 */
               data?: unknown[];
-              /** 局部转换过程中使用的 props 配置；未提供时使用来源格式或渲染器的默认行为。 */
+              /** WPS 图表样式节点携带的属性列表。 */
               props?: WpsJsonObject;
             };
           }

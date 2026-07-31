@@ -5,16 +5,25 @@ import type {
 } from '../../shared/ooxml/OfficeArchiveReader';
 import { OFFICE_LARGE_FILE_THRESHOLDS } from '../performance/officePerformanceThresholds';
 
+/** DOCX 压缩包的大文件判定指标。 */
 export type DocxArchiveProfile = {
+  /** 当前数据源或渲染器采用的工作模式。 */
   mode: 'materialized' | 'lazy';
+  /** 压缩包中相关内容的压缩大小，单位为字节。 */
   compressedSize: number;
+  /** 相关内容解压后的大小，单位为字节。 */
   uncompressedSize: number;
+  /** DOCX 主文档 XML 的大小，单位为字节。 */
   mainDocumentSize: number;
+  /** 压缩包内最大媒体文件的大小，单位为字节。 */
   largestMediaSize: number;
 };
 
+/** 附带性能档案的 DOCX 压缩包读取器。 */
 export type ProfiledDocxArchive = {
+  /** 用于按需读取源数据的读取器。 */
   reader: OfficeArchiveReader;
+  /** 控制解析或渲染策略的性能档案。 */
   profile: DocxArchiveProfile;
 };
 
