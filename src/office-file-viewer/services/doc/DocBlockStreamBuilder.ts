@@ -4,23 +4,22 @@ import {
 } from './chunkDocBlocks';
 import type { DocBlock } from './types';
 
-/** 描述 DocBlockBatch 在 DOC 二进制解析中的数据结构。 */
+/** DOC 流式解析一次输出的内容块批次。 */
 export type DocBlockBatch = {
-  /** DocBlockBatch 分块在完整集合中的起始索引。 */
+  /** 分块在完整集合中的起始索引。 */
   startIndex: number;
-  /** DocBlockBatch 包含的 blocks 有序集合。 */
+  /** 按源文档顺序排列的内容块。 */
   blocks: DocBlock[];
 };
 
-/** 定义DOC 二进制解析的可选配置。 */
+/** DOC 内容块流的分片和取消选项。 */
 export type DocBlockStreamOptions = {
-  /** DocBlockStreamOptions 使用的目标字节数。 */
+  /** 使用的目标字节数。 */
   targetBytes?: number;
-  /** 执行 DocBlockStreamOptions 的 onBatch 操作。 */
+  /** 接收本轮新生成的连续内容块。 */
   onBatch?(batch: DocBlockBatch): Promise<void>;
 };
 
-/** 执行 `blockHasImage` 封装的DOC 二进制解析处理步骤。 */
 function blockHasImage(block: DocBlock) {
   if (block.type === 'paragraph') {
     return Boolean(block.inlines?.some((inline) => inline.type === 'image'));
@@ -37,14 +36,12 @@ function blockHasImage(block: DocBlock) {
   );
 }
 
-/** 判断 `isImageOnlyParagraph` 对应的条件是否成立。 */
 function isImageOnlyParagraph(block: DocBlock) {
   return (
     block.type === 'paragraph' && !block.text.trim() && blockHasImage(block)
   );
 }
 
-/** 判断 `isShapeTextParagraph` 对应的条件是否成立。 */
 function isShapeTextParagraph(block: DocBlock) {
   if (block.type !== 'paragraph') return false;
   const text = block.text.replace(/\s+/g, '');
@@ -57,7 +54,6 @@ function isShapeTextParagraph(block: DocBlock) {
   );
 }
 
-/** 执行 `finalizeBlockId` 封装的DOC 二进制解析处理步骤。 */
 function finalizeBlockId(block: DocBlock, index: number): DocBlock {
   const prefix =
     block.type === 'table'

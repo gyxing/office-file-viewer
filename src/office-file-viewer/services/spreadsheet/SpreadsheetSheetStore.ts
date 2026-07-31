@@ -25,35 +25,52 @@ export const SPREADSHEET_TILE_COLUMNS = 50;
 
 /** 描述一个稀疏单元格 tile。 */
 export type SpreadsheetTile = {
+  /** 工作表的稳定标识。 */
   sheetId: string;
+  /** 行 分片。 */
   rowTile: number;
+  /** 列 分片。 */
   columnTile: number;
+  /** 数据源变更时递增的修订号。 */
   revision: number;
+  /** 按显示顺序排列的单元格。 */
   cells: readonly SpreadsheetCell[];
 };
 
 /** 描述工作表不随范围重复保存的结构和尺寸。 */
 export type SpreadsheetSheetStructure = SpreadsheetSheetLayout & {
+  /** 工作表全局声明且不随分片重复保存的合并区域。 */
   merges: readonly SpreadsheetMerge[];
+  /** 当前文档或页面包含的图片资源。 */
   images: readonly SpreadsheetImage[];
+  /** 按图表对象编号索引的标准图表模型。 */
   charts: readonly SpreadsheetChart[];
 };
 
 /** Sheet Store 对 Source 暴露的范围读取协议。 */
 export interface SpreadsheetSheetStore {
+  /** 保存工作表中一个已解析的数据分片。 */
   putTile(tile: SpreadsheetTile): Promise<void>;
+  /** 保存工作表的行列结构与合并信息。 */
   putStructure(structure: SpreadsheetSheetStructure): void;
+  /** 读取指定工作表的布局信息。 */
   getLayout(): SpreadsheetSheetLayout;
+  /** 读取指定工作表范围内的单元格与对象。 */
   getRange(
     range: SpreadsheetRange,
     signal?: AbortSignal,
   ): Promise<SpreadsheetRangeData>;
+  /** 保留指定可视范围并回收远离窗口的缓存内容。 */
   retainRange(range: SpreadsheetRange): () => void;
+  /** 幂等释放当前对象持有的资源和订阅。 */
   dispose(): Promise<void>;
 }
 
+/** 工作表按需分片的访问时间和加载状态。 */
 type TileMeta = {
+  /** 行 分片。 */
   rowTile: number;
+  /** 列 分片。 */
   columnTile: number;
 };
 

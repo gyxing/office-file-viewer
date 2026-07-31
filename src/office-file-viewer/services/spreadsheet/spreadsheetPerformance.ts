@@ -19,13 +19,21 @@ export type SpreadsheetPerformanceProfile = {
 
 /** 计算工作表性能画像所需的提前结构信息。 */
 export type SpreadsheetPerformanceInput = {
+  /** 行数量。 */
   rowCount: number;
+  /** 列数量。 */
   columnCount: number;
+  /** 源压缩包大小，单位为字节。 */
   compressedBytes?: number;
+  /** 源压缩包解压后的累计大小，单位为字节。 */
   uncompressedBytes?: number;
+  /** 工作表 XML 或 BIFF 子流的累计大小，单位为字节。 */
   sheetBytes?: number;
+  /** CFB 文件总大小，单位为字节。 */
   cfbFileBytes?: number;
+  /** CFB 主数据流大小，单位为字节。 */
   cfbMainStreamBytes?: number;
+  /** 构建标准工作表模型消耗的时间，单位为毫秒。 */
   modelBuildMilliseconds?: number;
 };
 

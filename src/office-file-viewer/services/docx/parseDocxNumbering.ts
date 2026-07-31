@@ -9,30 +9,45 @@ import {
 
 /** DOCX 段落引用的编号实例与层级。 */
 export type DocxNumberingReference = {
+  /** 段落引用的 DOCX 编号实例标识。 */
   numId: string;
+  /** 编号或大纲的零基级别。 */
   level?: number;
 };
 
+/** DOCX 编号定义中的单个大纲级别。 */
 type DocxNumberingLevel = {
+  /** 编号或大纲的零基级别。 */
   level: number;
+  /** 当前范围的起始位置。 */
   start: number;
+  /** 编号值使用的格式名称。 */
   format: string;
+  /** 文本内容。 */
   text: string;
+  /** 列表编号与正文之间使用的后缀类型。 */
   suffix: 'tab' | 'space' | 'nothing';
+  /** 字体族名称。 */
   fontFamily?: string;
 };
 
 /** DOCX 自动编号定义及解析过程中的计数状态。 */
 export type DocxNumberingCatalog = {
+  /** 按标识索引的 DOCX 抽象多级编号定义。 */
   abstracts: Record<string, Record<number, DocxNumberingLevel>>;
+  /** 按标识索引的 DOCX 编号实例。 */
   instances: Record<
     string,
     {
+      /** 编号实例引用的抽象编号标识。 */
       abstractId: string;
+      /** 编号实例对各级起始值的覆盖。 */
       startOverrides: Record<number, number>;
+      /** 编号实例对各级完整定义的覆盖。 */
       levelOverrides: Record<number, DocxNumberingLevel>;
     }
   >;
+  /** 按列表实例保存的各级当前计数器。 */
   counters: Record<string, number[]>;
 };
 
@@ -154,15 +169,60 @@ function toRoman(value: number) {
   ];
   let rest = Math.max(1, value);
   return symbols.reduce((result, [unit, symbol]) => {
+    let formatted = result;
     while (rest >= unit) {
-      result += symbol;
+      formatted += symbol;
       rest -= unit;
     }
-    return result;
+    return formatted;
   }, '');
 }
 
+/** 将正整数格式化为简体中文计数文本，覆盖 OOXML 的中文自动编号。 */
+function toChineseCounting(value: number): string {
+  const integer = Math.max(0, Math.trunc(value));
+  const digits = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+  if (integer < 10) return digits[integer];
+  if (integer < 100) {
+    const tens = Math.floor(integer / 10);
+    const ones = integer % 10;
+    return `${tens === 1 ? '' : digits[tens]}十${ones ? digits[ones] : ''}`;
+  }
+  if (integer < 1000) {
+    const hundreds = Math.floor(integer / 100);
+    const rest = integer % 100;
+    return `${digits[hundreds]}百${
+      rest ? `${rest < 10 ? '零' : ''}${toChineseCounting(rest)}` : ''
+    }`;
+  }
+  if (integer < 10000) {
+    const thousands = Math.floor(integer / 1000);
+    const rest = integer % 1000;
+    return `${digits[thousands]}千${
+      rest ? `${rest < 100 ? '零' : ''}${toChineseCounting(rest)}` : ''
+    }`;
+  }
+  if (integer < 100000000) {
+    const tenThousands = Math.floor(integer / 10000);
+    const rest = integer % 10000;
+    return `${toChineseCounting(tenThousands)}万${
+      rest ? `${rest < 1000 ? '零' : ''}${toChineseCounting(rest)}` : ''
+    }`;
+  }
+  if (integer < 1000000000000) {
+    const hundredMillions = Math.floor(integer / 100000000);
+    const rest = integer % 100000000;
+    return `${toChineseCounting(hundredMillions)}亿${
+      rest ? `${rest < 10000000 ? '零' : ''}${toChineseCounting(rest)}` : ''
+    }`;
+  }
+  return String(integer);
+}
+
 function formatCounter(value: number, format: string) {
+  if (format === 'chineseCounting' || format === 'chineseCountingThousand') {
+    return toChineseCounting(value);
+  }
   if (format === 'upperLetter' || format === 'lowerLetter') {
     let result = '';
     let rest = Math.max(1, value);

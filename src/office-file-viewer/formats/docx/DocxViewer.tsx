@@ -29,6 +29,7 @@ import { VirtualWordPageList } from '../word-pages/VirtualWordPageList';
 import { WordBlockPageIndex } from '../word-pages/WordBlockPageIndex';
 import { useWordPerformanceProfile } from '../word-performance/useWordPerformanceProfile';
 import { DocxBlockRenderer } from './DocxBlockRenderer';
+import { DocxCharacterSpacingContext } from './DocxInlineContent';
 import { DocxPageFrame } from './DocxPageFrame';
 import {
   paginateMeasuredDocxPage,
@@ -36,6 +37,7 @@ import {
   type DocxMeasurementBatch,
 } from './docxPagination';
 import './index.less';
+import { measureDocxParagraphLines } from './measureDocxParagraphLines';
 
 const LazyDocxMeasureHost = lazy(() =>
   import('./DocxMeasureHost').then((module) => ({
@@ -43,9 +45,9 @@ const LazyDocxMeasureHost = lazy(() =>
   })),
 );
 
-/** 定义 DocxViewer 组件可接收的属性。 */
+/** DOCX预览器组件属性。 */
 type DocxViewerProps = {
-  /** DocxViewerProps 当前关联的标准化文档模型。 */
+  /** 当前处理的标准化文档模型。 */
   document?: DocxDocument;
   /** 大文件路径直接消费的 DOCX 页面 Source。 */
   source?: DocxWordPageSource;
@@ -53,6 +55,10 @@ type DocxViewerProps = {
   summary?: DocxWordPreviewSummary;
   /** 当前预览缩放比例。 */
   zoom: number;
+  /** 文档大纲当前是否展开。 */
+  showOutline: boolean;
+  /** 关闭文档大纲。 */
+  onCloseOutline: () => void;
   /** 当前文件解析 Session，用于隔离性能升级状态。 */
   documentSessionId: string;
 };
@@ -125,6 +131,7 @@ function useMeasuredDocxPages(
             rowHeights,
             originalTableRowCount:
               block.type === 'table' ? block.rows.length : undefined,
+            ...measureDocxParagraphLines(element, block, blockHeight),
           };
         },
       );
@@ -141,12 +148,14 @@ function useMeasuredDocxPages(
 }
 
 // DocxViewer 负责 DOCX 页面内容的缩放渲染和滚动布局。
-/** 渲染 DocxViewerComponent 组件。 */
+/** 协调 DOCX 页面、大纲和按需内容加载。 */
 function DocxViewerComponent({
   document,
   source,
   summary,
   zoom,
+  showOutline,
+  onCloseOutline,
   documentSessionId,
 }: DocxViewerProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -170,9 +179,15 @@ function DocxViewerComponent({
       ? summary?.preserveSectionPagination
       : document?.preserveSectionPagination,
   );
+  const characterSpacingControl = source
+    ? summary?.characterSpacingControl
+    : document?.characterSpacingControl;
+  const compressPunctuation =
+    characterSpacingControl === 'compressPunctuation' ||
+    characterSpacingControl === 'compressPunctuationAndJapaneseKana';
   const materializedOutlineItems = useMemo(
-    () => (source ? [] : document?.outline ?? []),
-    [document?.outline, source],
+    () => (source || !showOutline ? [] : document?.outline ?? []),
+    [document?.outline, showOutline, source],
   );
   const materializedOutlineProvider = useMemo(
     () => createMemoryWordOutlineProvider(materializedOutlineItems),
@@ -227,8 +242,13 @@ function DocxViewerComponent({
     pageSource.getSnapshot,
   );
   const outlineItems = useMemo(
-    () => (source ? source.getOutlineItems() : materializedOutlineItems),
-    [materializedOutlineItems, pageSnapshot.revision, source],
+    () =>
+      showOutline
+        ? source
+          ? source.getOutlineItems()
+          : materializedOutlineItems
+        : [],
+    [materializedOutlineItems, pageSnapshot.revision, showOutline, source],
   );
   const outlineProvider = source?.outline ?? materializedOutlineProvider;
   const profile = source?.getPerformanceProfile() ?? materializedProfile;
@@ -278,6 +298,8 @@ function DocxViewerComponent({
         pageItem.differentFirstPage,
         differentEvenOdd,
       );
+      const displayedPageNumber =
+        pageIndex + (pageItem.differentFirstPage ? 0 : 1);
       return (
         <DocxPageFrame
           key={pageItem.id}
@@ -289,9 +311,9 @@ function DocxViewerComponent({
               : undefined
           }
           footer={
-            footerPageNumber && pageIndex > 0 ? (
+            footerPageNumber && displayedPageNumber > 0 ? (
               <span className="office-file-docx-page-frame__page-number">
-                - {pageIndex} -
+                - {displayedPageNumber} -
               </span>
             ) : undefined
           }
@@ -347,64 +369,70 @@ function DocxViewerComponent({
   }
 
   return (
-    <div
-      className="office-file-docx-viewer"
-      data-word-source-mode={source ? 'progressive' : 'materialized'}
-    >
-      {source ? (
-        <Suspense fallback={null}>
-          <LazyDocxMeasureHost
-            batch={measurementBatch}
-            renderBlock={renderMeasurementBlock}
-            onMeasured={handleMeasured}
-            onError={handleMeasurementError}
-          />
-        </Suspense>
-      ) : !preserveSectionPagination ? (
-        <div
-          ref={measureRef}
-          className="office-file-docx-viewer__measure"
-          aria-hidden="true"
-        >
-          {materializedSourcePages.map((pageItem) => (
-            <DocxPageFrame key={pageItem.id} page={pageItem.page} zoom={100}>
-              {renderPageBlocks(pageItem)}
-            </DocxPageFrame>
-          ))}
-        </div>
-      ) : null}
-      <div className="office-file-docx-viewer__body">
-        <WordOutlineSidebar
-          items={outlineItems}
-          provider={outlineProvider}
-          outlineMode={profile.outlineMode}
-          pageMode={profile.pageMode}
-          pageSource={pageSource}
-          blockPageIndex={blockPageIndex}
-          pageNavigationControllerRef={pageNavigationControllerRef}
-          scrollContainerRef={scrollContainerRef}
-          documentSessionId={documentSessionId}
-          layoutKey={layoutKey}
-        />
-        <div
-          ref={scrollContainerRef}
-          className="office-file-docx-viewer__scroller"
-        >
-          {profile.pageMode === 'windowed' ? (
-            <VirtualWordPageList
-              source={pageSource}
-              scrollerRef={scrollContainerRef}
-              layoutRevision={layoutKey}
-              zoom={zoom}
-              navigationControllerRef={pageNavigationControllerRef}
-              renderPage={renderPage}
+    <DocxCharacterSpacingContext.Provider value={compressPunctuation}>
+      <div
+        className="office-file-docx-viewer"
+        data-word-source-mode={source ? 'progressive' : 'materialized'}
+        data-character-spacing-control={characterSpacingControl}
+      >
+        {source ? (
+          <Suspense fallback={null}>
+            <LazyDocxMeasureHost
+              batch={measurementBatch}
+              renderBlock={renderMeasurementBlock}
+              onMeasured={handleMeasured}
+              onError={handleMeasurementError}
             />
-          ) : (
-            materializedPages.map(renderPage)
-          )}
+          </Suspense>
+        ) : !preserveSectionPagination ? (
+          <div
+            ref={measureRef}
+            className="office-file-docx-viewer__measure"
+            aria-hidden="true"
+          >
+            {materializedSourcePages.map((pageItem) => (
+              <DocxPageFrame key={pageItem.id} page={pageItem.page} zoom={100}>
+                {renderPageBlocks(pageItem)}
+              </DocxPageFrame>
+            ))}
+          </div>
+        ) : null}
+        <div className="office-file-docx-viewer__body">
+          {showOutline ? (
+            <WordOutlineSidebar
+              items={outlineItems}
+              provider={outlineProvider}
+              outlineMode={profile.outlineMode}
+              pageMode={profile.pageMode}
+              pageSource={pageSource}
+              blockPageIndex={blockPageIndex}
+              pageNavigationControllerRef={pageNavigationControllerRef}
+              scrollContainerRef={scrollContainerRef}
+              documentSessionId={documentSessionId}
+              layoutKey={layoutKey}
+              onClose={onCloseOutline}
+            />
+          ) : null}
+          <div
+            ref={scrollContainerRef}
+            className="office-file-docx-viewer__scroller"
+          >
+            {profile.pageMode === 'windowed' ? (
+              <VirtualWordPageList
+                source={pageSource}
+                scrollerRef={scrollContainerRef}
+                layoutRevision={layoutKey}
+                zoom={zoom}
+                navigationControllerRef={pageNavigationControllerRef}
+                renderPage={renderPage}
+              />
+            ) : (
+              materializedPages.map(renderPage)
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </DocxCharacterSpacingContext.Provider>
   );
 }
 

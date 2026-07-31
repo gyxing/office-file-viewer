@@ -2,12 +2,17 @@ import type { SpreadsheetColumnMetric, SpreadsheetRowMetric } from './types';
 
 /** 提供稀疏行列尺寸的全局像素坐标查询。 */
 export interface SpreadsheetAxisIndex {
+  /** 计算指定行或列起点的累计偏移。 */
   offsetAt(index: number): number;
+  /** 返回指定行或列的显示尺寸。 */
   sizeAt(index: number): number;
+  /** 计算连续行列范围的累计尺寸。 */
   rangeSize(start: number, end: number): number;
+  /** 查找指定轴向偏移落入的行或列索引。 */
   findIndexAtOffset(offset: number): number;
 }
 
+/** 电子表格单个行轴或列轴的尺寸信息。 */
 type AxisMetric = SpreadsheetRowMetric | SpreadsheetColumnMetric;
 
 /** 创建不会按 Excel 最大行列数分配等长数组的轴索引。 */

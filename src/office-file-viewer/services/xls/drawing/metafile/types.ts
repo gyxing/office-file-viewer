@@ -1,114 +1,114 @@
 import type { SpreadsheetWarning } from '../../../spreadsheet/types';
 
-/** 描述 XLS/BIFF8 解析使用的样式参数。 */
+/** WMF/EMF 矢量图元使用的绘制样式。 */
 export type VectorStyle = {
-  /** VectorStyle 的轮廓颜色；null 表示明确不绘制轮廓；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 轮廓颜色；null 表示明确不绘制轮廓。 */
   stroke?: string;
-  /** VectorStyle 的填充颜色、渐变或无填充标记；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 填充颜色、渐变或无填充标记。 */
   fill?: string;
-  /** VectorStyle 的轮廓宽度，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 轮廓宽度，单位为标准化渲染像素。 */
   strokeWidth?: number;
-  /** VectorStyle 的整体透明度，0 表示完全透明，1 表示完全不透明；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 整体透明度，0 表示完全透明，1 表示完全不透明。 */
   opacity?: number;
-  /** VectorStyle 的字体族名称；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 字体族名称。 */
   fontFamily?: string;
-  /** VectorStyle 的字号，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 字号，单位为标准化渲染像素。 */
   fontSize?: number;
-  /** VectorStyle 的字体粗细值；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 字体粗细。 */
   fontWeight?: number;
-  /** VectorStyle 的 textColor 文本值。 */
+  /** 文字使用的颜色。 */
   textColor?: string;
 };
 
-/** 描述 VectorElement 在 XLS/BIFF8 解析中的数据结构。 */
+/** WMF/EMF 转换后支持的矢量图元联合类型。 */
 export type VectorElement =
   | {
-      /** 用于区分 VectorElement 不同结构分支的类型标识。 */
+      /** 用于区分联合类型分支的类型标识。 */
       type: 'line';
-      /** VectorElement 在矢量图元坐标系中的 x1 几何值。 */
+      /** 在矢量图元坐标系中的 几何值。 */
       x1: number;
-      /** VectorElement 在矢量图元坐标系中的 y1 几何值。 */
+      /** 在矢量图元坐标系中的 几何值。 */
       y1: number;
-      /** VectorElement 在矢量图元坐标系中的 x2 几何值。 */
+      /** 在矢量图元坐标系中的 几何值。 */
       x2: number;
-      /** VectorElement 在矢量图元坐标系中的 y2 几何值。 */
+      /** 在矢量图元坐标系中的 几何值。 */
       y2: number;
-      /** VectorElement 使用的渲染或文本样式。 */
+      /** 当前内容使用的渲染样式。 */
       style: VectorStyle;
     }
   | {
-      /** 用于区分 VectorElement 不同结构分支的类型标识。 */
+      /** 用于区分联合类型分支的类型标识。 */
       type: 'polyline' | 'polygon';
-      /** VectorElement 包含的 points 有序集合。 */
+      /** 折线或多边形的顶点坐标。 */
       points: Array<[number, number]>;
-      /** VectorElement 使用的渲染或文本样式。 */
+      /** 当前内容使用的渲染样式。 */
       style: VectorStyle;
     }
   | {
-      /** 用于区分 VectorElement 不同结构分支的类型标识。 */
+      /** 用于区分联合类型分支的类型标识。 */
       type: 'rectangle' | 'ellipse';
-      /** VectorElement 的 x 几何值，单位遵循对应 Office 二进制记录定义。 */
+      /** 相对定位区域左侧的横坐标，单位为标准化渲染像素。 */
       x: number;
-      /** VectorElement 的 y 几何值，单位遵循对应 Office 二进制记录定义。 */
+      /** 相对定位区域顶部的纵坐标，单位为标准化渲染像素。 */
       y: number;
-      /** VectorElement 的 width 几何值，单位遵循对应 Office 二进制记录定义。 */
+      /** 宽度，单位为标准化渲染像素。 */
       width: number;
-      /** VectorElement 的 height 几何值，单位遵循对应 Office 二进制记录定义。 */
+      /** 高度，单位为标准化渲染像素。 */
       height: number;
-      /** VectorElement 在矢量图元坐标系中的 radiusX 几何值。 */
+      /** 圆角或椭圆在水平方向的半径。 */
       radiusX?: number;
-      /** VectorElement 在矢量图元坐标系中的 radiusY 几何值。 */
+      /** 圆角或椭圆在垂直方向的半径。 */
       radiusY?: number;
-      /** VectorElement 使用的渲染或文本样式。 */
+      /** 当前内容使用的渲染样式。 */
       style: VectorStyle;
     }
   | {
-      /** 用于区分 VectorElement 不同结构分支的类型标识。 */
+      /** 用于区分联合类型分支的类型标识。 */
       type: 'path';
-      /** VectorElement 当前步骤需要处理的原始或标准化数据。 */
+      /** SVG 路径命令文本。 */
       data: string;
-      /** VectorElement 使用的渲染或文本样式。 */
+      /** 当前内容使用的渲染样式。 */
       style: VectorStyle;
     }
   | {
-      /** 用于区分 VectorElement 不同结构分支的类型标识。 */
+      /** 用于区分联合类型分支的类型标识。 */
       type: 'text';
-      /** VectorElement 的 x 几何值，单位遵循对应 Office 二进制记录定义。 */
+      /** 相对定位区域左侧的横坐标，单位为标准化渲染像素。 */
       x: number;
-      /** VectorElement 的 y 几何值，单位遵循对应 Office 二进制记录定义。 */
+      /** 相对定位区域顶部的纵坐标，单位为标准化渲染像素。 */
       y: number;
-      /** VectorElement 携带或渲染的文本内容。 */
+      /** 文本内容。 */
       text: string;
-      /** VectorElement 使用的渲染或文本样式。 */
+      /** 当前内容使用的渲染样式。 */
       style: VectorStyle;
     }
   | {
-      /** 用于区分 VectorElement 不同结构分支的类型标识。 */
+      /** 用于区分联合类型分支的类型标识。 */
       type: 'image';
-      /** VectorElement 的 x 几何值，单位遵循对应 Office 二进制记录定义。 */
+      /** 相对定位区域左侧的横坐标，单位为标准化渲染像素。 */
       x: number;
-      /** VectorElement 的 y 几何值，单位遵循对应 Office 二进制记录定义。 */
+      /** 相对定位区域顶部的纵坐标，单位为标准化渲染像素。 */
       y: number;
-      /** VectorElement 的 width 几何值，单位遵循对应 Office 二进制记录定义。 */
+      /** 宽度，单位为标准化渲染像素。 */
       width: number;
-      /** VectorElement 的 height 几何值，单位遵循对应 Office 二进制记录定义。 */
+      /** 高度，单位为标准化渲染像素。 */
       height: number;
-      /** VectorElement 的 dataUrl 文本值。 */
+      /** 内嵌位图使用的数据地址。 */
       dataUrl: string;
-      /** VectorElement 使用的渲染或文本样式。 */
+      /** 当前内容使用的渲染样式。 */
       style: VectorStyle;
     };
 
-/** 描述 VectorScene 在 XLS/BIFF8 解析中的数据结构。 */
+/** WMF/EMF 转换后的画布、图元和警告。 */
 export type VectorScene = {
-  /** VectorScene 的 width 几何值，单位遵循对应 Office 二进制记录定义。 */
+  /** 宽度，单位为标准化渲染像素。 */
   width: number;
-  /** VectorScene 的 height 几何值，单位遵循对应 Office 二进制记录定义。 */
+  /** 高度，单位为标准化渲染像素。 */
   height: number;
-  /** VectorScene 关联的 viewBox 结构；字段形状由 [number, number, number, number] 定义。 */
+  /** 矢量场景的最小横纵坐标及宽高。 */
   viewBox: [number, number, number, number];
-  /** VectorScene 包含的 elements 有序集合。 */
+  /** 按绘制顺序排列的矢量图元。 */
   elements: VectorElement[];
-  /** VectorScene 解析时产生但不阻止继续预览的警告集合。 */
+  /** 解析时产生但不阻止继续预览的警告。 */
   warnings: SpreadsheetWarning[];
 };

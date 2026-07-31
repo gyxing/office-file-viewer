@@ -7,13 +7,13 @@ import type { OfficeChartModel } from '../../shared/ooxml/charts';
 import { buildOfficeChartOption } from '../../shared/ooxml/charts';
 import './index.less';
 
-/** 定义 OfficeChartView 组件可接收的属性。 */
+/** Office图表视图组件属性。 */
 type OfficeChartViewProps = {
-  /** OfficeChartViewProps 当前关联的图表模型。 */
+  /** 图表渲染相关文案。 */
   chart: OfficeChartModel;
-  /** OfficeChartViewProps 的 width 尺寸或坐标，单位为标准化渲染像素。 */
+  /** 宽度，单位为标准化渲染像素。 */
   width: number;
-  /** OfficeChartViewProps 的 height 尺寸或坐标，单位为标准化渲染像素。 */
+  /** 高度，单位为标准化渲染像素。 */
   height: number;
   /** 当前预览缩放比例。 */
   zoom?: number;
@@ -22,7 +22,7 @@ type OfficeChartViewProps = {
 // 地图 GeoJSON 注册到 ECharts 后是全局状态，同一个 mapName 不需要重复下载和注册。
 const registeredMaps = new Set<string>();
 
-/** 渲染 OfficeChartViewComponent 组件。 */
+/** 使用统一图表模型渲染 Office 图表。 */
 function OfficeChartViewComponent({
   chart,
   width,

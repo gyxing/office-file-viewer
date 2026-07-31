@@ -4,13 +4,13 @@ import type { DocTableBlock as DocTableBlockModel } from '../../services/doc/typ
 import { DocInlineContent } from './DocInlineContent';
 import { docTextStyleToCss } from './docRenderUtils';
 
-/** 定义 DocTableBlock 组件可接收的属性。 */
+/** DOC表格内容块组件属性。 */
 type DocTableBlockProps = {
-  /** DocTableBlockProps 当前负责渲染的文档块模型。 */
+  /** 当前负责处理或渲染的内容块。 */
   block: DocTableBlockModel;
 };
 
-/** 渲染 DocTableBlockComponent 组件。 */
+/** 渲染DOC表格内容块。 */
 function DocTableBlockComponent({ block }: DocTableBlockProps) {
   const columnCount = Math.max(...block.rows.map((row) => row.cells.length), 1);
   const borderColor = block.style?.borderColor ?? '#cfd7e3';
@@ -20,6 +20,7 @@ function DocTableBlockComponent({ block }: DocTableBlockProps) {
     row.cells.some((cell) => Boolean(cell.rowSpan && cell.rowSpan > 1)),
   );
   const tableTopOffset = block.width ? 8 : 0;
+  const marginTop = tableTopOffset + (block.spacingBefore ?? 0);
   const marginLeft =
     block.width && block.align === 'center'
       ? `calc((100% - ${block.width}px) / 2)`
@@ -29,7 +30,7 @@ function DocTableBlockComponent({ block }: DocTableBlockProps) {
   const wrapperStyle = {
     width: block.width,
     marginLeft,
-    marginTop: tableTopOffset || undefined,
+    marginTop: marginTop || undefined,
     marginBottom: block.spacingAfter,
   };
 
@@ -91,6 +92,13 @@ function DocTableBlockComponent({ block }: DocTableBlockProps) {
                       width: cell.width,
                       verticalAlign: cell.verticalAlign ?? 'top',
                       ...docTextStyleToCss(cell.style),
+                      // Chromium 会把宋体粗体字面横向栅格化到整数像素，微调字距以匹配 Word 的字体度量。
+                      letterSpacing:
+                        block.width &&
+                        (cell.style?.fontWeight ?? 0) >= 700 &&
+                        /(?:SimSun|宋体)/i.test(cell.style?.fontFamily ?? '')
+                          ? -1.25
+                          : undefined,
                       // 结构化 DOC 表格按 Word 自动行高补偿浏览器字体度量。
                       paddingTop:
                         cell.style?.paddingTop ??
@@ -103,6 +111,7 @@ function DocTableBlockComponent({ block }: DocTableBlockProps) {
                     <DocInlineContent
                       inlines={cell.inlines}
                       fallback={cell.text}
+                      wordTableLineBreaks={Boolean(block.width)}
                     />
                   </td>
                 ))}

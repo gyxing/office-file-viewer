@@ -4,37 +4,41 @@ import { readBiff8UnicodeString } from './strings';
 
 /** 汇总XLS/BIFF8 解析当前步骤需要共享的上下文。 */
 export type FormulaDecodeContext = {
-  /** FormulaDecodeContext 使用的零基行列索引。 */
+  /** 当前处理的表格行。 */
   row: number;
-  /** FormulaDecodeContext 使用的零基行列索引。 */
+  /** 当前处理的列定义。 */
   column: number;
-  /** FormulaDecodeContext 包含的 definedNames 有序集合。 */
+  /** 公式可引用的工作簿已定义名称。 */
   definedNames: Biff8DefinedName[];
-  /** FormulaDecodeContext 包含的 sheets 有序集合。 */
+  /** 公式可引用的工作表描述信息。 */
   sheets: Biff8SheetDescriptor[];
   /** BIFF8 ExternSheet 表到当前工作簿工作表索引的映射。 */
-  externalSheets?: Array<{ firstSheetIndex?: number }>;
+  externalSheets?: Array<{
+    /** 外部工作表引用指向的首个工作表索引。 */
+    firstSheetIndex?: number;
+  }>;
 };
 
-/** 描述 DecodedFormula 在 XLS/BIFF8 解析中的数据结构。 */
+/** BIFF8 公式解码后的文本和降级令牌。 */
 export type DecodedFormula = {
-  /** DecodedFormula 的 formula 文本值。 */
+  /** 成功解码后的 A1 形式公式文本。 */
   formula?: string;
-  /** DecodedFormula 的 formulaTokens 文本值。 */
+  /** 公式令牌的可读降级描述。 */
   formulaTokens: string;
   /** 公式中是否包含当前解析器尚不支持的操作码。 */
   unsupported: boolean;
 };
 
-/** 描述 FunctionInfo 在 XLS/BIFF8 解析中的数据结构。 */
+/** Excel 内建函数的名称和固定参数数量。 */
 type FunctionInfo = {
-  /** FunctionInfo 的可读名称。 */
+  /** Excel 内建函数名称。 */
   name: string;
-  /** FunctionInfo 从源格式读取的 arity 枚举或标识值。 */
+  /** 函数要求的固定参数数量。 */
   arity: number;
 };
 
 // BIFF8 固定参数函数表来自 MS-XLS 的内建函数编号。
+/** BIFF8 固定参数公式函数编号到名称和参数个数的映射。 */
 const FIXED_FUNCTIONS: Record<number, FunctionInfo> = {
   0: { name: 'COUNT', arity: 1 },
   1: { name: 'IF', arity: 3 },
@@ -131,6 +135,7 @@ const FIXED_FUNCTIONS: Record<number, FunctionInfo> = {
   280: { name: 'ODD', arity: 1 },
 };
 
+/** Excel 错误值编号到可读错误文本的映射。 */
 const ERROR_VALUES: Record<number, string> = {
   0x00: '#NULL!',
   0x07: '#DIV/0!',
@@ -141,7 +146,6 @@ const ERROR_VALUES: Record<number, string> = {
   0x2a: '#N/A',
 };
 
-/** 执行 `columnLabel` 封装的XLS/BIFF8 解析处理步骤。 */
 function columnLabel(index: number) {
   let value = index + 1;
   let label = '';
@@ -153,7 +157,6 @@ function columnLabel(index: number) {
   return label;
 }
 
-/** 执行 `signed14` 封装的XLS/BIFF8 解析处理步骤。 */
 function signed14(value: number) {
   const normalized = value & 0x3fff;
   return normalized & 0x2000 ? normalized - 0x4000 : normalized;
@@ -180,12 +183,10 @@ function formatCellReference(
   }`;
 }
 
-/** 读取 `readCellReference` 所需的源数据，供XLS/BIFF8 解析使用。 */
 function readCellReference(reader: Biff8Reader, context: FormulaDecodeContext) {
   return formatCellReference(reader.readUint16(), reader.readUint16(), context);
 }
 
-/** 读取 `readAreaReference` 所需的源数据，供XLS/BIFF8 解析使用。 */
 function readAreaReference(reader: Biff8Reader, context: FormulaDecodeContext) {
   const firstRow = reader.readUint16();
   const lastRow = reader.readUint16();
@@ -198,12 +199,10 @@ function readAreaReference(reader: Biff8Reader, context: FormulaDecodeContext) {
   )}:${formatCellReference(lastRow, lastColumn, context)}`;
 }
 
-/** 执行 `quoteSheetName` 封装的XLS/BIFF8 解析处理步骤。 */
 function quoteSheetName(name: string) {
   return `'${name.replace(/'/g, "''")}'`;
 }
 
-/** 执行 `popArguments` 封装的XLS/BIFF8 解析处理步骤。 */
 function popArguments(stack: string[], count: number) {
   if (stack.length < count) return undefined;
   return stack.splice(stack.length - count, count);
@@ -238,7 +237,6 @@ function normalizeToken(token: number) {
   return token >= 0x20 ? (token & 0x1f) | 0x20 : token;
 }
 
-/** 执行 `bytesToHex` 封装的XLS/BIFF8 解析处理步骤。 */
 function bytesToHex(bytes: Uint8Array) {
   return Array.from(bytes, (value) => value.toString(16).padStart(2, '0'))
     .join('')

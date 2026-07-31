@@ -6,11 +6,11 @@ import type {
 } from '../../services/docx/types';
 
 // DOCX 的样式已经在解析阶段完成继承合并，这里只负责把最终样式映射到 React CSS。
-/** 根据输入构建 `buildDocxTextStyle` 返回的标准化结果。 */
+/** 将 DOCX 文本样式转换为 React CSS 属性。 */
 export function buildDocxTextStyle(
   style?: DocxTextStyle,
   options?: {
-    /** 是否启用 includeBackground 对应的格式选项；未提供时使用来源格式或渲染器的默认行为。 */
+    /** 是否将背景样式写入渲染结果。 */
     includeBackground?: boolean;
   },
 ): CSSProperties {

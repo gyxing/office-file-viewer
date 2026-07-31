@@ -1,17 +1,24 @@
 import { createContentStore, type OfficeContentStore } from '../content-store';
 import type { WordPageMeta } from './WordPageSource';
 
+/** Word 页面缓存的容量和回收选项。 */
 export type WordPageStoreOptions<TPage> = {
+  /** 当前解析或预览会话的标识。 */
   sessionId: string;
+  /** 内存热缓存允许占用的最大字节数。 */
   maxMemoryBytes?: number;
+  /** 估算单个缓存值占用的字节数。 */
   estimateSize(page: TPage): number;
+  /** 在缓存缺页时重新构建指定页面。 */
   recreatePage?(
     index: number,
     signal?: AbortSignal,
   ): Promise<TPage | undefined>;
+  /** 报告不会阻断预览的解析或缓存警告。 */
   onWarning?(error: unknown): void;
 };
 
+/** Word 页面缓存默认允许占用的内存大小，单位为字节。 */
 const DEFAULT_WORD_PAGE_MEMORY_BYTES = 32 * 1024 * 1024;
 
 /** 以内存热层和 IndexedDB 冷层保存大文件页面正文。 */

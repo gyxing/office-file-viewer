@@ -3,6 +3,7 @@ import { createBlobRandomAccessSource } from '../../shared/io';
 import type { DocBinarySource } from './DocBinarySource';
 import { readDocTableStreamName } from './readDocStructure';
 
+/** 识别 DOC FIB 结构时预读的字节数。 */
 const DOC_FIB_PROBE_BYTES = 2048;
 
 /** 从 Blob 创建只读取 DOC 核心流的 CFB 随机数据源。 */

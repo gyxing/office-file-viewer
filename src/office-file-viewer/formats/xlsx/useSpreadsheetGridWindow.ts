@@ -8,13 +8,19 @@ import {
   XLSX_ROW_HEADER_WIDTH,
 } from './sheetRenderUtils';
 
+/** 电子表格滚动视口的位置和尺寸。 */
 type ViewportState = {
+  /** 视口水平方向的滚动距离。 */
   scrollLeft: number;
+  /** 视口垂直方向的滚动距离。 */
   scrollTop: number;
+  /** 宽度，单位为标准化渲染像素。 */
   width: number;
+  /** 高度，单位为标准化渲染像素。 */
   height: number;
 };
 
+/** 电子表格网格尚未测量时使用的空视口。 */
 const EMPTY_VIEWPORT: ViewportState = {
   scrollLeft: 0,
   scrollTop: 0,

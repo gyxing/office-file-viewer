@@ -18,20 +18,31 @@ import type {
 import { useWordPageWindow } from './useWordPageWindow';
 import { WordPagePlaceholder } from './WordPagePlaceholder';
 
+/** Word 页面虚拟列表组件属性。 */
 type VirtualWordPageListProps<TPage> = {
+  /** 当前预览使用的按需加载数据源。 */
   source: WordPageSource<TPage>;
+  /** 滚动容器的可变引用。 */
   scrollerRef: RefObject<HTMLElement>;
+  /** 页面布局变化时递增的修订号。 */
   layoutRevision: string;
+  /** 当前预览缩放比例，100 表示原始大小。 */
   zoom: number;
+  /** 相邻页面之间的显示间距，单位为标准化渲染像素。 */
   pageGap?: number;
+  /** 导航控制器的可变引用。 */
   navigationControllerRef?: MutableRefObject<
     WordPageNavigationController | undefined
   >;
+  /** 渲染虚拟列表中的指定页面。 */
   renderPage(page: TPage, pageIndex: number): ReactNode;
 };
 
+/** 等待页面挂载后执行的导航锚点。 */
 type PendingAnchor = {
+  /** 页面在文档中的零基索引。 */
   pageIndex: number;
+  /** 视口相对滚动容器顶部的偏移。 */
   viewportOffset: number;
 };
 

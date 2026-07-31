@@ -6,10 +6,15 @@ import type {
 } from '../../services/presentation/types';
 import { usePresentationThumbnailWindow } from './usePresentationThumbnailWindow';
 
+/** 演示文稿缩略图虚拟列表组件属性。 */
 type VirtualPptxThumbnailListProps = {
+  /** 当前数据源的只读快照。 */
   snapshot: PresentationSourceSnapshot;
+  /** 当前激活项的零基索引。 */
   activeIndex: number;
+  /** 用户选择幻灯片时触发的回调。 */
   onSelectSlide: (index: number) => void;
+  /** 用于渲染指定缩略图的函数。 */
   renderThumbnail: (
     descriptor: PresentationSlideDescriptor,
     index: number,

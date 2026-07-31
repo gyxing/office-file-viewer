@@ -10,9 +10,9 @@ export type {
   OfficeArchiveReader,
 } from './OfficeArchiveReader';
 
-/** 描述 OfficeZipInput 在 OOXML 公共解析中的数据结构。 */
+/** 打开 OOXML 归档时支持的二进制输入。 */
 export type OfficeZipInput = File | Blob | ArrayBuffer | Uint8Array;
-/** 描述 OfficeEntryMap 在 OOXML 公共解析中的数据结构。 */
+/** 按包内路径索引的 OOXML 文本或二进制条目。 */
 export type OfficeEntryMap = Map<string, string | Uint8Array>;
 
 /** 检测浏览器是否真正支持 zip.js native 核心需要的 deflate-raw。 */
@@ -66,13 +66,13 @@ export async function loadOfficeEntries(
   }
 }
 
-/** 读取 `readXml` 所需的源数据，供 OOXML 公共解析使用。 */
+/** 读取并解析指定 OOXML 文本条目。 */
 export function readXml(entries: OfficeEntryMap, path: string) {
   const value = entries.get(path);
   return typeof value === 'string' ? value : '';
 }
 
-/** 读取 `readBinary` 所需的源数据，供 OOXML 公共解析使用。 */
+/** 读取指定 OOXML 二进制条目。 */
 export function readBinary(entries: OfficeEntryMap, path: string) {
   const value = entries.get(path);
   return value instanceof Uint8Array ? value : undefined;

@@ -3,6 +3,7 @@ import { parseOfficeArtRecords } from '../../../shared/officeart';
 import type { PptParseContext } from '../types';
 import { registerPptPictureRecords } from './readPictures';
 
+/** OfficeArt 记录头占用的字节数。 */
 const OFFICE_ART_RECORD_HEADER_BYTES = 8;
 
 function createAbortError() {

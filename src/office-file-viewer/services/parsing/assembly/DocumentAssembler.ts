@@ -22,11 +22,11 @@ import type {
 } from '../protocol/messages';
 import { ResourceRegistry } from './ResourceRegistry';
 
-/** 描述 VersionedSpreadsheetSheet 在解析会话中的数据结构。 */
+/** 附带递增修订号的工作表分块。 */
 type VersionedSpreadsheetSheet = {
-  /** VersionedSpreadsheetSheet 的递增修订号，用于用较新分块替换旧版本。 */
+  /** 当前工作表分块的递增修订号。 */
   revision: number;
-  /** VersionedSpreadsheetSheet 当前关联的工作表。 */
+  /** 该修订对应的标准工作表模型。 */
   sheet: SpreadsheetSheet;
 };
 

@@ -1,16 +1,16 @@
 import type { WordOutlineItem } from '../word/types';
 
-/** 描述 DOC 二进制解析生成的标准化文档模型。 */
+/** 包含页面、正文、资源和大纲的标准化 DOC 文档。 */
 export type DocDocument = {
-  /** DocDocument 对外展示的标题。 */
+  /** 面向用户展示的标题。 */
   title: string;
-  /** DocDocument 当前关联的页面模型。 */
+  /** 当前关联的页面模型。 */
   page: DocPage;
-  /** DocDocument 包含的 blocks 有序集合。 */
+  /** 按源文档顺序排列的内容块。 */
   blocks: DocBlock[];
-  /** DocDocument 包含的 paragraphs 有序集合。 */
+  /** 按源文档顺序排列的段落。 */
   paragraphs: DocParagraph[];
-  /** DocDocument 包含的 images 有序集合。 */
+  /** 当前文档或页面包含的图片资源。 */
   images: DocImage[];
   /** 源 DOC/WPS 明确声明的大纲条目；为空时不显示目录侧栏。 */
   outline?: WordOutlineItem[];
@@ -18,13 +18,13 @@ export type DocDocument = {
   headerImage?: DocImage;
   /** 页脚 story 是否包含 PAGE 字段。 */
   footerPageNumbers?: boolean;
-  /** DocDocument 解析时产生但不阻止继续预览的警告集合。 */
+  /** 解析时产生但不阻止继续预览的警告。 */
   warnings: string[];
   /** DOC/WPS 文档持有且需要在销毁时释放的浏览器资源。 */
   resources?: DocResources;
 };
 
-/** 记录 DOC/WPS 文档持有且需要统一管理的资源。 */
+/** DOC 文档持有且需要统一释放的浏览器资源。 */
 export type DocResources = {
   /** 浏览器创建的对象 URL 集合，文档释放时必须逐一撤销。 */
   objectUrls: string[];
@@ -42,44 +42,44 @@ export function disposeDocDocument(document: DocDocument | undefined) {
   uniqueUrls.forEach((url) => URL.revokeObjectURL(url));
 }
 
-/** 描述 DocPage 在 DOC 二进制解析中的数据结构。 */
+/** DOC 页面的尺寸和页边距。 */
 export type DocPage = {
   /** 标准化页面宽度，单位为渲染像素。 */
   width: number;
   /** 标准化页面最小高度，单位为渲染像素。 */
   minHeight: number;
-  /** DocPage 的对应间距，单位为标准化渲染像素。 */
+  /** 上外边距，单位为标准化渲染像素。 */
   marginTop: number;
-  /** DocPage 的对应间距，单位为标准化渲染像素。 */
+  /** 右外边距，单位为标准化渲染像素。 */
   marginRight: number;
-  /** DocPage 的对应间距，单位为标准化渲染像素。 */
+  /** 下外边距，单位为标准化渲染像素。 */
   marginBottom: number;
-  /** DocPage 的对应间距，单位为标准化渲染像素。 */
+  /** 左外边距，单位为标准化渲染像素。 */
   marginLeft: number;
 };
 
-/** 描述 DocParagraph 在 DOC 二进制解析中的数据结构。 */
+/** DOC 段落的纯文本和样式。 */
 export type DocParagraph = {
-  /** DocParagraph 在所属文档或任务中的唯一标识。 */
+  /** 在所属集合中的唯一标识。 */
   id: string;
-  /** DocParagraph 携带或渲染的文本内容。 */
+  /** 文本内容。 */
   text: string;
 };
 
-/** 描述 DocBlock 在 DOC 二进制解析中的数据结构。 */
+/** 标准化 DOC 支持的块级内容联合类型。 */
 export type DocBlock = DocParagraphBlock | DocTableBlock | DocListBlock;
 
-/** 描述 DocParagraphBlock 在 DOC 二进制解析中的数据结构。 */
+/** DOC 段落块的文本、行内节点和排版信息。 */
 export type DocParagraphBlock = {
-  /** DocParagraphBlock 在所属文档或任务中的唯一标识。 */
+  /** 在所属集合中的唯一标识。 */
   id: string;
   /** 分页拆分后仍指向原始正文块的稳定 ID。 */
   sourceBlockId?: string;
-  /** 用于区分 DocParagraphBlock 不同结构分支的类型标识。 */
+  /** 用于区分联合类型分支的类型标识。 */
   type: 'paragraph';
-  /** DocParagraphBlock 携带或渲染的文本内容。 */
+  /** 文本内容。 */
   text: string;
-  /** DocParagraphBlock 包含的 inlines 有序集合。 */
+  /** 按源文档顺序排列的行内内容。 */
   inlines?: DocTextInline[];
   /** 段落的语义角色，用于选择标题、标题级别或正文样式。 */
   role?: 'title' | 'heading' | 'body';
@@ -87,41 +87,43 @@ export type DocParagraphBlock = {
   outlineLevel?: number;
   /** 是否属于 Word 自动目录段落。 */
   isTableOfContents?: boolean;
-  /** DocParagraphBlock 使用的渲染或文本样式。 */
+  /** 当前内容使用的渲染样式。 */
   style?: DocTextStyle;
   /** 源文档在该段落前存在显式分页符；渲染分页时该占位段落不显示。 */
   pageBreakBefore?: boolean;
 };
 
-/** 描述 DocTableBlock 在 DOC 二进制解析中的数据结构。 */
+/** DOC 表格块的行列、尺寸和排版信息。 */
 export type DocTableBlock = {
-  /** DocTableBlock 在所属文档或任务中的唯一标识。 */
+  /** 在所属集合中的唯一标识。 */
   id: string;
   /** 分页拆分后仍指向原始正文块的稳定 ID。 */
   sourceBlockId?: string;
-  /** 用于区分 DocTableBlock 不同结构分支的类型标识。 */
+  /** 用于区分联合类型分支的类型标识。 */
   type: 'table';
-  /** DocTableBlock 包含的 rows 有序集合。 */
+  /** 按显示顺序排列的表格行。 */
   rows: DocTableRow[];
-  /** DocTableBlock 使用的渲染或文本样式。 */
+  /** 当前内容使用的渲染样式。 */
   style?: DocTableStyle;
   /** 表格各列的标准化宽度，单位为渲染像素。 */
   columns?: number[];
   /** 表格总宽度，单位为标准化渲染像素。 */
   width?: number;
-  /** DocTableBlock 的水平对齐方式；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 水平对齐方式。 */
   align?: 'left' | 'center' | 'right';
   /** 表格外边界相对正文左边界的偏移，单位为标准化渲染像素。 */
   offsetLeft?: number;
+  /** 表格前的垂直间距；用于保留源文档中位于表格前的空段落。 */
+  spacingBefore?: number;
   /** 表格后的垂直间距；用于保留源文档中紧随表格的空段落。 */
   spacingAfter?: number;
 };
 
-/** 描述 DocTableRow 在 DOC 二进制解析中的数据结构。 */
+/** DOC 表格行及其高度规则。 */
 export type DocTableRow = {
-  /** DocTableRow 在所属文档或任务中的唯一标识。 */
+  /** 在所属集合中的唯一标识。 */
   id: string;
-  /** DocTableRow 包含的 cells 有序集合。 */
+  /** 按显示顺序排列的单元格。 */
   cells: DocTableCell[];
   /** 源 DOC 表格行高度，单位为标准化渲染像素。 */
   height?: number;
@@ -129,23 +131,23 @@ export type DocTableRow = {
   heightRule?: 'atLeast' | 'exact';
 };
 
-/** 描述 DocTableCell 在 DOC 二进制解析中的数据结构。 */
+/** DOC 表格单元格的内容、边框和合并信息。 */
 export type DocTableCell = {
-  /** DocTableCell 在所属文档或任务中的唯一标识。 */
+  /** 在所属集合中的唯一标识。 */
   id: string;
-  /** DocTableCell 携带或渲染的文本内容。 */
+  /** 文本内容。 */
   text: string;
-  /** DocTableCell 包含的 inlines 有序集合。 */
+  /** 按源文档顺序排列的行内内容。 */
   inlines?: DocTextInline[];
-  /** DocTableCell 使用的渲染或文本样式。 */
+  /** 当前内容使用的渲染样式。 */
   style?: DocTextStyle;
-  /** DocTableCell 对应方向的 CSS 边框样式；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 上边框的 CSS 样式。 */
   borderTop?: string;
-  /** DocTableCell 对应方向的 CSS 边框样式；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 右边框的 CSS 样式。 */
   borderRight?: string;
-  /** DocTableCell 对应方向的 CSS 边框样式；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 下边框的 CSS 样式。 */
   borderBottom?: string;
-  /** DocTableCell 对应方向的 CSS 边框样式；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 左边框的 CSS 样式。 */
   borderLeft?: string;
   /** 单元格宽度，单位为标准化渲染像素。 */
   width?: number;
@@ -153,62 +155,62 @@ export type DocTableCell = {
   colSpan?: number;
   /** 表格单元格纵向跨越的行数。 */
   rowSpan?: number;
-  /** DocTableCell 的垂直对齐方式；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 垂直对齐方式。 */
   verticalAlign?: 'top' | 'middle' | 'bottom';
 };
 
-/** 描述 DocListBlock 在 DOC 二进制解析中的数据结构。 */
+/** DOC 列表块的编号和列表项。 */
 export type DocListBlock = {
-  /** DocListBlock 在所属文档或任务中的唯一标识。 */
+  /** 在所属集合中的唯一标识。 */
   id: string;
   /** 分页拆分后仍指向原始正文块的稳定 ID。 */
   sourceBlockId?: string;
-  /** 用于区分 DocListBlock 不同结构分支的类型标识。 */
+  /** 用于区分联合类型分支的类型标识。 */
   type: 'list';
   /** 是否按有序列表渲染；false 表示无序列表。 */
   ordered: boolean;
-  /** DocListBlock 包含的 items 有序集合。 */
+  /** 按显示顺序排列的项目。 */
   items: DocListItem[];
-  /** DocListBlock 使用的渲染或文本样式。 */
+  /** 当前内容使用的渲染样式。 */
   style?: DocTextStyle;
 };
 
-/** 描述 DocListItem 在 DOC 二进制解析中的数据结构。 */
+/** DOC 列表中的单个编号项。 */
 export type DocListItem = {
-  /** DocListItem 在所属文档或任务中的唯一标识。 */
+  /** 在所属集合中的唯一标识。 */
   id: string;
-  /** DocListItem 携带或渲染的文本内容。 */
+  /** 文本内容。 */
   text: string;
-  /** DocListItem 包含的 inlines 有序集合。 */
+  /** 按源文档顺序排列的行内内容。 */
   inlines?: DocTextInline[];
 };
 
-/** 描述 DocTextInline 在 DOC 二进制解析中的数据结构。 */
+/** DOC 段落支持的文本和图片行内节点。 */
 export type DocTextInline = DocTextRunInline | DocImageInline;
 
-/** 描述 DocTextRunInline 在 DOC 二进制解析中的数据结构。 */
+/** 具有统一样式的 DOC 连续文本片段。 */
 export type DocTextRunInline = {
-  /** 用于区分 DocTextRunInline 不同结构分支的类型标识。 */
+  /** 用于区分联合类型分支的类型标识。 */
   type: 'text';
-  /** DocTextRunInline 携带或渲染的文本内容。 */
+  /** 文本内容。 */
   text: string;
-  /** DocTextRunInline 使用的渲染或文本样式。 */
+  /** 当前内容使用的渲染样式。 */
   style?: DocTextStyle;
 };
 
-/** 描述 DocImageInline 在 DOC 二进制解析中的数据结构。 */
+/** 嵌入 DOC 段落中的图片节点。 */
 export type DocImageInline = {
-  /** 用于区分 DocImageInline 不同结构分支的类型标识。 */
+  /** 用于区分联合类型分支的类型标识。 */
   type: 'image';
-  /** DocImageInline 当前关联的图片资源或图片模型。 */
+  /** 当前关联的图片资源或图片模型。 */
   image: DocImage;
 };
 
-/** 描述 DOC 二进制解析使用的样式参数。 */
+/** DOC 文本、段落和边框的标准化样式。 */
 export type DocTextStyle = {
-  /** DocTextStyle 的前景或文本颜色，使用标准化 CSS 颜色值；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 前景或文字颜色，使用 CSS 颜色值。 */
   color?: string;
-  /** DocTextStyle 的背景颜色，使用 CSS 颜色值；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 背景颜色，使用 CSS 颜色值。 */
   backgroundColor?: string;
   /** 标记来自段落属性的底纹，避免字符高亮被错误扩散到整段。 */
   paragraphBackgroundColor?: string;
@@ -218,72 +220,85 @@ export type DocTextStyle = {
   borderWidth?: number;
   /** 段落边框线型。 */
   borderStyle?: 'solid' | 'dashed' | 'dotted';
-  /** DocTextStyle 的字号，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 字号，单位为标准化渲染像素。 */
   fontSize?: number;
-  /** DocTextStyle 的字体粗细值；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 字体粗细。 */
   fontWeight?: number;
-  /** DocTextStyle 的字体样式；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 字体样式。 */
   fontStyle?: 'normal' | 'italic';
   /** CSS 文本装饰样式，例如下划线或删除线。 */
   textDecoration?: string;
   /** 段落文本的水平对齐方式。 */
   textAlign?: 'left' | 'center' | 'right' | 'justify';
-  /** DocTextStyle 的行高，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 行高，单位为标准化渲染像素。 */
   lineHeight?: number;
   /** DOC 的 LSPD 同时声明倍数行距时保留该倍数，供标题和目录布局选用。 */
   lineHeightMultiplier?: number;
-  /** DocTextStyle 的字体族名称；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 段落是否跟随节内文档网格；false 时使用 Word 自身的自动行距。 */
+  useDocumentGrid?: boolean;
+  /** 字体族名称。 */
   fontFamily?: string;
-  /** DocTextStyle 的对应间距，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 左缩进，单位为标准化渲染像素。 */
   indentLeft?: number;
-  /** DocTextStyle 的对应间距，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 右缩进，单位为标准化渲染像素。 */
   indentRight?: number;
-  /** DocTextStyle 的首行缩进，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 首行缩进，单位为标准化渲染像素。 */
   firstLineIndent?: number;
-  /** DocTextStyle 的对应间距，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 段前间距，单位为标准化渲染像素。 */
   spacingBefore?: number;
-  /** DocTextStyle 的对应间距，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 段后间距，单位为标准化渲染像素。 */
   spacingAfter?: number;
-  /** DocTextStyle 的对应间距，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 上内边距，单位为标准化渲染像素。 */
   paddingTop?: number;
-  /** DocTextStyle 的对应间距，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 右内边距，单位为标准化渲染像素。 */
   paddingRight?: number;
-  /** DocTextStyle 的对应间距，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 下内边距，单位为标准化渲染像素。 */
   paddingBottom?: number;
-  /** DocTextStyle 的对应间距，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 左内边距，单位为标准化渲染像素。 */
   paddingLeft?: number;
 };
 
-/** 描述 DOC 二进制解析使用的样式参数。 */
+/** DOC 表格的背景色、交替行和单元格间距样式。 */
 export type DocTableStyle = {
   /** 表头单元格使用的背景颜色。 */
   headerBackgroundColor?: string;
-  /** DocTableStyle 的 headerTextColor 文本值。 */
+  /** 表头 文本 颜色。 */
   headerTextColor?: string;
-  /** DocTableStyle 的 borderColor 文本值。 */
+  /** 边框颜色。 */
   borderColor?: string;
-  /** DocTableStyle 的 cellBackgroundColor 文本值。 */
+  /** 普通表格单元格使用的背景颜色。 */
   cellBackgroundColor?: string;
-  /** DocTableStyle 的 stripedRowBackgroundColor 文本值。 */
+  /** 交替表格行使用的背景颜色。 */
   stripedRowBackgroundColor?: string;
 };
 
-/** 描述 DocImage 在 DOC 二进制解析中的数据结构。 */
+/** DOC 图片资源的尺寸、位置和环绕信息。 */
 export type DocImage = {
-  /** DocImage 在所属文档或任务中的唯一标识。 */
+  /** 在所属集合中的唯一标识。 */
   id: string;
-  /** DocImage 的 src 文本值。 */
+  /** 图片资源地址或延迟资源引用。 */
   src: string;
   /** 资源的 MIME 类型，用于选择解码和渲染方式。 */
   mimeType: string;
-  /** DocImage 的 width 几何值，单位遵循对应 Office 二进制记录定义；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 宽度，单位为标准化渲染像素。 */
   width?: number;
-  /** DocImage 的 height 几何值，单位遵循对应 Office 二进制记录定义；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 高度，单位为标准化渲染像素。 */
   height?: number;
-  /** DocImage 的 caption 文本值。 */
+  /** 图片对应的说明文字。 */
   caption?: string;
-  /** DocImage 在源二进制流中的字节偏移。 */
+  /** 在所属数据范围中的偏移位置。 */
   offset?: number;
-  /** 图片是否采用锚点定位而非随文排列；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 图片是否采用锚点定位而非随文排列。 */
   anchored?: boolean;
+  /** 整页锚定画布相对正文区域向页面四边扩展的距离。 */
+  pageInsets?: {
+    /** 页面正文上边距。 */
+    top: number;
+    /** 页面正文右边距。 */
+    right: number;
+    /** 页面正文下边距。 */
+    bottom: number;
+    /** 页面正文左边距。 */
+    left: number;
+  };
 };

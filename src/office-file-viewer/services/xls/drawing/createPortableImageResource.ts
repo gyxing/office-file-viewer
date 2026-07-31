@@ -7,22 +7,20 @@ import { parseWmf } from './metafile/parseWmf';
 import { vectorSceneToSvg } from './metafile/vectorSceneToSvg';
 import type { Biff8DrawingImage } from './types';
 
-/** 描述 XLS/BIFF8 解析产生的处理结果。 */
+/** 图片转换后的资源引用、负载和警告。 */
 export type PortableImageResourceResult = {
-  /** PortableImageResourceResult 的 reference 文本值。 */
+  /** 标准模型引用该图片资源的稳定地址。 */
   reference: string;
   /** 解析器产生并等待主线程确认接收的可移植资源分块。 */
   resource: PortableResource;
-  /** PortableImageResourceResult 解析时产生但不阻止继续预览的警告集合。 */
+  /** 解析时产生但不阻止继续预览的警告。 */
   warnings: SpreadsheetWarning[];
 };
 
-/** 将输入转换为 `toExactArrayBuffer` 返回的格式。 */
 function toExactArrayBuffer(bytes: ArrayLike<number>) {
   return Uint8Array.from(bytes).buffer;
 }
 
-/** 执行 `inflateMetafile` 封装的XLS/BIFF8 解析处理步骤。 */
 async function inflateMetafile(
   image: Biff8DrawingImage,
   warnings: SpreadsheetWarning[],
@@ -41,7 +39,6 @@ async function inflateMetafile(
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
-/** 执行 `rasterMimeType` 封装的XLS/BIFF8 解析处理步骤。 */
 function rasterMimeType(format: Biff8DrawingImage['format']) {
   if (format === 'png') return 'image/png';
   if (format === 'jpeg') return 'image/jpeg';

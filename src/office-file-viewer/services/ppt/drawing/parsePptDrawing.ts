@@ -19,6 +19,7 @@ import type { PptParseContext } from '../types';
 import { readPptOfficeArtProperties } from './readOfficeArtProperties';
 import { readPptAnchor } from './readPptAnchor';
 
+/** PPT 形状类型编号到标准化形状名称的映射。 */
 const SHAPE_NAMES: Record<number, string> = {
   1: 'rect',
   2: 'roundRect',
@@ -69,7 +70,6 @@ export type PptDrawingModel = {
   elements: SlideElement[];
 };
 
-/** 读取 `readColor` 所需的源数据，供PPT 二进制解析使用。 */
 function readColor(value: number) {
   const rgb = [value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff];
   return `#${rgb.map((part) => part.toString(16).padStart(2, '0')).join('')}`;
@@ -80,7 +80,6 @@ function findChild(record: OfficeArtRecord, type: number) {
   return record.children?.find((child) => child.type === type);
 }
 
-/** 判断 `isBooleanPropertyEnabled` 对应的条件是否成立。 */
 function isBooleanPropertyEnabled(value: number, bit: number) {
   const useMask = bit << 16;
   return value & useMask ? Boolean(value & bit) : undefined;
@@ -179,7 +178,6 @@ function readTextVerticalAlign(value: number | undefined) {
   return 'top' as const;
 }
 
-/** 解析 `parseShape` 接收的数据，并返回PPT 二进制解析结果。 */
 function parseShape(
   record: OfficeArtRecord,
   index: number,

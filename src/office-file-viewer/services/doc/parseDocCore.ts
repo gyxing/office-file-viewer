@@ -10,7 +10,11 @@ import {
   paragraphsFromDocBlocks,
 } from './chunkDocBlocks';
 import { DocBlockStreamBuilder } from './DocBlockStreamBuilder';
-import { extractDocDrawingCanvases } from './parseDocDrawingCanvas';
+import {
+  extractDocDrawingCanvases,
+  type DocDrawingSection,
+  type DocDrawingTextBox,
+} from './parseDocDrawingCanvas';
 import {
   nextDocNumberPrefix,
   readDocNumberingCatalog,
@@ -28,6 +32,7 @@ import type {
   DocDocument,
   DocImage,
   DocListBlock,
+  DocPage,
   DocParagraphBlock,
   DocTableBlock,
   DocTableStyle,
@@ -35,45 +40,48 @@ import type {
   DocTextStyle,
 } from './types';
 
-/** 描述 DocPiece 在 DOC 二进制解析中的数据结构。 */
+/** DOC Piece Table 中的字符区间和文件偏移。 */
 type DocPiece = {
-  /** DocPiece 在文档字符流中的边界索引。 */
+  /** 对应内容在文档字符流中的起始位置。 */
   charStart: number;
-  /** DocPiece 在文档字符流中的边界索引。 */
+  /** 对应内容在文档字符流中的结束位置。 */
   charEnd: number;
-  /** DocPiece 在对应二进制流中的字节偏移。 */
+  /** 在对应二进制流中的字节偏移。 */
   fileOffset: number;
-  /** 表示 DocPiece 的负载是否采用压缩存储。 */
+  /** 源负载是否使用压缩存储。 */
   compressed: boolean;
 };
 
-/** 描述 DocFib 在 DOC 二进制解析中的数据结构。 */
+/** 解析后的 DOC 文件信息块。 */
 type DocFib = ReturnType<typeof parseFib>;
 
-/** 描述 DocCharacterRun 在 DOC 二进制解析中的数据结构。 */
+/** DOC 字符属性在文本和文件流中的覆盖范围。 */
 type DocCharacterRun = {
-  /** DocCharacterRun 在 WordDocument 流中的字节边界。 */
+  /** 在 WordDocument 流中的字节边界。 */
   fcStart: number;
-  /** DocCharacterRun 在 WordDocument 流中的字节边界。 */
+  /** 在 WordDocument 流中的字节边界。 */
   fcEnd: number;
-  /** DocCharacterRun 使用的渲染或文本样式。 */
+  /** 当前内容使用的渲染样式。 */
   style: DocTextStyle;
 };
 
 /** TDefTable 中单元格的合并与垂直对齐属性。 */
 type DocTableCellLayout = {
+  /** 单元格横向合并的开始或延续状态。 */
   horizontalMerge?: 'continue' | 'restart';
+  /** 单元格纵向合并的开始或延续状态。 */
   verticalMerge?: 'continue' | 'restart';
+  /** 垂直对齐方式。 */
   verticalAlign?: 'top' | 'middle' | 'bottom';
 };
 
-/** 描述 DocParagraphRun 在 DOC 二进制解析中的数据结构。 */
+/** DOC 段落属性在文本和文件流中的覆盖范围。 */
 type DocParagraphRun = {
-  /** DocParagraphRun 在 WordDocument 流中的字节边界。 */
+  /** 在 WordDocument 流中的字节边界。 */
   fcStart: number;
-  /** DocParagraphRun 在 WordDocument 流中的字节边界。 */
+  /** 在 WordDocument 流中的字节边界。 */
   fcEnd: number;
-  /** DocParagraphRun 使用的渲染或文本样式。 */
+  /** 当前内容使用的渲染样式。 */
   style?: DocTextStyle;
   /** 当前段落是否位于表格内。 */
   inTable?: boolean;
@@ -105,11 +113,11 @@ type DocParagraphRun = {
   tableCellLayouts?: DocTableCellLayout[];
 };
 
-/** 描述 DocTextSegment 在 DOC 二进制解析中的数据结构。 */
+/** DOC 正文中的连续文本片段及其样式。 */
 type DocTextSegment = {
-  /** DocTextSegment 携带或渲染的文本内容。 */
+  /** 文本内容。 */
   text: string;
-  /** DocTextSegment 使用的渲染或文本样式。 */
+  /** 当前内容使用的渲染样式。 */
   style?: DocTextStyle;
   /** 当前文本片段是否位于表格内。 */
   inTable?: boolean;
@@ -141,13 +149,13 @@ type DocTextSegment = {
   tableCellLayouts?: DocTableCellLayout[];
 };
 
-/** 描述 DocImageSegment 在 DOC 二进制解析中的数据结构。 */
+/** DOC 正文中的图片占位片段。 */
 type DocImageSegment = {
-  /** DocImageSegment 携带或渲染的文本内容。 */
+  /** 文本内容。 */
   text: string;
-  /** DocImageSegment 使用的渲染或文本样式。 */
+  /** 当前内容使用的渲染样式。 */
   style?: DocTextStyle;
-  /** DocImageSegment 当前关联的图片资源或图片模型。 */
+  /** 当前关联的图片资源或图片模型。 */
   image?: DocImage;
   /** 当前文本片段是否位于表格内。 */
   inTable?: boolean;
@@ -179,41 +187,41 @@ type DocImageSegment = {
   tableCellLayouts?: DocTableCellLayout[];
 };
 
-/** 描述 DocImageCandidate 在 DOC 二进制解析中的数据结构。 */
+/** 等待分配资源标识和地址的 DOC 图片。 */
 type DocImageCandidate = Omit<DocImage, 'id' | 'src'> & {
-  /** DocImageCandidate 保存的原始字节序列。 */
+  /** 原始字节序列。 */
   bytes: Uint8Array;
-  /** DocImageCandidate 在源二进制流中的字节偏移。 */
+  /** 在所属数据范围中的偏移位置。 */
   offset: number;
-  /** DocImageCandidate 占用或消费的字节数。 */
+  /** 占用或消费的字节数。 */
   byteLength: number;
   /** 候选图片是否来自文档内嵌媒体包。 */
   packagedMedia: boolean;
   /** 候选图片是否为 Web 扩展对象的预览图。 */
   webExtensionPreview: boolean;
-  /** DocImageCandidate 的 streamName 文本值。 */
+  /** 图片资源所在的复合文档流名称。 */
   streamName: string;
 };
 
-/** 描述 ParsedListLine 在 DOC 二进制解析中的数据结构。 */
+/** 识别为列表项的 DOC 文本行。 */
 type ParsedListLine = {
   /** 列表是否使用有序编号。 */
   ordered: boolean;
-  /** ParsedListLine 携带或渲染的文本内容。 */
+  /** 文本内容。 */
   text: string;
-  /** ParsedListLine 包含的 inlines 有序集合。 */
+  /** 按源文档顺序排列的行内内容。 */
   inlines?: DocTextInline[];
   /** 列表段落从源文档继承的字体与行距。 */
   style?: DocTextStyle;
 };
 
-/** 描述 DocLine 在 DOC 二进制解析中的数据结构。 */
+/** DOC 页面布局使用的单行文本和行内节点。 */
 type DocLine = {
-  /** DocLine 携带或渲染的文本内容。 */
+  /** 文本内容。 */
   text: string;
-  /** DocLine 包含的 inlines 有序集合。 */
+  /** 按源文档顺序排列的行内内容。 */
   inlines: DocTextInline[];
-  /** DocLine 使用的渲染或文本样式。 */
+  /** 当前内容使用的渲染样式。 */
   style?: DocTextStyle;
   /** 当前行是否位于表格内。 */
   inTable?: boolean;
@@ -243,17 +251,17 @@ type DocLine = {
   tableWidth?: number;
   /** 表格行定义提供的逐单元格布局。 */
   tableCellLayouts?: DocTableCellLayout[];
-  /** DocLine 执行 match 操作时调用的函数。 */
+  /** 执行 操作时调用的函数。 */
   match: (regexp: RegExp) => RegExpMatchArray | null;
 };
 
-/** 描述 PendingTableCell 在 DOC 二进制解析中的数据结构。 */
+/** 构建 DOC 表格时尚未完成合并处理的单元格。 */
 type PendingTableCell = {
-  /** PendingTableCell 携带或渲染的文本内容。 */
+  /** 文本内容。 */
   text: string;
-  /** PendingTableCell 包含的 inlines 有序集合。 */
+  /** 按源文档顺序排列的行内内容。 */
   inlines: DocTextInline[];
-  /** PendingTableCell 使用的渲染或文本样式。 */
+  /** 当前内容使用的渲染样式。 */
   style?: DocTextStyle;
   /** 当前单元格横向跨越的列数。 */
   colSpan?: number;
@@ -265,30 +273,38 @@ type PendingTableCell = {
 
 /** 表格行在输出单元格之外保留源 TDefTable 的网格。 */
 type PendingTableRow = {
+  /** 按显示顺序排列的单元格。 */
   cells: PendingTableCell[];
+  /** 按显示顺序排列的列定义。 */
   columns?: number[];
+  /** 水平对齐方式。 */
   align?: DocTableBlock['align'];
+  /** 表格行相对内容区域左侧的偏移。 */
   offsetLeft?: number;
+  /** 宽度，单位为标准化渲染像素。 */
   width?: number;
+  /** 当前表格行中各单元格的布局信息。 */
   cellLayouts?: DocTableCellLayout[];
+  /** 高度，单位为标准化渲染像素。 */
   height?: number;
+  /** 表格行高采用自动、最小值或固定值的规则。 */
   heightRule?: 'atLeast' | 'exact';
 };
 
-/** 描述 DocFontTable 在 DOC 二进制解析中的数据结构。 */
+/** 按字体编号索引的 DOC 字体族名称。 */
 type DocFontTable = string[];
 
-/** 汇总DOC 二进制解析当前步骤需要共享的上下文。 */
+/** 汇总 DOC 二进制解析各步骤共享的上下文。 */
 export type DocCoreContext = {
   /** 正在解析的原始文件名，用于格式识别和错误提示。 */
   fileName: string;
   /** 在长任务检查点报告进度并响应取消信号。 */
   checkpoint(progress?: ParseProgress): Promise<void>;
-  /** DocCoreContext 处理完成后生成的输出结果。 */
+  /** 处理完成后生成的输出结果。 */
   output?: DocCoreOutput;
 };
 
-/** 描述 DocCoreOutput 在 DOC 二进制解析中的数据结构。 */
+/** DOC 核心解析生成的文档及性能档案。 */
 export type DocCoreOutput = {
   /** 接收解析器产生的可移植资源分块。 */
   resource(resource: PortableResource): Promise<void>;
@@ -298,11 +314,11 @@ export type DocCoreOutput = {
   documentBlocks(startIndex: number, blocks: DocBlock[]): Promise<void>;
 };
 
-/** 描述 DOC 二进制解析产生的处理结果。 */
+/** DOC 核心解析成功或失败的联合结果。 */
 export type DocCoreResult = {
-  /** DocCoreResult 当前关联的标准化文档模型。 */
+  /** 当前处理的标准化文档模型。 */
   document: DocDocument;
-  /** DocCoreResult 持有的图片、字体或对象 URL 等资源；文档释放时需同步清理。 */
+  /** 持有的图片、字体或对象 URL 等资源；文档释放时需同步清理。 */
   resources: PortableResource[];
 };
 
@@ -316,11 +332,11 @@ export type DocCoreStreamsInput = {
   imageStreams: Iterable<readonly [string, Uint8Array]>;
 };
 
-/** 定义DOC 二进制解析的可选配置。 */
+/** 将 DOC 文本行组装为块级模型时使用的选项。 */
 type DocBlockBuildOptions = {
   /** 在长任务检查点报告进度并响应取消信号。 */
   checkpoint(progress?: ParseProgress): Promise<void>;
-  /** 执行 DocBlockBuildOptions 的 onBatch 操作。 */
+  /** 接收本轮新生成的连续内容块。 */
   onBatch?(startIndex: number, blocks: DocBlock[]): Promise<void>;
   /** 主文档列表格式及当前计数状态。 */
   numbering?: DocNumberingCatalog;
@@ -328,9 +344,12 @@ type DocBlockBuildOptions = {
   defaultGridLineHeight?: number;
   /** 节属性声明的原始文档网格行距，供表格内紧凑文本保持源行距。 */
   documentGridLineHeight?: number;
+  /** 当前页面扣除页边距后的正文可用高度，用于长目录单页收敛。 */
+  pageContentHeight?: number;
 };
 
 // 旧版 .doc 是 OLE/CFB 二进制容器，不是 zip；这里实现最小可用的前端降级解析。
+/** DOC 缺少页面设置时使用的默认页面尺寸和边距。 */
 const DEFAULT_DOC_PAGE = {
   width: 794,
   minHeight: 1123,
@@ -340,8 +359,10 @@ const DEFAULT_DOC_PAGE = {
   marginLeft: 120,
 };
 
+/** DOC 无法解析字体信息时使用的默认字体回退栈。 */
 const DOC_FONT_FAMILY =
   '"Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif';
+/** Word 旧版颜色索引到 CSS 颜色值的映射。 */
 const WORD_ICO_COLORS: Record<number, string> = {
   1: '#000000',
   2: '#0000ff',
@@ -361,42 +382,34 @@ const WORD_ICO_COLORS: Record<number, string> = {
   16: '#c0c0c0',
 };
 
-/** 判断 `isOleDoc` 对应的条件是否成立。 */
 function isOleDoc(bytes: Uint8Array) {
   return CFB_SIGNATURE.every((value, index) => bytes[index] === value);
 }
 
-/** 读取 `readUint16` 所需的源数据，供DOC 二进制解析使用。 */
 function readUint16(view: DataView, offset: number) {
   return view.getUint16(offset, true);
 }
 
-/** 读取 `readUint32` 所需的源数据，供DOC 二进制解析使用。 */
 function readUint32(view: DataView, offset: number) {
   return view.getUint32(offset, true);
 }
 
-/** 读取 `readUint16BE` 所需的源数据，供DOC 二进制解析使用。 */
 function readUint16BE(view: DataView, offset: number) {
   return view.getUint16(offset, false);
 }
 
-/** 读取 `readUint32BE` 所需的源数据，供DOC 二进制解析使用。 */
 function readUint32BE(view: DataView, offset: number) {
   return view.getUint32(offset, false);
 }
 
-/** 读取 `readInt16` 所需的源数据，供DOC 二进制解析使用。 */
 function readInt16(view: DataView, offset: number) {
   return view.getInt16(offset, true);
 }
 
-/** 执行 `twipToPx` 封装的DOC 二进制解析处理步骤。 */
 function twipToPx(value: number) {
   return (value / 1440) * 96;
 }
 
-/** 读取 `readFibField` 所需的源数据，供DOC 二进制解析使用。 */
 function readFibField(wordDocument: Uint8Array, offset: number) {
   if (offset + 4 > wordDocument.length) return 0;
   return readUint32(
@@ -409,7 +422,6 @@ function readFibField(wordDocument: Uint8Array, offset: number) {
   );
 }
 
-/** 解析 `parseFib` 接收的数据，并返回DOC 二进制解析结果。 */
 function parseFib(wordDocument: Uint8Array) {
   const view = new DataView(
     wordDocument.buffer,
@@ -444,6 +456,8 @@ function parseFib(wordDocument: Uint8Array) {
     lcbPlcSpaMom: readFibField(wordDocument, 478),
     fcDggInfo: readFibField(wordDocument, 554),
     lcbDggInfo: readFibField(wordDocument, 558),
+    fcPlcfTxbxTxt: readFibField(wordDocument, 602),
+    lcbPlcfTxbxTxt: readFibField(wordDocument, 606),
     fcPlfLst: readFibField(wordDocument, 738),
     lcbPlfLst: readFibField(wordDocument, 742),
     fcPlfLfo: readFibField(wordDocument, 746),
@@ -476,7 +490,6 @@ function findPieceTable(clx: Uint8Array) {
   return undefined;
 }
 
-/** 解析 `parsePieces` 接收的数据，并返回DOC 二进制解析结果。 */
 function parsePieces(tableStream: Uint8Array, fib: DocFib) {
   // Piece table 描述正文字符区间与 WordDocument 字节偏移的映射，是读取 DOC 正文的核心索引。
   const clx = tableStream.slice(fib.fcClx, fib.fcClx + fib.lcbClx);
@@ -531,17 +544,26 @@ function slicePiecesByCharacterRange(
   });
 }
 
-/** 执行 `quoteFontFamily` 封装的DOC 二进制解析处理步骤。 */
+/** DOC 常见中文字体名称到可用字体族的回退映射。 */
+const DOC_FONT_ALIASES: Record<string, string[]> = {
+  宋体: ['SimSun'],
+  新宋体: ['NSimSun'],
+  黑体: ['SimHei'],
+  楷体: ['KaiTi'],
+  楷体_GB2312: ['KaiTi_GB2312', 'KaiTi'],
+  仿宋: ['FangSong'],
+  仿宋_GB2312: ['FangSong_GB2312', 'FangSong'],
+};
+
+/** 把 Word 字体名称转换为兼容中英文系统名称的 CSS 字体栈。 */
 function quoteFontFamily(value: string | undefined) {
   if (!value) return undefined;
-  return value
+  const fonts = value
     .split(',')
-    .map((font) => font.trim())
+    .map((font) => font.trim().replace(/^['"]|['"]$/g, ''))
     .filter(Boolean)
-    .map((font) =>
-      /^["'].*["']$/.test(font) || /^[a-z-]+$/i.test(font) ? font : `"${font}"`,
-    )
-    .join(', ');
+    .flatMap((font) => [...(DOC_FONT_ALIASES[font] ?? []), font]);
+  return [...new Set(fonts)].map((font) => `"${font}"`).join(', ');
 }
 
 /** 把西文字体放在东亚字体之前，交由浏览器按字符缺字规则选择实际字形。 */
@@ -551,17 +573,23 @@ function appendFontFamilyFallback(
 ) {
   if (!primary) return fallback;
   if (!fallback) return primary;
-  const normalizedPrimary = primary.replace(/["']/g, '').toLowerCase();
-  const normalizedFallback = fallback.replace(/["']/g, '').toLowerCase();
-  return normalizedPrimary
+  const primaryFonts = new Set(
+    primary
+      .split(',')
+      .map((font) => font.replace(/["']/g, '').trim().toLowerCase()),
+  );
+  const missingFallbacks = fallback
     .split(',')
     .map((font) => font.trim())
-    .includes(normalizedFallback)
-    ? primary
-    : `${primary}, ${fallback}`;
+    .filter(
+      (font) =>
+        !primaryFonts.has(font.replace(/["']/g, '').trim().toLowerCase()),
+    );
+  return missingFallbacks.length
+    ? `${primary}, ${missingFallbacks.join(', ')}`
+    : primary;
 }
 
-/** 解析 `parseFontTable` 接收的数据，并返回DOC 二进制解析结果。 */
 function parseFontTable(tableStream: Uint8Array, fib: DocFib): DocFontTable {
   if (!fib.fcSttbfFfn || !fib.lcbSttbfFfn) return [];
   const data = tableStream.slice(
@@ -599,12 +627,10 @@ function parseFontTable(tableStream: Uint8Array, fib: DocFib): DocFontTable {
   return fonts;
 }
 
-/** 执行 `plcItemCount` 封装的DOC 二进制解析处理步骤。 */
 function plcItemCount(length: number, dataSize: number) {
   return Math.floor((length - 4) / (4 + dataSize));
 }
 
-/** 解析 `parsePlcBteChpx` 接收的数据，并返回DOC 二进制解析结果。 */
 function parsePlcBteChpx(tableStream: Uint8Array, fib: DocFib) {
   if (!fib.fcPlcfBteChpx || !fib.lcbPlcfBteChpx) return [];
 
@@ -625,7 +651,6 @@ function parsePlcBteChpx(tableStream: Uint8Array, fib: DocFib) {
   })).filter((item) => item.fcEnd > item.fcStart);
 }
 
-/** 解析 `parsePlcBtePapx` 接收的数据，并返回DOC 二进制解析结果。 */
 function parsePlcBtePapx(tableStream: Uint8Array, fib: DocFib) {
   if (!fib.fcPlcfBtePapx || !fib.lcbPlcfBtePapx) return [];
 
@@ -674,6 +699,7 @@ function mergeStyleIntoTextStyle(
     backgroundColor: override?.backgroundColor ?? base.backgroundColor,
     textAlign: override?.textAlign ?? base.textAlign,
     lineHeight: override?.lineHeight ?? base.lineHeight,
+    useDocumentGrid: override?.useDocumentGrid ?? base.useDocumentGrid,
     fontFamily: override?.fontFamily ?? base.fontFamily,
     indentLeft: override?.indentLeft ?? base.indentLeft,
     indentRight: override?.indentRight ?? base.indentRight,
@@ -687,7 +713,6 @@ function mergeStyleIntoTextStyle(
   };
 }
 
-/** 执行 `tableCellTextStyle` 封装的DOC 二进制解析处理步骤。 */
 function tableCellTextStyle(
   style: DocTextStyle | undefined,
 ): DocTextStyle | undefined {
@@ -701,6 +726,7 @@ function tableCellTextStyle(
     textAlign: style.textAlign,
     lineHeight: style.lineHeight,
     lineHeightMultiplier: style.lineHeightMultiplier,
+    useDocumentGrid: style.useDocumentGrid,
     fontFamily: style.fontFamily,
   };
   const cleaned = Object.fromEntries(
@@ -875,6 +901,12 @@ function applySprmOperand(
     return;
   }
 
+  if (sprm === 0x2447 && first !== undefined) {
+    // sprmPFUsePgsuSettings 为 0 时，Word 表格段落不跟随节内文档网格。
+    style.useDocumentGrid = first !== 0;
+    return;
+  }
+
   if ((sprm === 0x2403 || sprm === 0x2461) && first !== undefined) {
     const alignment = ['left', 'center', 'right', 'justify'][first];
     if (alignment) style.textAlign = alignment as DocTextStyle['textAlign'];
@@ -923,7 +955,6 @@ function applySprmOperand(
   }
 }
 
-/** 执行 `sprmOperandSize` 封装的DOC 二进制解析处理步骤。 */
 function sprmOperandSize(sprm: number, bytes: Uint8Array, offset: number) {
   if (sprm === 0xd608 && offset + 2 <= bytes.length) {
     // TDefTableOperand 使用 16 位 cb；其值等于操作数总长度减一。
@@ -946,71 +977,231 @@ function sprmOperandSize(sprm: number, bytes: Uint8Array, offset: number) {
   return 0;
 }
 
-/** 从 PlcfSed 指向的 Sepx 中读取已启用的 DOC 文档网格行距。 */
-function readDocumentGridLinePitch(
+/** 拼接展开后的段落属性，避免巨大 PAPX 丢失表格行定义。 */
+function concatDocPropertyChunks(chunks: Uint8Array[]) {
+  const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const output = new Uint8Array(total);
+  let offset = 0;
+  chunks.forEach((chunk) => {
+    output.set(chunk, offset);
+    offset += chunk.length;
+  });
+  return output;
+}
+
+/** 从 Data 流读取 sprmPHugePapx 或 sprmPTableProps 指向的 PrcData。 */
+function readReferencedParagraphProperties(
+  dataStream: Uint8Array | undefined,
+  offset: number,
+) {
+  if (!dataStream || offset < 0 || offset + 2 > dataStream.length) {
+    return undefined;
+  }
+  const view = new DataView(
+    dataStream.buffer,
+    dataStream.byteOffset,
+    dataStream.byteLength,
+  );
+  const length = readInt16(view, offset);
+  if (length <= 0 || offset + 2 + length > dataStream.length) return undefined;
+  return dataStream.slice(offset + 2, offset + 2 + length);
+}
+
+/** 递归展开 Data 流中的巨大 PAPX 与共用表格属性，并保留有效的行级直接覆盖。 */
+function expandParagraphProperties(
+  grpprl: Uint8Array,
+  dataStream?: Uint8Array,
+  visited = new Set<number>(),
+  depth = 0,
+): Uint8Array {
+  if (!dataStream || !grpprl.length || depth >= 8) return grpprl;
+  const view = new DataView(
+    grpprl.buffer,
+    grpprl.byteOffset,
+    grpprl.byteLength,
+  );
+  const chunks: Uint8Array[] = [];
+  let offset = 0;
+  while (offset + 2 <= grpprl.length) {
+    const entryStart = offset;
+    const sprm = readUint16(view, offset);
+    offset += 2;
+    const operandSize = sprmOperandSize(sprm, grpprl, offset);
+    if (!operandSize || offset + operandSize > grpprl.length) break;
+    const entryEnd = offset + operandSize;
+    const isHugePapx = sprm === 0x6646 && entryStart === 0;
+    const isTableProperties = sprm === 0x646b;
+    if ((isHugePapx || isTableProperties) && operandSize >= 4) {
+      const dataOffset = readUint32(view, offset);
+      if (!visited.has(dataOffset)) {
+        const referenced = readReferencedParagraphProperties(
+          dataStream,
+          dataOffset,
+        );
+        if (referenced) {
+          visited.add(dataOffset);
+          chunks.push(
+            expandParagraphProperties(
+              referenced,
+              dataStream,
+              visited,
+              depth + 1,
+            ),
+          );
+          if (isHugePapx) return concatDocPropertyChunks(chunks);
+          // sprmPTableProps 只把共用表格属性放进 Data 流；行级 TDefTable 等覆盖项仍紧随引用。
+          // 继续读取剩余 PAPX，才能恢复真实列宽、合并关系和行高。
+          offset = entryEnd;
+          continue;
+        }
+      }
+    }
+    chunks.push(grpprl.slice(entryStart, entryEnd));
+    offset = entryEnd;
+  }
+  return concatDocPropertyChunks(chunks);
+}
+
+/** DOC 节级页面布局及文档网格信息。 */
+type DocSectionLayout = DocDrawingSection & {
+  /** 文档网格的行间距，单位为标准化渲染像素。 */
+  gridLinePitch?: number;
+};
+
+/** 从 PlcfSed 指向的 Sepx 中读取各节页面尺寸、页边距和文档网格。 */
+function readDocSections(
   wordDocument: Uint8Array,
   tableStream: Uint8Array,
   fib: DocFib,
-) {
-  if (!fib.fcPlcfSed || !fib.lcbPlcfSed) return undefined;
+): DocSectionLayout[] {
+  if (!fib.fcPlcfSed || !fib.lcbPlcfSed) return [];
   if (
     fib.fcPlcfSed < 0 ||
     fib.fcPlcfSed + fib.lcbPlcfSed > tableStream.length
   ) {
-    return undefined;
+    return [];
   }
 
   const sectionCount = plcItemCount(fib.lcbPlcfSed, 12);
-  if (sectionCount <= 0) return undefined;
+  if (sectionCount <= 0) return [];
   const tableView = new DataView(
     tableStream.buffer,
     tableStream.byteOffset,
     tableStream.byteLength,
   );
+  const wordView = new DataView(
+    wordDocument.buffer,
+    wordDocument.byteOffset,
+    wordDocument.byteLength,
+  );
   const sedOffset = fib.fcPlcfSed + (sectionCount + 1) * 4;
+  const sections: DocSectionLayout[] = [];
 
   for (let index = 0; index < sectionCount; index += 1) {
-    const fcSepx = tableView.getInt32(sedOffset + index * 12 + 2, true);
-    if (fcSepx < 0 || fcSepx + 2 > wordDocument.length) continue;
-    const wordView = new DataView(
-      wordDocument.buffer,
-      wordDocument.byteOffset,
-      wordDocument.byteLength,
-    );
-    const length = readInt16(wordView, fcSepx);
-    if (length <= 0 || fcSepx + 2 + length > wordDocument.length) continue;
-    const grpprl = wordDocument.slice(fcSepx + 2, fcSepx + 2 + length);
-    const grpprlView = new DataView(
-      grpprl.buffer,
-      grpprl.byteOffset,
-      grpprl.byteLength,
-    );
+    const page: DocPage = {
+      ...(sections[sections.length - 1]?.page ?? DEFAULT_DOC_PAGE),
+    };
     let gridMode = 0;
     let linePitch: number | undefined;
-    let offset = 0;
-
-    while (offset + 2 <= grpprl.length) {
-      const sprm = readUint16(grpprlView, offset);
-      offset += 2;
-      const operandSize = sprmOperandSize(sprm, grpprl, offset);
-      if (!operandSize || offset + operandSize > grpprl.length) break;
-      if (sprm === 0x5032 && operandSize >= 2) {
-        gridMode = readUint16(grpprlView, offset);
-      } else if (sprm === 0x9031 && operandSize >= 2) {
-        linePitch = readUint16(grpprlView, offset);
+    const fcSepx = tableView.getInt32(sedOffset + index * 12 + 2, true);
+    if (fcSepx >= 0 && fcSepx + 2 <= wordDocument.length) {
+      const length = readInt16(wordView, fcSepx);
+      if (length > 0 && fcSepx + 2 + length <= wordDocument.length) {
+        const grpprl = wordDocument.slice(fcSepx + 2, fcSepx + 2 + length);
+        const grpprlView = new DataView(
+          grpprl.buffer,
+          grpprl.byteOffset,
+          grpprl.byteLength,
+        );
+        let offset = 0;
+        while (offset + 2 <= grpprl.length) {
+          const sprm = readUint16(grpprlView, offset);
+          offset += 2;
+          const operandSize = sprmOperandSize(sprm, grpprl, offset);
+          if (!operandSize || offset + operandSize > grpprl.length) break;
+          if (operandSize >= 2) {
+            const value = readInt16(grpprlView, offset);
+            if (sprm === 0xb01f && value > 0) page.width = twipToPx(value);
+            if (sprm === 0xb020 && value > 0) {
+              page.minHeight = twipToPx(value);
+            }
+            if (sprm === 0xb021) page.marginLeft = twipToPx(Math.abs(value));
+            if (sprm === 0xb022) page.marginRight = twipToPx(Math.abs(value));
+            if (sprm === 0x9023) page.marginTop = twipToPx(Math.abs(value));
+            if (sprm === 0x9024) {
+              page.marginBottom = twipToPx(Math.abs(value));
+            }
+            if (sprm === 0x5032) gridMode = readUint16(grpprlView, offset);
+            if (sprm === 0x9031) linePitch = readUint16(grpprlView, offset);
+          }
+          offset += operandSize;
+        }
       }
-      offset += operandSize;
     }
 
-    // SClmOperand 为 0 时禁用网格；其余模式均使用 SDyaLinePitch。
-    if (gridMode !== 0 && linePitch !== undefined && linePitch > 0) {
-      return twipToPx(linePitch);
+    if (
+      page.marginLeft + page.marginRight >= page.width ||
+      page.marginTop + page.marginBottom >= page.minHeight
+    ) {
+      Object.assign(page, DEFAULT_DOC_PAGE);
     }
+    sections.push({
+      charStart: tableView.getUint32(fib.fcPlcfSed + index * 4, true),
+      charEnd: tableView.getUint32(fib.fcPlcfSed + (index + 1) * 4, true),
+      page,
+      gridLinePitch:
+        gridMode !== 0 && linePitch !== undefined && linePitch > 0
+          ? twipToPx(linePitch)
+          : undefined,
+    });
   }
 
-  return undefined;
+  return sections;
 }
 
+/** DOC 绘图文本框在正文字符流中的范围。 */
+type DrawingTextBoxRange = {
+  /** 对应内容在文档字符流中的起始位置。 */
+  charStart: number;
+  /** 对应内容在文档字符流中的结束位置。 */
+  charEnd: number;
+};
+
+/** 从 PlcftxbxTxt 读取每个 OfficeArt 文本框在文本框 story 中的字符范围。 */
+function readDrawingTextBoxRanges(
+  tableStream: Uint8Array,
+  fib: DocFib,
+): Array<DrawingTextBoxRange | undefined> {
+  if (!fib.fcPlcfTxbxTxt || !fib.lcbPlcfTxbxTxt) return [];
+  if (
+    fib.fcPlcfTxbxTxt < 0 ||
+    fib.fcPlcfTxbxTxt + fib.lcbPlcfTxbxTxt > tableStream.length
+  ) {
+    return [];
+  }
+  const count = plcItemCount(fib.lcbPlcfTxbxTxt, 22);
+  if (count <= 0) return [];
+  const view = new DataView(
+    tableStream.buffer,
+    tableStream.byteOffset,
+    tableStream.byteLength,
+  );
+  const recordOffset = fib.fcPlcfTxbxTxt + (count + 1) * 4;
+  return Array.from(
+    { length: count },
+    (_, index): DrawingTextBoxRange | undefined => {
+      const shapeId = view.getUint32(recordOffset + index * 22 + 14, true);
+      const charStart = view.getUint32(fib.fcPlcfTxbxTxt + index * 4, true);
+      const charEnd = view.getUint32(fib.fcPlcfTxbxTxt + (index + 1) * 4, true);
+      return shapeId && charEnd > charStart && charStart < fib.ccpTxbx
+        ? {
+            charStart,
+            charEnd: Math.min(charEnd, fib.ccpTxbx),
+          }
+        : undefined;
+    },
+  );
+}
 /** 从 TDefTableOperand 读取当前表格行的逻辑列宽。 */
 function readTableDefinitionColumns(operand: Uint8Array) {
   if (operand.length < 5) return undefined;
@@ -1072,7 +1263,6 @@ function readTableDefinitionColumns(operand: Uint8Array) {
   };
 }
 
-/** 解析 `parseGrpprlStyle` 接收的数据，并返回DOC 二进制解析结果。 */
 function parseGrpprlStyle(
   bytes: Uint8Array,
   fonts: DocFontTable = [],
@@ -1197,6 +1387,7 @@ function parseGrpprlParagraphStructure(
   };
 }
 
+/** DOC 段落在字符流中的边界和结构信息。 */
 type DocParagraphStructure = ReturnType<typeof parseGrpprlParagraphStructure>;
 
 /** 仅用后续明确声明的属性覆盖继承结构，避免 undefined 清除父样式。 */
@@ -1213,7 +1404,6 @@ function mergeParagraphStructure(
   return merged;
 }
 
-/** 解析 `parseChpxFkpPage` 接收的数据，并返回DOC 二进制解析结果。 */
 function parseChpxFkpPage(
   wordDocument: Uint8Array,
   pageOffset: number,
@@ -1242,7 +1432,6 @@ function parseChpxFkpPage(
   return runs;
 }
 
-/** 解析 `parseCharacterRuns` 接收的数据，并返回DOC 二进制解析结果。 */
 function parseCharacterRuns(
   wordDocument: Uint8Array,
   tableStream: Uint8Array,
@@ -1298,12 +1487,12 @@ function readInheritedParagraphStructure(
   );
 }
 
-/** 解析 `parsePapxFkpPage` 接收的数据，并返回DOC 二进制解析结果。 */
 function parsePapxFkpPage(
   wordDocument: Uint8Array,
   pageOffset: number,
   outlineCatalog: DocStyleOutlineCatalog,
   fonts: DocFontTable,
+  dataStream?: Uint8Array,
 ): DocParagraphRun[] {
   const page = wordDocument.slice(pageOffset, pageOffset + 512);
   if (page.length < 512) return [];
@@ -1325,20 +1514,29 @@ function parsePapxFkpPage(
     const papxLength = cb === 0 ? cbPrime * 2 : cb * 2 - 1;
     const grpprlStart = papxStart + (cb === 0 ? 2 : 1);
     const grpprl = page.slice(grpprlStart, grpprlStart + papxLength);
-    // PAPX 的 grpprl 以两字节 istd 开头，段落 SPRM 必须从样式索引之后解析。
+    // PAPX 的 grpprl 以两字节 istd 开头；巨大 PAPX 的直接属性存放在 Data 流中。
+    const stylePrefix = grpprl.slice(0, Math.min(2, grpprl.length));
+    const directGrpprl = expandParagraphProperties(
+      grpprl.slice(stylePrefix.length),
+      dataStream,
+    );
+    const resolvedGrpprl = concatDocPropertyChunks([stylePrefix, directGrpprl]);
     const style = mergeTextStyle(
       readInheritedParagraphStyle(grpprl, outlineCatalog, fonts),
-      parseGrpprlStyle(grpprl.slice(Math.min(2, grpprl.length)), fonts),
+      parseGrpprlStyle(directGrpprl, fonts),
     );
     const structure = mergeParagraphStructure(
       readInheritedParagraphStructure(grpprl, outlineCatalog),
-      parseGrpprlParagraphStructure(grpprl),
+      parseGrpprlParagraphStructure(directGrpprl, false),
     );
     // 表格单元格可能复用标题样式，但 Word 导航窗格只读取正文段落。
     const outlineLevel = structure.inTable
       ? undefined
-      : readDocParagraphOutlineLevel(grpprl, outlineCatalog);
-    const isTableOfContents = isDocParagraphTocStyle(grpprl, outlineCatalog);
+      : readDocParagraphOutlineLevel(resolvedGrpprl, outlineCatalog);
+    const isTableOfContents = isDocParagraphTocStyle(
+      resolvedGrpprl,
+      outlineCatalog,
+    );
     if (
       style ||
       structure.inTable !== undefined ||
@@ -1369,13 +1567,13 @@ function parsePapxFkpPage(
   return runs;
 }
 
-/** 解析 `parseParagraphRuns` 接收的数据，并返回DOC 二进制解析结果。 */
 function parseParagraphRuns(
   wordDocument: Uint8Array,
   tableStream: Uint8Array,
   fib: DocFib,
   outlineCatalog: DocStyleOutlineCatalog,
   fonts: DocFontTable,
+  dataStream?: Uint8Array,
 ): DocParagraphRun[] {
   return parsePlcBtePapx(tableStream, fib).flatMap((entry) =>
     parsePapxFkpPage(
@@ -1383,25 +1581,23 @@ function parseParagraphRuns(
       entry.pn * 512,
       outlineCatalog,
       fonts,
+      dataStream,
     ).filter((run) => run.fcEnd > entry.fcStart && run.fcStart < entry.fcEnd),
   );
 }
 
-/** 执行 `fileOffsetForPieceChar` 封装的DOC 二进制解析处理步骤。 */
 function fileOffsetForPieceChar(piece: DocPiece, charOffset: number) {
   return piece.compressed
     ? (piece.fileOffset + charOffset) * 2
     : piece.fileOffset + charOffset * 2;
 }
 
-/** 执行 `pieceCharOffsetForFileOffset` 封装的DOC 二进制解析处理步骤。 */
 function pieceCharOffsetForFileOffset(piece: DocPiece, fileOffset: number) {
   return piece.compressed
     ? fileOffset / 2 - piece.fileOffset
     : (fileOffset - piece.fileOffset) / 2;
 }
 
-/** 执行 `styleForRange` 封装的DOC 二进制解析处理步骤。 */
 function styleForRange(
   byteStart: number,
   byteEnd: number,
@@ -1416,7 +1612,6 @@ function styleForRange(
     );
 }
 
-/** 执行 `paragraphStyleForRange` 封装的DOC 二进制解析处理步骤。 */
 function paragraphStyleForRange(
   byteStart: number,
   byteEnd: number,
@@ -1513,7 +1708,6 @@ function splitPieceByStyleRuns(
     .filter((range) => range.end > range.start);
 }
 
-/** 执行 `textSegmentsFromPieces` 封装的DOC 二进制解析处理步骤。 */
 function textSegmentsFromPieces(
   wordDocument: Uint8Array,
   pieces: DocPiece[],
@@ -1564,7 +1758,6 @@ function decodeCodePage1252(bytes: Uint8Array) {
   return Array.from(bytes, (value) => String.fromCharCode(value)).join('');
 }
 
-/** 执行 `scoreDecodedText` 封装的DOC 二进制解析处理步骤。 */
 function scoreDecodedText(text: string) {
   let score = 0;
 
@@ -1615,7 +1808,6 @@ function decodeCompressedPiece(bytes: Uint8Array) {
   return best;
 }
 
-/** 读取 `readPieceText` 所需的源数据，供DOC 二进制解析使用。 */
 function readPieceText(wordDocument: Uint8Array, piece: DocPiece) {
   const charLength = piece.charEnd - piece.charStart;
   if (piece.compressed) {
@@ -1632,7 +1824,6 @@ function readPieceText(wordDocument: Uint8Array, piece: DocPiece) {
   return new TextDecoder('utf-16le').decode(bytes);
 }
 
-/** 读取 `readPieceSegment` 所需的源数据，供DOC 二进制解析使用。 */
 function readPieceSegment(
   wordDocument: Uint8Array,
   piece: DocPiece,
@@ -1644,8 +1835,11 @@ function readPieceSegment(
   };
 }
 
+/** DOC 域代码或域结果对应的文本片段。 */
 type DocFieldTextChunk = {
+  /** 文本内容。 */
   text: string;
+  /** 当前文本块对应的源文档片段。 */
   segment: DocTextSegment;
 };
 
@@ -1740,7 +1934,7 @@ function normalizeDocText(text: string) {
 function normalizeDocTextSegments(
   segments: DocTextSegment[],
   images: DocImage[] = [],
-  drawingImages: DocImage[] = [],
+  drawingImages: Array<DocImage | undefined> = [],
 ) {
   let imageIndex = 0;
   let drawingImageIndex = 0;
@@ -1776,7 +1970,8 @@ function normalizeDocTextSegments(
         }
         if (text === '\u0008') {
           const image = drawingImages[drawingImageIndex];
-          if (image) drawingImageIndex += 1;
+          // 每个绘图标记都消费一个槽位；组合画布后的空槽不能阻塞后续绘图映射。
+          drawingImageIndex += 1;
           return {
             text,
             style: segment.style,
@@ -1831,14 +2026,12 @@ function normalizeBlockText(text: string) {
   return text.replace(/[ \t]+/g, ' ').trim();
 }
 
-/** 执行 `textFromInlines` 封装的DOC 二进制解析处理步骤。 */
 function textFromInlines(inlines: DocTextInline[]) {
   return inlines
     .map((inline) => (inline.type === 'text' ? inline.text : ''))
     .join('');
 }
 
-/** 执行 `sameInlineStyle` 封装的DOC 二进制解析处理步骤。 */
 function sameInlineStyle(left?: DocTextStyle, right?: DocTextStyle) {
   return JSON.stringify(left ?? {}) === JSON.stringify(right ?? {});
 }
@@ -1867,7 +2060,6 @@ function mergeAdjacentInlines(inlines: DocTextInline[]) {
   return merged;
 }
 
-/** 执行 `trimInlines` 封装的DOC 二进制解析处理步骤。 */
 function trimInlines(inlines: DocTextInline[]) {
   const result = inlines
     .map((inline) => ({ ...inline }))
@@ -1897,7 +2089,6 @@ function trimInlines(inlines: DocTextInline[]) {
   return mergeAdjacentInlines(result);
 }
 
-/** 执行 `looksLikeTableRow` 封装的DOC 二进制解析处理步骤。 */
 function looksLikeTableRow(line: string) {
   return (
     line
@@ -1918,7 +2109,8 @@ function splitTableCells(line: DocLine): PendingTableCell[] {
       ): item is Extract<
         DocTextInline,
         {
-          /** 用于区分 当前结构 不同结构分支的类型标识。 */ type: 'text';
+          /** 固定为 `text`，用于区分联合类型分支。 */
+          type: 'text';
         }
       > => item.type === 'text',
     );
@@ -1970,7 +2162,6 @@ function splitTableCells(line: DocLine): PendingTableCell[] {
   return cells;
 }
 
-/** 执行 `sliceLineInlines` 封装的DOC 二进制解析处理步骤。 */
 function sliceLineInlines(line: DocLine, start: number) {
   let offset = 0;
   const result: DocTextInline[] = [];
@@ -1992,7 +2183,6 @@ function sliceLineInlines(line: DocLine, start: number) {
   return trimInlines(result);
 }
 
-/** 解析 `parseListLine` 接收的数据，并返回DOC 二进制解析结果。 */
 function parseListLine(line: DocLine): ParsedListLine | undefined {
   const orderedMatch = line.text.match(
     /^\s*(?:(?:\(?[0-9A-Za-z]{1,3}\)?[.)\u3001\uff1f])|(?:[\uff08(][\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341]{1,3}[\uff09)]))\s+(.+)$/,
@@ -2021,10 +2211,9 @@ function parseListLine(line: DocLine): ParsedListLine | undefined {
   return undefined;
 }
 
-/** 执行 `inferParagraphStyle` 封装的DOC 二进制解析处理步骤。 */
 function inferParagraphStyle(
   role: DocParagraphBlock['role'],
-  text: string,
+  _text: string,
 ): DocTextStyle {
   if (role === 'title') {
     return {
@@ -2065,7 +2254,6 @@ function inferParagraphStyle(
   };
 }
 
-/** 执行 `inferListStyle` 封装的DOC 二进制解析处理步骤。 */
 function inferListStyle(ordered: boolean): DocTextStyle {
   return {
     fontSize: 14,
@@ -2078,7 +2266,6 @@ function inferListStyle(ordered: boolean): DocTextStyle {
   };
 }
 
-/** 执行 `inferTableStyle` 封装的DOC 二进制解析处理步骤。 */
 function inferTableStyle(): DocTableStyle {
   return {
     headerBackgroundColor: '#eef4ff',
@@ -2089,7 +2276,6 @@ function inferTableStyle(): DocTableStyle {
   };
 }
 
-/** 执行 `estimateTableColumns` 封装的DOC 二进制解析处理步骤。 */
 function estimateTableColumns(rows: PendingTableRow[]) {
   const columnCount = Math.max(...rows.map((row) => row.cells.length), 1);
   const weights = Array.from({ length: columnCount }, (_, columnIndex) =>
@@ -2114,7 +2300,6 @@ function estimateTableColumns(rows: PendingTableRow[]) {
   );
 }
 
-/** 创建 `createParagraphBlock` 返回的对象，供DOC 二进制解析使用。 */
 function createParagraphBlock(
   text: string,
   index: number,
@@ -2123,9 +2308,16 @@ function createParagraphBlock(
   pageBreakBefore?: boolean,
   outlineLevel?: number,
   isTableOfContents?: boolean,
+  tocSpacingAfter?: number,
 ): DocParagraphBlock {
   const compactLength = text.replace(/\s+/g, '').length;
   const hasImages = Boolean(inlines?.some((inline) => inline.type === 'image'));
+  // 已解析到段落样式时，仅在大纲级别或标题字体给出明确信号后才判为标题，
+  // 避免把普通短正文误判为 heading 并丢弃行内混合字号。
+  const hasHeadingStyleSignal =
+    outlineLevel !== undefined ||
+    (style?.fontWeight ?? 0) >= 600 ||
+    (style?.fontSize ?? 0) >= 18;
   const role =
     index === 0 && compactLength <= 24
       ? 'title'
@@ -2134,7 +2326,8 @@ function createParagraphBlock(
         !hasImages &&
         !isTableOfContents &&
         !/[|:\uff1a]/.test(text) &&
-        !/[0-9]{4,}/.test(text)
+        !/[0-9]{4,}/.test(text) &&
+        (!style || hasHeadingStyleSignal)
       ? 'heading'
       : 'body';
   const inferredStyle = isTableOfContents
@@ -2143,8 +2336,8 @@ function createParagraphBlock(
         fontSize: 14,
         fontWeight: 400,
         lineHeight: 1.5,
-        // 21px 行框加 10.2px 段后距对应源文档 31.2px 的目录网格。
-        spacingAfter: 10.2,
+        // 短目录保留 31.2px 目录网格；仅在整段目录超出单页时收敛段后距。
+        spacingAfter: tocSpacingAfter ?? 10.2,
       }
     : inferParagraphStyle(role, text);
   const mergedStyle = mergeStyleIntoTextStyle(inferredStyle, style);
@@ -2263,10 +2456,10 @@ function normalizeTableRows(rows: PendingTableRow[], masterColumns: number[]) {
   }));
 }
 
-/** 创建 `createTableBlock` 返回的对象，供DOC 二进制解析使用。 */
 function createTableBlock(
   rows: PendingTableRow[],
   index: number,
+  spacingBefore?: number,
   spacingAfter?: number,
   tableGridLineHeight?: number,
   documentGridLineHeight?: number,
@@ -2292,7 +2485,7 @@ function createTableBlock(
     : inferTableStyle();
   const columns = structuralColumns ?? estimateTableColumns(rows);
   const verticalCellPadding = structuralColumns ? 3.5 : 5;
-  const horizontalCellPadding = structuralColumns ? 7.5 : 8;
+  const horizontalCellPadding = structuralColumns ? 6.25 : 8;
   const normalizedRows = normalizeTableRows(rows, columns);
   const width =
     rows.find((row) => row.width !== undefined)?.width ??
@@ -2318,6 +2511,7 @@ function createTableBlock(
     width,
     align: rows.find((row) => row.align)?.align,
     offsetLeft: rows.find((row) => row.offsetLeft !== undefined)?.offsetLeft,
+    spacingBefore,
     spacingAfter,
     rows: normalizedRows.map((row, rowIndex) => ({
       id: `doc-table-${index + 1}-row-${rowIndex + 1}`,
@@ -2325,26 +2519,13 @@ function createTableBlock(
       heightRule: row.heightRule,
       cells: row.cells.map((cell, cellIndex) => {
         const sourceStyle = tableCellTextStyle(cell.style);
-        const sourceLineHeight = sourceStyle?.lineHeight;
-        const sourceFontSize = sourceStyle?.fontSize ?? 13;
-        // 1.0 倍等紧凑表格文本使用原始文档网格；正文表格文本使用默认正文网格。
-        const usesCompactGrid =
-          documentGridLineHeight !== undefined &&
-          sourceLineHeight !== undefined &&
-          (sourceLineHeight <= 4
-            ? sourceLineHeight <= 1.2
-            : sourceLineHeight <= sourceFontSize * 1.2);
-        const usesBodyGrid =
-          tableGridLineHeight !== undefined &&
-          (sourceLineHeight === undefined ||
-            (sourceLineHeight <= 4
-              ? sourceLineHeight > 1.2
-              : sourceLineHeight > sourceFontSize * 1.2));
-        const resolvedGridLineHeight = usesCompactGrid
-          ? documentGridLineHeight
-          : usesBodyGrid
-          ? tableGridLineHeight
-          : undefined;
+        // 禁用文档网格的表格使用 Word 自动单倍行距；其余结构化表格跟随节内网格。
+        const resolvedGridLineHeight =
+          sourceStyle?.useDocumentGrid === false
+            ? (sourceStyle.fontSize ?? 13) * 1.29
+            : structuralColumns
+            ? documentGridLineHeight ?? tableGridLineHeight
+            : tableGridLineHeight ?? documentGridLineHeight;
         return {
           id: `doc-table-${index + 1}-cell-${rowIndex + 1}-${cellIndex + 1}`,
           text: cell.text,
@@ -2388,7 +2569,6 @@ function createTableBlock(
   };
 }
 
-/** 创建 `createListBlock` 返回的对象，供DOC 二进制解析使用。 */
 function createListBlock(items: ParsedListLine[], index: number): DocListBlock {
   const orderedCount = items.filter((item) => item.ordered).length;
   const ordered = orderedCount >= items.length / 2;
@@ -2409,7 +2589,6 @@ function createListBlock(items: ParsedListLine[], index: number): DocListBlock {
   };
 }
 
-/** 执行 `dominantStyle` 封装的DOC 二进制解析处理步骤。 */
 function dominantStyle(segments: DocTextSegment[]) {
   return segments.reduce<DocTextStyle | undefined>((style, segment) => {
     // 字符高亮只能作用于对应 inline，不能扩散成整段背景。
@@ -2425,12 +2604,11 @@ function dominantStyle(segments: DocTextSegment[]) {
   }, undefined);
 }
 
-/** 执行 `blocksFromSegments` 封装的DOC 二进制解析处理步骤。 */
 async function blocksFromSegments(
   segments: DocTextSegment[],
   images: DocImage[] = [],
   options: DocBlockBuildOptions,
-  drawingImages: DocImage[] = [],
+  drawingImages: Array<DocImage | undefined> = [],
 ): Promise<DocBlock[]> {
   const pendingTableRows: PendingTableRow[] = [];
   const pendingTableCells: PendingTableCell[] = [];
@@ -2440,6 +2618,30 @@ async function blocksFromSegments(
     images,
     drawingImages,
   );
+  const tocParagraphSegments = normalizedSegments.filter(
+    (segment) => segment.text === '\n' && segment.isTableOfContents,
+  );
+  const tocLineHeightTotal = tocParagraphSegments.reduce((total, segment) => {
+    const fontSize = segment.style?.fontSize ?? 14;
+    const lineHeight = segment.style?.lineHeight ?? 1.5;
+    return total + (lineHeight > 4 ? lineHeight : fontSize * lineHeight);
+  }, 0);
+  const tocFixedAllowance =
+    (options.defaultGridLineHeight ?? 31.2) * 2 +
+    (options.documentGridLineHeight ?? 20.8) * 4;
+  const tocSpacingAfter =
+    options.pageContentHeight !== undefined &&
+    tocParagraphSegments.length > 0 &&
+    tocLineHeightTotal +
+      tocParagraphSegments.length * 10.2 +
+      tocFixedAllowance >
+      options.pageContentHeight
+      ? Math.max(
+          0,
+          (options.pageContentHeight - tocFixedAllowance - tocLineHeightTotal) /
+            tocParagraphSegments.length,
+        )
+      : undefined;
   const builder = new DocBlockStreamBuilder({
     onBatch: options.onBatch
       ? ({ startIndex, blocks }) => options.onBatch!(startIndex, blocks)
@@ -2455,7 +2657,8 @@ async function blocksFromSegments(
   let pendingTableCellLayouts: DocTableCellLayout[] | undefined;
   let pendingTableRowHeight: number | undefined;
   let pendingTableRowHeightRule: 'atLeast' | 'exact' | undefined;
-  let pendingImageSpacingBefore = 0;
+  let pendingTableSpacingBefore: number | undefined;
+  let pendingBlockSpacingBefore = 0;
 
   /** 空段落只在紧邻图片时折算为段前距，避免全局保留空块扰乱估算分页。 */
   const emptyParagraphHeight = (style?: DocTextStyle) => {
@@ -2475,24 +2678,53 @@ async function blocksFromSegments(
     );
     const sourceStyle = dominantStyle(currentLineSegments);
     const fontSize = sourceStyle?.fontSize ?? 14;
+    const largestFontSize = Math.max(
+      fontSize,
+      ...currentLineSegments.map((segment) => segment.style?.fontSize ?? 0),
+    );
     const explicitLineHeight =
       sourceStyle?.lineHeight === undefined
         ? undefined
         : sourceStyle.lineHeight > 4
         ? sourceStyle.lineHeight
         : fontSize * sourceStyle.lineHeight;
+    const minimumLineHeight = Math.max(
+      largestFontSize * 1.06,
+      sourceStyle?.useDocumentGrid === false
+        ? 0
+        : options.defaultGridLineHeight ?? 0,
+    );
+    const documentGridLineHeight = options.documentGridLineHeight;
+    const naturalWordLineHeight = largestFontSize * 1.3;
+    const snappedGridLineHeight =
+      sourceStyle?.useDocumentGrid !== false && documentGridLineHeight
+        ? Math.ceil(
+            Math.max(0, naturalWordLineHeight - 0.01) / documentGridLineHeight,
+          ) * documentGridLineHeight
+        : undefined;
+    const rawGridPadding =
+      snappedGridLineHeight !== undefined && documentGridLineHeight
+        ? snappedGridLineHeight -
+          naturalWordLineHeight -
+          documentGridLineHeight / 2
+        : 0;
+    // Word 会把跨越多条文档网格的正文居中放进固定网格槽；浏览器只按当前最大字号生成行盒。
+    // 将缺失的上下留白补回段落流，可避免删减大字号片段后把后续内容整体向上拉动。
+    const gridPadding = rawGridPadding > 0.5 ? rawGridPadding + 0.75 : 0;
     const style =
       !inTable &&
       !isTableOfContents &&
       text.trim().length > 0 &&
-      options.defaultGridLineHeight !== undefined &&
+      minimumLineHeight > 0 &&
       (explicitLineHeight === undefined ||
-        explicitLineHeight < options.defaultGridLineHeight)
+        explicitLineHeight < minimumLineHeight)
         ? {
             ...sourceStyle,
-            lineHeight: options.defaultGridLineHeight,
+            lineHeight: minimumLineHeight,
             // 文档网格已经承担正文节奏，未显式声明的段后距不能再套用浏览器补偿。
             spacingAfter: sourceStyle?.spacingAfter ?? 0,
+            paddingTop: (sourceStyle?.paddingTop ?? 0) + gridPadding / 2,
+            paddingBottom: (sourceStyle?.paddingBottom ?? 0) + gridPadding / 2,
           }
         : sourceStyle;
     return {
@@ -2581,18 +2813,26 @@ async function blocksFromSegments(
     commitTableRow();
     if (!pendingTableRows.length) return;
     const rows = [...pendingTableRows];
+    const spacingBefore = pendingTableSpacingBefore;
     pendingTableRows.length = 0;
+    pendingTableSpacingBefore = undefined;
     if (rows.length === 1) {
       const text = rows[0].cells.map((cell) => cell.text).join(' ');
       const inlines = rows[0].cells.flatMap((cell) => cell.inlines);
       await builder.add(
-        createParagraphBlock(text, builder.nextSourceIndex, inlines),
+        createParagraphBlock(
+          text,
+          builder.nextSourceIndex,
+          inlines,
+          spacingBefore ? { spacingBefore } : undefined,
+        ),
       );
     } else {
       await builder.add(
         createTableBlock(
           rows,
           builder.nextSourceIndex,
+          spacingBefore,
           spacingAfter,
           options.defaultGridLineHeight,
           options.documentGridLineHeight,
@@ -2658,10 +2898,14 @@ async function blocksFromSegments(
   };
 
   const processLine = async (inputLine: DocLine) => {
-    const line = applyAutomaticNumbering(inputLine);
+    let line = applyAutomaticNumbering(inputLine);
     const textLine = normalizeBlockText(line.text);
     if (!textLine) {
       if (line.inTable) {
+        if (!pendingTableRows.length && !pendingTableCells.length) {
+          pendingTableSpacingBefore = pendingBlockSpacingBefore || undefined;
+          pendingBlockSpacingBefore = 0;
+        }
         captureTableStructure(line);
         pendingTableCells.push(...splitTableCells(line));
         if (line.tableRowEnd && pendingTableCells.length) {
@@ -2671,7 +2915,7 @@ async function blocksFromSegments(
       }
       const followsTable =
         pendingTableRows.length > 0 || pendingTableCells.length > 0;
-      // 空段落紧跟表格时保留一行文档网格高度，其余连续空段落仍丢弃以免虚增分页。
+      // 表格后的空段落归入表格尾距；其余空段落累计到下一个可见内容块。
       await flushTable(
         followsTable
           ? options.defaultGridLineHeight ?? emptyParagraphHeight(line.style)
@@ -2680,11 +2924,11 @@ async function blocksFromSegments(
       await flushList();
       if (line.inlines.some((inline) => inline.type === 'image')) {
         const imageStyle =
-          pendingImageSpacingBefore > 0
+          pendingBlockSpacingBefore > 0
             ? {
                 ...line.style,
                 spacingBefore:
-                  (line.style?.spacingBefore ?? 0) + pendingImageSpacingBefore,
+                  (line.style?.spacingBefore ?? 0) + pendingBlockSpacingBefore,
               }
             : line.style;
         await builder.add(
@@ -2695,16 +2939,20 @@ async function blocksFromSegments(
             imageStyle,
           ),
         );
-        pendingImageSpacingBefore = 0;
+        pendingBlockSpacingBefore = 0;
       } else if (!followsTable) {
-        pendingImageSpacingBefore += emptyParagraphHeight(line.style);
+        pendingBlockSpacingBefore +=
+          options.defaultGridLineHeight ?? emptyParagraphHeight(line.style);
       }
       return;
     }
 
-    pendingImageSpacingBefore = 0;
     if (line.inTable) {
       await flushList();
+      if (!pendingTableRows.length && !pendingTableCells.length) {
+        pendingTableSpacingBefore = pendingBlockSpacingBefore || undefined;
+        pendingBlockSpacingBefore = 0;
+      }
       captureTableStructure(line);
       pendingTableCells.push(...splitTableCells(line));
       if (line.tableRowEnd && pendingTableCells.length) {
@@ -2715,8 +2963,34 @@ async function blocksFromSegments(
 
     if (looksLikeTableRow(textLine)) {
       await flushList();
-      pendingTableRows.push({ cells: splitTableCells(line) });
+      if (!pendingTableRows.length) {
+        pendingTableSpacingBefore = pendingBlockSpacingBefore || undefined;
+        pendingBlockSpacingBefore = 0;
+      }
+      // 旧 DOC/WPS 即使缺失行结束标志，行尾 PAPX 仍可能携带真实列宽和对齐信息。
+      pendingTableRows.push({
+        cells: splitTableCells(line),
+        columns: line.tableColumns,
+        align: line.tableAlign,
+        offsetLeft: line.tableOffsetLeft,
+        width: line.tableWidth,
+        cellLayouts: line.tableCellLayouts,
+        height: line.tableRowHeight,
+        heightRule: line.tableRowHeightRule,
+      });
       return;
+    }
+
+    if (pendingBlockSpacingBefore > 0) {
+      line = {
+        ...line,
+        style: {
+          ...line.style,
+          spacingBefore:
+            (line.style?.spacingBefore ?? 0) + pendingBlockSpacingBefore,
+        },
+      };
+      pendingBlockSpacingBefore = 0;
     }
 
     if (line.outlineLevel !== undefined) {
@@ -2732,6 +3006,7 @@ async function blocksFromSegments(
           line.pageBreakBefore,
           line.outlineLevel,
           line.isTableOfContents,
+          line.isTableOfContents ? tocSpacingAfter : undefined,
         ),
       );
       return;
@@ -2758,6 +3033,7 @@ async function blocksFromSegments(
         line.pageBreakBefore,
         line.outlineLevel,
         line.isTableOfContents,
+        line.isTableOfContents ? tocSpacingAfter : undefined,
       ),
     );
   };
@@ -2770,7 +3046,7 @@ async function blocksFromSegments(
       await processLine(line);
       await flushTable();
       await flushList();
-      pendingImageSpacingBefore = 0;
+      pendingBlockSpacingBefore = 0;
       // 旧版 DOC 的 0x0C 是强制分页，使用隐藏占位块把分页语义传给渲染器。
       await builder.add({
         ...createParagraphBlock('', builder.nextSourceIndex),
@@ -2814,7 +3090,8 @@ async function blocksFromSegments(
         previousInline.text = previousInline.text.slice(0, -1);
         if (!previousInline.text) currentLineInlines.pop();
       }
-      const line = makeLine();
+      // 第二个单元格结束符仍携带行级 PAPX，作为边界传入才能保住真实表格网格。
+      const line = makeLine(segment);
       resetLine();
       await processLine(line);
     } else {
@@ -2845,7 +3122,6 @@ async function blocksFromSegments(
   return builder.finish();
 }
 
-/** 执行 `blocksFromText` 封装的DOC 二进制解析处理步骤。 */
 async function blocksFromText(
   text: string,
   options: DocBlockBuildOptions,
@@ -2909,7 +3185,6 @@ function extractImageAt(bytes: Uint8Array, start: number) {
   return undefined;
 }
 
-/** 读取 `readImageSize` 所需的源数据，供DOC 二进制解析使用。 */
 function readImageSize(bytes: Uint8Array, mimeType: string) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 
@@ -2992,7 +3267,6 @@ function readInlinePictureLayouts(bytes: Uint8Array) {
   return layouts;
 }
 
-/** 执行 `textNearBytes` 封装的DOC 二进制解析处理步骤。 */
 function textNearBytes(
   bytes: Uint8Array,
   start: number,
@@ -3008,7 +3282,6 @@ function textNearBytes(
   ).join('');
 }
 
-/** 判断 `isLikelySameImageObject` 对应的条件是否成立。 */
 function isLikelySameImageObject(
   left: DocImageCandidate,
   right: DocImageCandidate,
@@ -3036,7 +3309,6 @@ function isLikelySameImageObject(
   return isCloseLength && isOfficePreviewPair && isNearAlternatePreview;
 }
 
-/** 执行 `chooseBetterImageCandidate` 封装的DOC 二进制解析处理步骤。 */
 function chooseBetterImageCandidate(
   left: DocImageCandidate,
   right: DocImageCandidate,
@@ -3189,7 +3461,6 @@ function isDocCoreStreamsInput(
   );
 }
 
-/** 解析 `parsePlainLikeDoc` 接收的数据，并返回DOC 二进制解析结果。 */
 async function parsePlainLikeDoc(
   bytes: Uint8Array,
   fileName: string,
@@ -3217,7 +3488,6 @@ async function parsePlainLikeDoc(
   return buildDocDocument(fileName, blocks, warnings);
 }
 
-/** 根据输入构建 `buildDocDocument` 返回的标准化结果。 */
 function buildDocDocument(
   fileName: string,
   blocks: DocBlock[],
@@ -3313,6 +3583,14 @@ export async function parseDocCore(
         allowPartialFinalSector: true,
       })
     : undefined;
+  const inputStreams = streamsInput
+    ? [...streamsInput.imageStreams]
+    : undefined;
+  const dataStream =
+    inputStreams?.find(
+      ([streamName]) =>
+        streamName.replace(/^.*[\\/]/, '').toLowerCase() === 'data',
+    )?.[1] ?? cfb?.getStream('Data');
   const wordDocument =
     streamsInput?.wordDocument ?? cfb?.getStream('WordDocument');
 
@@ -3357,26 +3635,20 @@ export async function parseDocCore(
     fib.fcPlfLfo,
     fib.lcbPlfLfo,
   );
-  const documentGridLinePitch = readDocumentGridLinePitch(
-    wordDocument,
-    tableStream,
-    fib,
-  );
+  const sections = readDocSections(wordDocument, tableStream, fib);
+  const dominantSection = [...sections].sort(
+    (left, right) =>
+      right.charEnd - right.charStart - (left.charEnd - left.charStart),
+  )[0];
+  const documentPage = dominantSection?.page ?? DEFAULT_DOC_PAGE;
+  const documentGridLinePitch = sections.find(
+    (section) => section.gridLinePitch !== undefined,
+  )?.gridLinePitch;
   const normalStyle = readInheritedParagraphStyle(
     new Uint8Array([0, 0]),
     outlineCatalog,
     fonts,
   );
-  const defaultLineMultiplier =
-    normalStyle?.lineHeightMultiplier ??
-    (normalStyle?.lineHeight !== undefined && normalStyle.lineHeight <= 4
-      ? normalStyle.lineHeight
-      : undefined);
-  const defaultGridLineHeight =
-    documentGridLinePitch !== undefined && defaultLineMultiplier !== undefined
-      ? documentGridLinePitch * defaultLineMultiplier
-      : undefined;
-  warnings.push(...outlineCatalog.warnings);
   const characterRuns = parseCharacterRuns(
     wordDocument,
     tableStream,
@@ -3389,16 +3661,34 @@ export async function parseDocCore(
     fib,
     outlineCatalog,
     fonts,
+    dataStream,
   );
+  const paragraphLineMultiplierCounts = paragraphRuns.reduce((counts, run) => {
+    const multiplier = run.style?.lineHeightMultiplier;
+    if (multiplier !== undefined && !run.inTable && !run.isTableOfContents) {
+      counts.set(multiplier, (counts.get(multiplier) ?? 0) + 1);
+    }
+    return counts;
+  }, new Map<number, number>());
+  const dominantParagraphLineMultiplier = [
+    ...paragraphLineMultiplierCounts.entries(),
+  ].sort((left, right) => right[1] - left[1])[0]?.[0];
+  const defaultLineMultiplier =
+    normalStyle?.lineHeightMultiplier ??
+    (normalStyle?.lineHeight !== undefined && normalStyle.lineHeight <= 4
+      ? normalStyle.lineHeight
+      : dominantParagraphLineMultiplier);
+  const defaultGridLineHeight =
+    documentGridLinePitch !== undefined && defaultLineMultiplier !== undefined
+      ? documentGridLinePitch * defaultLineMultiplier
+      : undefined;
+  warnings.push(...outlineCatalog.warnings);
   await context.checkpoint({
     stage: 'resources',
     percent: 0.5,
     message: '正在解析 DOC 图片资源',
   });
-  const images = extractDocImages(
-    streamsInput?.imageStreams ?? cfb!.streams,
-    resources,
-  );
+  const images = extractDocImages(inputStreams ?? cfb!.streams, resources);
   const headerStart = fib.ccpText + fib.ccpFtn;
   const headerPieces = slicePiecesByCharacterRange(
     pieces,
@@ -3424,35 +3714,77 @@ export async function parseDocCore(
     fib.ccpMcr +
     fib.ccpAtn +
     fib.ccpEdn;
-  const textBoxPieces = slicePiecesByCharacterRange(
-    pieces,
-    textBoxStart,
-    textBoxStart + fib.ccpTxbx,
-  );
-  const textBoxSegments = textSegmentsFromPieces(
-    wordDocument,
-    textBoxPieces,
-    characterRuns,
-    paragraphRuns,
-  );
-  const textBoxBlocks = await blocksFromSegments(textBoxSegments, [], {
-    checkpoint: context.checkpoint,
-  });
-  const textBoxes = textBoxBlocks.filter(
-    (block): block is DocParagraphBlock => block.type === 'paragraph',
-  );
-  const drawingImages = extractDocDrawingCanvases(
+  const drawingTextBoxRanges = readDrawingTextBoxRanges(tableStream, fib);
+  let textBoxes: DocDrawingTextBox[];
+  if (drawingTextBoxRanges.length) {
+    textBoxes = [];
+    for (const range of drawingTextBoxRanges) {
+      if (!range) {
+        // PlcftxbxTxt 的空记录仍占用 ClientTextbox 索引，必须保留槽位。
+        textBoxes.push({ text: '' });
+        continue;
+      }
+      const scopedPieces = slicePiecesByCharacterRange(
+        pieces,
+        textBoxStart + range.charStart,
+        textBoxStart + range.charEnd,
+      );
+      const scopedSegments = textSegmentsFromPieces(
+        wordDocument,
+        scopedPieces,
+        characterRuns,
+        paragraphRuns,
+      );
+      const scopedBlocks = await blocksFromSegments(scopedSegments, [], {
+        checkpoint: context.checkpoint,
+      });
+      const paragraphs = scopedBlocks.filter(
+        (block): block is DocParagraphBlock => block.type === 'paragraph',
+      );
+      const styledParagraph =
+        paragraphs.find((paragraph) => paragraph.text.trim()) ?? paragraphs[0];
+      textBoxes.push({
+        text: paragraphs
+          .map((paragraph) => paragraph.text.trim())
+          .filter(Boolean)
+          .join('\n'),
+        style: styledParagraph?.style,
+      });
+    }
+  } else {
+    const textBoxPieces = slicePiecesByCharacterRange(
+      pieces,
+      textBoxStart,
+      textBoxStart + fib.ccpTxbx,
+    );
+    const textBoxSegments = textSegmentsFromPieces(
+      wordDocument,
+      textBoxPieces,
+      characterRuns,
+      paragraphRuns,
+    );
+    const textBoxBlocks = await blocksFromSegments(textBoxSegments, [], {
+      checkpoint: context.checkpoint,
+    });
+    textBoxes = textBoxBlocks.filter(
+      (block): block is DocParagraphBlock => block.type === 'paragraph',
+    );
+  }
+  const drawingCanvases = extractDocDrawingCanvases(
     tableStream,
     fib,
     textBoxes,
     resources,
+    { sections, displayPage: documentPage },
   );
+  const drawingImages = drawingCanvases.images;
   await flushDocResources(resources, context.output);
   const metadataDocument = buildDocDocument(
     context.fileName,
     [],
     [...warnings],
   );
+  metadataDocument.page = documentPage;
   metadataDocument.images = [...drawingImages, ...images];
   metadataDocument.headerImage = headerImage;
   metadataDocument.footerPageNumbers = footerPageNumbers;
@@ -3489,12 +3821,16 @@ export async function parseDocCore(
       numbering,
       defaultGridLineHeight,
       documentGridLineHeight: documentGridLinePitch,
+      pageContentHeight:
+        documentPage.minHeight -
+        documentPage.marginTop -
+        documentPage.marginBottom,
       onBatch: context.output
         ? (startIndex, batch) =>
             context.output!.documentBlocks(startIndex, batch)
         : undefined,
     },
-    drawingImages,
+    drawingCanvases.slots,
   );
 
   if (!blocks.length) {
@@ -3516,6 +3852,7 @@ export async function parseDocCore(
     message: '正在组装 DOC 文档',
   });
   const document = buildDocDocument(context.fileName, blocks, warnings);
+  document.page = documentPage;
   document.images = [...drawingImages, ...images];
   document.headerImage = headerImage;
   document.footerPageNumbers = footerPageNumbers;

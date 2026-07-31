@@ -4,6 +4,7 @@ import type { OfficeFileViewerMessages } from './types';
 export const zhCN: OfficeFileViewerMessages = {
   file: {
     unloaded: '未加载文件',
+    selectToPreview: '请先选择文件开始预览',
     unsupported:
       '暂不支持该文件类型，请选择 PPTX、PPT、XLSX、XLS、DOCX、DOC 或 WPS 文件',
     unrecognized:

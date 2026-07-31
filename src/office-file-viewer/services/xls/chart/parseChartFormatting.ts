@@ -3,17 +3,16 @@ import { BIFF8_RECORD } from '../biff8/constants';
 import { collectChartNodes } from './ChartRecordTree';
 import type { Biff8ChartRecordNode, Biff8ChartSeries } from './types';
 
-/** 描述 ParsedChartFormatting 在 XLS/BIFF8 解析中的数据结构。 */
+/** BIFF8 图表标题和图例的显示配置。 */
 export type ParsedChartFormatting = {
-  /** ParsedChartFormatting 对外展示的标题。 */
+  /** 面向用户展示的标题。 */
   title?: string;
   /** 是否显示图表图例。 */
   showLegend: boolean;
-  /** ParsedChartFormatting 的图例停靠位置；未提供时使用来源格式或渲染器的默认行为。 */
+  /** 图例停靠位置。 */
   legendPosition?: 'top' | 'bottom' | 'left' | 'right';
 };
 
-/** 执行 `colorRef` 封装的XLS/BIFF8 解析处理步骤。 */
 function colorRef(bytes: Uint8Array) {
   if (bytes.length < 4) return undefined;
   return `#${bytes[0].toString(16).padStart(2, '0')}${bytes[1]
@@ -21,7 +20,6 @@ function colorRef(bytes: Uint8Array) {
     .padStart(2, '0')}${bytes[2].toString(16).padStart(2, '0')}`;
 }
 
-/** 读取 `readSerTxt` 所需的源数据，供XLS/BIFF8 解析使用。 */
 function readSerTxt(node: Biff8ChartRecordNode) {
   const text = collectChartNodes(node.children, BIFF8_RECORD.SERTXT)[0];
   if (!text || text.data.length < 4) return undefined;
@@ -39,7 +37,6 @@ function readSerTxt(node: Biff8ChartRecordNode) {
   ).join('');
 }
 
-/** 执行 `chartTitle` 封装的XLS/BIFF8 解析处理步骤。 */
 function chartTitle(nodes: Biff8ChartRecordNode[]) {
   for (const text of collectChartNodes(nodes, BIFF8_RECORD.TEXT)) {
     const link = collectChartNodes(text.children, BIFF8_RECORD.OBJECTLINK)[0];

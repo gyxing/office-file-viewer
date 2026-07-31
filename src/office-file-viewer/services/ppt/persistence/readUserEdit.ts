@@ -2,19 +2,19 @@ import { PPT_RECORD } from '../binary/constants';
 import { PptRecordReader } from '../binary/PptRecordReader';
 import { PptParseError } from '../errors';
 
-/** 描述 PptUserEdit 在 PPT 二进制解析中的数据结构。 */
+/** PPT UserEditAtom 保存的编辑链信息。 */
 export type PptUserEdit = {
-  /** PptUserEdit 在源二进制流中的字节偏移。 */
+  /** 在所属数据范围中的偏移位置。 */
   offset: number;
-  /** PptUserEdit 在对应二进制流中的字节偏移。 */
+  /** 上一个 UserEditAtom 在主流中的字节偏移。 */
   offsetLastEdit: number;
-  /** PptUserEdit 在对应二进制流中的字节偏移。 */
+  /** 持久化目录记录在主流中的字节偏移。 */
   offsetPersistDirectory: number;
-  /** PptUserEdit 在源文件记录中的数字标识。 */
+  /** PPT 根文档对象的持久化标识。 */
   documentPersistId: number;
-  /** PptUserEdit 用于分配后续资源或持久化标识的递增值。 */
+  /** 分配后续持久化对象标识时使用的起始值。 */
   persistIdSeed: number;
-  /** PptUserEdit 在源文件记录中的数字标识。 */
+  /** 加密会话对象的持久化标识；0 表示未加密。 */
   encryptSessionPersistId?: number;
 };
 

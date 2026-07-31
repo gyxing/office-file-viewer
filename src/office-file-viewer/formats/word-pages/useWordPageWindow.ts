@@ -3,7 +3,9 @@ import { useEffect, useState } from 'react';
 import type { PageHeightIndex } from './PageHeightIndex';
 import type { WordPageWindowRange } from './types';
 
+/** Word 虚拟列表始终保留挂载的最少页面数。 */
 const MINIMUM_MOUNTED_PAGES = 3;
+/** Word 虚拟列表在可视区外预渲染的视口倍数。 */
 const OVERSCAN_VIEWPORTS = 2;
 
 function createRange(

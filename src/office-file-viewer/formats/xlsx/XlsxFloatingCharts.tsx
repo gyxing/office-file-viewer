@@ -10,7 +10,7 @@ import {
   type XlsxSheetMetrics,
 } from './sheetRenderUtils';
 
-/** 定义 XlsxFloatingCharts 组件可接收的属性。 */
+/** Excel浮动图表集合组件属性。 */
 type XlsxFloatingChartsProps = {
   /** 当前关联的工作表模型。 */
   sheet: XlsxSheet;
@@ -18,7 +18,7 @@ type XlsxFloatingChartsProps = {
   metrics: XlsxSheetMetrics;
 };
 
-/** 渲染 XlsxFloatingChart 组件。 */
+/** 渲染工作表中的单个浮动图表。 */
 function XlsxFloatingChart({
   chart,
   rect,
@@ -58,7 +58,7 @@ function XlsxFloatingChart({
 
 const MemoXlsxFloatingChart = memo(XlsxFloatingChart);
 
-/** 渲染 XlsxFloatingChartsComponent 组件。 */
+/** 渲染工作表中的全部浮动图表。 */
 function XlsxFloatingChartsComponent({
   sheet,
   metrics,

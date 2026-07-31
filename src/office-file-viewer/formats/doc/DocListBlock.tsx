@@ -5,13 +5,13 @@ import type { DocListBlock as DocListBlockModel } from '../../services/doc/types
 import { DocInlineContent } from './DocInlineContent';
 import { docTextStyleToCss } from './docRenderUtils';
 
-/** 定义 DocListBlock 组件可接收的属性。 */
+/** DOC列表内容块组件属性。 */
 type DocListBlockProps = {
-  /** DocListBlockProps 当前负责渲染的文档块模型。 */
+  /** 当前负责处理或渲染的内容块。 */
   block: DocListBlockModel;
 };
 
-/** 渲染 DocListBlockComponent 组件。 */
+/** 渲染DOC列表内容块。 */
 function DocListBlockComponent({ block }: DocListBlockProps) {
   const itemStyle = useMemo<CSSProperties>(
     () => ({

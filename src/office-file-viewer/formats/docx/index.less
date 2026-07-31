@@ -4,6 +4,17 @@
   height: 100%;
   overflow: hidden;
   background: #eef1f6;
+
+  &[data-character-spacing-control='compressPunctuation'],
+  &[data-character-spacing-control='compressPunctuationAndJapaneseKana'] {
+    // Word 的东亚标点压缩由 OpenType 半宽替代字形完成，正文和测量层必须保持一致。
+    font-feature-settings: 'halt';
+    font-variant-east-asian: proportional-width;
+
+    .office-file-docx-page-frame__article {
+      letter-spacing: -0.2px;
+    }
+  }
 }
 
 .office-file-docx-viewer__measure {
@@ -76,6 +87,11 @@
 .office-file-docx-inline-tab {
   display: inline-block;
   width: 2em;
+}
+
+.office-file-docx-compressed-punctuation {
+  // 仅缩窄源设置要求压缩的东亚标点，避免普通文字宽度和分页发生偏移。
+  letter-spacing: -2.5px;
 }
 
 .office-file-docx-toc-line {

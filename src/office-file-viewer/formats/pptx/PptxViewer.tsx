@@ -12,9 +12,9 @@ import { PptxSpeakerNotes } from './PptxSpeakerNotes';
 import { PptxThumbnailPane } from './PptxThumbnailPane';
 import { usePresentationSource } from './usePresentationSource';
 
-/** 定义 PptxViewer 组件可接收的属性。 */
+/** PPTX预览器组件属性。 */
 type PptxViewerProps = {
-  /** PptxViewerProps 当前关联的标准化文档模型。 */
+  /** 当前处理的标准化文档模型。 */
   document?: PresentationDocument;
   /** 大型演示文稿使用的按页读取数据源。 */
   source?: PresentationSource;
@@ -28,7 +28,7 @@ type PptxViewerProps = {
   onSelectSlide: (index: number) => void;
 };
 
-/** 渲染 PptxViewerComponent 组件。 */
+/** 渲染PPTX预览器。 */
 function PptxViewerComponent({
   document,
   source,

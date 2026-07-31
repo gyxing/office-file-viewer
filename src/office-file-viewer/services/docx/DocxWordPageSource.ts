@@ -20,18 +20,28 @@ import { WordPageStore } from '../word/WordPageStore';
 import type { WordPreviewSource } from '../word/WordPreviewSource';
 import type { DocxDocument, DocxPage, DocxPageContent } from './types';
 
+/** DOCX 页面数据源的预览摘要。 */
 export type DocxWordPreviewSummary = Omit<DocxDocument, 'blocks' | 'pages'>;
 
+/** 创建 DOCX 页面数据源时使用的选项。 */
 type DocxWordPageSourceOptions = {
+  /** 当前解析或预览会话的标识。 */
   sessionId: string;
+  /** 用于按需读取源数据的读取器。 */
   reader: OfficeArchiveReader;
+  /** 用于取消当前异步操作的信号。 */
   signal?: AbortSignal;
+  /** 报告不会阻断预览的解析或缓存警告。 */
   onWarning?(error: unknown): void;
 };
 
+/** 等待完成解析和分页的 DOCX 源页面。 */
 type PendingSourcePage = {
+  /** 分页处理前所属的源页面。 */
   sourcePage: DocxPageContent;
+  /** 按处理顺序排列的内容批次。 */
   batches: DocxMeasurementBatch[];
+  /** 当前源页面已经完成的内容块测量结果。 */
   measurements: DocxMeasuredBlock[];
 };
 
@@ -85,6 +95,7 @@ export class DocxWordPageSource
   setMetadata(metadata: {
     page: DocxPage;
     preserveSectionPagination: boolean;
+    characterSpacingControl?: DocxDocument['characterSpacingControl'];
   }) {
     this.throwIfUnavailable();
     this.summary = {
@@ -93,6 +104,7 @@ export class DocxWordPageSource
       images: [],
       outline: [],
       preserveSectionPagination: metadata.preserveSectionPagination,
+      characterSpacingControl: metadata.characterSpacingControl,
     };
     this.emitChange();
   }

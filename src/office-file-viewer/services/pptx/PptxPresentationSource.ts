@@ -27,7 +27,9 @@ import {
   type ProfiledPptxArchive,
 } from './readPptxStructure';
 
+/** 幻灯片按需存储中的位置和元素统计信息。 */
 type SlideStoreMeta = {
+  /** 在所属集合中的零基索引。 */
   index: number;
 };
 

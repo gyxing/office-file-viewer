@@ -2,11 +2,11 @@ import type { SpreadsheetWarning } from '../../spreadsheet/types';
 import { XlsParseError } from '../errors';
 import { Biff8Reader, type Biff8Record } from './Biff8Reader';
 
-/** 描述 DecodedBiff8String 在 XLS/BIFF8 解析中的数据结构。 */
+/** BIFF8 字符串的解码文本和字节消耗量。 */
 export type DecodedBiff8String = {
-  /** DecodedBiff8String 保存的解析值或业务值。 */
+  /** 完成 BIFF8 字符编码解码后的文本。 */
   value: string;
-  /** DecodedBiff8String 占用或消费的字节数。 */
+  /** 占用或消费的字节数。 */
   bytesConsumed: number;
 };
 
@@ -44,6 +44,7 @@ export function readBiff8UnicodeString(
   return { value, bytesConsumed: reader.position - start };
 }
 
+/** BIFF 代码页编号到 TextDecoder 编码名称的映射。 */
 const CODE_PAGE_LABELS: Record<number, string> = {
   1252: 'windows-1252',
   936: 'gbk',

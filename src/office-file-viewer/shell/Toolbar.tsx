@@ -6,6 +6,7 @@ import type { PreviewKind } from '../services/preview';
 import {
   isPresentationPreviewKind,
   isSpreadsheetPreviewKind,
+  isWordPreviewKind,
 } from '../services/preview';
 import {
   OFFICE_DEFAULT_ZOOM,
@@ -17,21 +18,24 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   FileExcelIcon,
+  FileIcon,
   FilePptIcon,
   FileWordIcon,
   FullscreenIcon,
   NotesIcon,
+  OutlineIcon,
   ZoomInIcon,
   ZoomOutIcon,
 } from './icons';
+/** 文件选择器允许选择的 Office 扩展名列表。 */
 const OFFICE_FILE_ACCEPT = '.pptx,.ppt,.xlsx,.xls,.docx,.doc,.wps';
 
-/** 定义 OfficeToolbar 组件可接收的属性。 */
+/** Office工具栏组件属性。 */
 type OfficeToolbarProps = {
   /** 正在解析的原始文件名，用于格式识别和错误提示。 */
   fileName: string;
-  /** 当前文件识别出的预览格式。 */
-  previewKind: PreviewKind;
+  /** 当前文件识别出的预览格式；尚未选择文件时为空。 */
+  previewKind?: PreviewKind;
   /** 当前预览缩放比例。 */
   zoom: number;
   /** 当前是否已有可预览的文档。 */
@@ -44,6 +48,12 @@ type OfficeToolbarProps = {
   showSpeakerNotes: boolean;
   /** 切换演讲者备注面板的展开状态。 */
   onToggleSpeakerNotes: () => void;
+  /** 当前文字文档是否包含可导航的大纲。 */
+  hasWordOutline: boolean;
+  /** 文字文档大纲当前是否展开。 */
+  showWordOutline: boolean;
+  /** 切换文字文档大纲的展开状态。 */
+  onToggleWordOutline: () => void;
   /** 在 SelectFile 事件发生时调用的回调函数。 */
   onSelectFile: (file: File) => void;
   /** 在 PreviousSlide 事件发生时调用的回调函数。 */
@@ -66,14 +76,15 @@ type OfficeToolbarProps = {
   onFullscreen: () => void;
 };
 
-/** 获取 `getPreviewIcon` 返回的数据。 */
-function getPreviewIcon(kind: PreviewKind) {
+/** 根据当前识别状态选择通用或格式专属文件图标。 */
+function getPreviewIcon(kind?: PreviewKind) {
+  if (!kind) return <FileIcon />;
   if (isSpreadsheetPreviewKind(kind)) return <FileExcelIcon />;
   if (kind === 'docx' || kind === 'doc') return <FileWordIcon />;
   return <FilePptIcon />;
 }
 
-/** 渲染 OfficeToolbarComponent 组件。 */
+/** 提供缩放、翻页、备注和全屏等预览操作。 */
 function OfficeToolbarComponent({
   fileName,
   previewKind,
@@ -83,6 +94,9 @@ function OfficeToolbarComponent({
   canGoNextSlide,
   showSpeakerNotes,
   onToggleSpeakerNotes,
+  hasWordOutline,
+  showWordOutline,
+  onToggleWordOutline,
   onSelectFile,
   onPreviousSlide,
   onNextSlide,
@@ -99,14 +113,22 @@ function OfficeToolbarComponent({
     () => OFFICE_ZOOM_LEVELS.map((value) => ({ value, label: `${value}%` })),
     [],
   );
+  const isPresentationPreview = previewKind
+    ? isPresentationPreviewKind(previewKind)
+    : false;
+  const isWordPreview = previewKind ? isWordPreviewKind(previewKind) : false;
   // 只有已加载且至少存在一个可切换方向的演示文稿才需要显示翻页导航。
   const showSlideNavigation =
-    isPresentationPreviewKind(previewKind) &&
+    isPresentationPreview &&
     hasDocument &&
     (canGoPreviousSlide || canGoNextSlide);
   const speakerNotesLabel = showSpeakerNotes
     ? messages.toolbar.hideSpeakerNotes
     : messages.toolbar.showSpeakerNotes;
+  const showWordOutlineToggle = isWordPreview && hasDocument && hasWordOutline;
+  const wordOutlineLabel = showWordOutline
+    ? messages.outline.collapse
+    : messages.outline.expand;
   const fullscreenLabel = isFullscreen
     ? messages.toolbar.exitFullscreen
     : messages.toolbar.fullscreen;
@@ -153,7 +175,7 @@ function OfficeToolbarComponent({
             </Tooltip>
           </>
         ) : null}
-        {isPresentationPreviewKind(previewKind) ? (
+        {isPresentationPreview ? (
           <Tooltip title={speakerNotesLabel}>
             <Button
               aria-label={speakerNotesLabel}
@@ -164,6 +186,19 @@ function OfficeToolbarComponent({
               onClick={onToggleSpeakerNotes}
             >
               {messages.toolbar.speakerNotes}
+            </Button>
+          </Tooltip>
+        ) : null}
+        {showWordOutlineToggle ? (
+          <Tooltip title={wordOutlineLabel}>
+            <Button
+              aria-label={wordOutlineLabel}
+              aria-pressed={showWordOutline}
+              type={showWordOutline ? 'primary' : 'default'}
+              icon={<OutlineIcon />}
+              onClick={onToggleWordOutline}
+            >
+              {messages.outline.title}
             </Button>
           </Tooltip>
         ) : null}

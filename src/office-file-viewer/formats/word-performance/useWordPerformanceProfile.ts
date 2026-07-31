@@ -8,8 +8,11 @@ import type {
   WordPerformanceStats,
 } from '../../services/word/types';
 
+/** Word 性能档案的加载状态。 */
 type ProfileState = {
+  /** 当前文档解析会话的标识。 */
   documentSessionId: string;
+  /** 控制解析或渲染策略的性能档案。 */
   profile: WordPerformanceProfile;
 };
 

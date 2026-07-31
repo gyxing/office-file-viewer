@@ -1,7 +1,7 @@
 // paint 工具负责把 PPTX 颜色、透明度和渐变模型转换成 CSS/SVG 可用格式。
 import type { GradientFill } from '../../../services/pptx/types';
 
-/** 执行 `colorWithOpacity` 封装的演示文稿渲染处理步骤。 */
+/** 将独立透明度合并到颜色值。 */
 export function colorWithOpacity(color?: string, opacity?: number) {
   if (!color || opacity === undefined || opacity >= 1) return color;
   const normalized = color.replace('#', '');
@@ -13,7 +13,7 @@ export function colorWithOpacity(color?: string, opacity?: number) {
   return `rgba(${r}, ${g}, ${b}, ${opacity})`;
 }
 
-/** 判断 `isGradientPaint` 对应的条件是否成立。 */
+/** 判断当前填充是否为渐变。 */
 export function isGradientPaint(
   paint?: string | GradientFill | null,
 ): paint is GradientFill {
@@ -32,7 +32,7 @@ function formatOffset(offset: number) {
     .replace(/\.0$/, '')}%`;
 }
 
-/** 执行 `paintToCss` 封装的演示文稿渲染处理步骤。 */
+/** 将演示文稿填充转换为 CSS 颜色或渐变。 */
 export function paintToCss(
   paint?: string | GradientFill | null,
   opacity?: number,
@@ -48,7 +48,7 @@ export function paintToCss(
   )})`;
 }
 
-/** 执行 `gradientToSvgEndpoints` 封装的演示文稿渲染处理步骤。 */
+/** 将渐变角度换算为 SVG 起止坐标。 */
 export function gradientToSvgEndpoints(angle: number) {
   const radians = (angle * Math.PI) / 180;
   return {

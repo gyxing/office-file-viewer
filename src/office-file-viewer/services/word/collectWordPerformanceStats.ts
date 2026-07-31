@@ -7,6 +7,7 @@ import type {
 } from '../docx/types';
 import type { WordPerformanceStats } from './types';
 
+/** 收集 Word 性能指标时使用的可变累加器。 */
 type MutableStats = Omit<WordPerformanceStats, 'imageCount' | 'drawingCount'>;
 
 /** 增量收集 Word 渲染权重，资源按稳定 ID 去重。 */
@@ -146,10 +147,14 @@ export class WordPerformanceStatsCollector {
   }
 }
 
+/** 可供性能统计器读取的 Word 文档接口。 */
 type WordPerformanceDocument = DocDocument | DocxDocument;
 
+/** 收集 Word 性能统计时使用的选项。 */
 type CollectWordPerformanceStatsOptions = {
+  /** 来源分页信息提供的预估页面数量。 */
   estimatedPageCount?: number;
+  /** 压缩包内最大 XML 部件解压后的大小，单位为字节。 */
   largestXmlSize?: number;
 };
 

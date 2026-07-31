@@ -1,6 +1,7 @@
 import type { OfficeChartType } from '../../../shared/ooxml/charts';
 import type { AdaptedBiff8Chart, Biff8ChartModel } from './types';
 
+/** 可直接转换为标准图表模型的常见 Excel 图表类型。 */
 const COMMON_TYPES = new Set([
   'column',
   'bar',
@@ -14,7 +15,6 @@ const COMMON_TYPES = new Set([
   'radarArea',
 ]);
 
-/** 执行 `degradedType` 封装的XLS/BIFF8 解析处理步骤。 */
 function degradedType(sourceType: string): OfficeChartType {
   if (sourceType === 'surface') return 'area';
   if (sourceType === 'stock' || sourceType === 'unknown') return 'line';

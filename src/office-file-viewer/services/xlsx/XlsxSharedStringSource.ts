@@ -8,10 +8,12 @@ import { decodeMojibake } from './parseXlsx';
 
 /** 按当前 Sheet 实际引用读取 sharedStrings 的协议。 */
 export interface XlsxSharedStringSource {
+  /** 批量解析实际使用的共享字符串索引。 */
   resolveMany(
     indexes: readonly number[],
     signal?: AbortSignal,
   ): Promise<ReadonlyMap<number, string>>;
+  /** 幂等释放当前对象持有的资源和订阅。 */
   dispose(): Promise<void>;
 }
 

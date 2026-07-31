@@ -4,9 +4,9 @@ import type { SlideModel } from '../../services/pptx/types';
 import { PptxSlide } from './PptxSlide';
 import { PresentationSlideState } from './PresentationSlideState';
 
-/** 定义 PptxSlideViewport 组件可接收的属性。 */
+/** PPTX幻灯片视口组件属性。 */
 type PptxSlideViewportProps = {
-  /** PptxSlideViewportProps 当前关联的幻灯片。 */
+  /** 当前处理或展示的幻灯片。 */
   slide?: SlideModel;
   /** 当前选中项在所属集合中的索引。 */
   activeIndex: number;
@@ -24,7 +24,7 @@ type PptxSlideViewportProps = {
   onRetry?: () => void;
 };
 
-/** 渲染 PptxSlideViewportComponent 组件。 */
+/** 在可缩放视口中居中展示当前幻灯片。 */
 function PptxSlideViewportComponent({
   slide,
   activeIndex,

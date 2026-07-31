@@ -5,7 +5,9 @@ import { DocxChartView } from './DocxChartView';
 import { DocxParagraph } from './DocxParagraph';
 import { DocxTableBlock } from './DocxTableBlock';
 
+/** DOCX 形状子项渲染器属性。 */
 type DocxShapeItemRendererProps = {
+  /** 当前处理的项目。 */
   item: DocxShapeItem;
 };
 

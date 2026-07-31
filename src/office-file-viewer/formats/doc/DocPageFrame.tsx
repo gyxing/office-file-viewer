@@ -3,13 +3,13 @@ import type { CSSProperties, ReactNode } from 'react';
 import React, { memo, useMemo } from 'react';
 import type { DocImage, DocPage } from '../../services/doc/types';
 
-/** 定义 DocPageFrame 组件可接收的属性。 */
+/** DOC页面框架组件属性。 */
 type DocPageFrameProps = {
-  /** DocPageFrameProps 当前关联的页面模型。 */
+  /** 当前关联的页面模型。 */
   page: DocPage;
   /** 当前预览缩放比例。 */
   zoom: number;
-  /** DocPageFrameProps 包含并负责布局的 React 子节点。 */
+  /** 当前组件包含的子节点。 */
   children: ReactNode;
   /** 当前物理页需要显示的页眉徽标。 */
   headerImage?: DocImage;
@@ -17,7 +17,7 @@ type DocPageFrameProps = {
   footerText?: string;
 };
 
-/** 渲染 DocPageFrameComponent 组件。 */
+/** 渲染DOC页面框架。 */
 function DocPageFrameComponent({
   page,
   zoom,

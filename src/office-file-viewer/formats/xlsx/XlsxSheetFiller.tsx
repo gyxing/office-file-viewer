@@ -8,7 +8,7 @@ import {
   XLSX_ROW_HEADER_WIDTH,
 } from './sheetRenderUtils';
 
-/** 定义 XlsxSheetFiller 组件可接收的属性。 */
+/** Excel工作表填充层组件属性。 */
 type XlsxSheetFillerProps = {
   /** 当前需要补齐可视空白区的工作表。 */
   sheet: XlsxSheet;

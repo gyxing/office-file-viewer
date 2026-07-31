@@ -4,7 +4,6 @@ import {
   type PptParseContext,
 } from '../types';
 
-/** 执行 `escapeXml` 封装的PPT 二进制解析处理步骤。 */
 function escapeXml(value: string) {
   return value
     .replace(/&/g, '&amp;')

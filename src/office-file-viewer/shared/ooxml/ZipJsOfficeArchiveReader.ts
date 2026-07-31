@@ -6,16 +6,23 @@ import type {
 } from './OfficeArchiveReader';
 import type { OfficeEntryMap, OfficeZipInput } from './archive';
 
+/** 运行时加载的 zip.js 核心模块接口。 */
 type ZipJsCoreModule = typeof import('@zip.js/zip.js/lib/zip-core-native.js');
+/** 支持批量枚举条目的 zip.js 读取器。 */
 type ZipReaderWithEntries = Pick<ZipReader<unknown>, 'close' | 'getEntries'>;
 
+/** zip.js 条目名称与读取句柄的索引记录。 */
 type ArchiveRecord = {
+  /** 归档条目的规范化路径和压缩体积。 */
   metadata: OfficeArchiveEntry;
+  /** 当前处理的压缩包或复合文档条目。 */
   entry: FileEntry;
 };
 
+/** Office 压缩包条目并发读取的最大任务数。 */
 const OFFICE_ENTRY_READ_CONCURRENCY = 4;
 // 组件库无法预知消费者的 Worker 资源发布路径，条目解压统一在当前执行上下文运行。
+/** zip.js 读取 Office 压缩包条目时共享的安全选项。 */
 const OFFICE_ENTRY_READ_OPTIONS = {
   checkOverlappingEntry: true,
   useWebWorkers: false,

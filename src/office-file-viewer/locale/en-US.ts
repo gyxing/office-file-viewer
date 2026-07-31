@@ -4,6 +4,7 @@ import type { OfficeFileViewerMessages } from './types';
 export const enUS: OfficeFileViewerMessages = {
   file: {
     unloaded: 'No file loaded',
+    selectToPreview: 'Please select a file to start previewing',
     unsupported:
       'This file type is not supported. Select a PPTX, PPT, XLSX, XLS, DOCX, DOC, or WPS file.',
     unrecognized:

@@ -63,19 +63,31 @@ export type OfficePreviewState<
   TSummary extends object,
 > =
   | {
+      /** 当前解析或预览会话的标识。 */
       sessionId: string;
+      /** 当前文件使用的预览格式类别。 */
       previewKind: PreviewKind;
+      /** 当前数据源或渲染器采用的工作模式。 */
       mode: 'materialized';
+      /** 模型。 */
       model: TModel;
+      /** 当前预览使用的按需加载数据源。 */
       source?: undefined;
+      /** 当前预览内容的摘要信息。 */
       summary?: undefined;
     }
   | {
+      /** 当前解析或预览会话的标识。 */
       sessionId: string;
+      /** 当前文件使用的预览格式类别。 */
       previewKind: PreviewKind;
+      /** 当前数据源或渲染器采用的工作模式。 */
       mode: 'source';
+      /** 模型。 */
       model?: undefined;
+      /** 当前预览使用的按需加载数据源。 */
       source: TSource;
+      /** 当前预览内容的摘要信息。 */
       summary: TSummary;
     };
 
@@ -85,5 +97,6 @@ export type OfficePreviewHandle<
   TSource extends object,
   TSummary extends object,
 > = OfficePreviewState<TModel, TSource, TSummary> & {
+  /** 幂等释放当前对象持有的资源和订阅。 */
   dispose(): Promise<void>;
 };

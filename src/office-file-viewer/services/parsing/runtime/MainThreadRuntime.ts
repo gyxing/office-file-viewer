@@ -7,7 +7,6 @@ import { parseXlsCore } from '../../xls/parseXlsCore';
 import type { RuntimeContext, RuntimeSink } from './types';
 import { createParseAbortError } from './types';
 
-/** 解析 `parseExistingFormat` 接收的数据，并返回解析运行时结果。 */
 async function parseExistingFormat(
   file: File,
   kind: Exclude<PreviewKind, 'xls' | 'ppt' | 'doc'>,
@@ -25,12 +24,10 @@ async function parseExistingFormat(
   return { kind, document: await parsePptx(file, signal) };
 }
 
-/** 执行 `ensureNotAborted` 封装的解析运行时处理步骤。 */
 function ensureNotAborted(signal: AbortSignal) {
   if (signal.aborted) throw createParseAbortError();
 }
 
-/** 创建 `createDocCheckpoint` 返回的对象，供解析运行时使用。 */
 function createDocCheckpoint(signal: AbortSignal, sink: RuntimeSink) {
   let deadline = Date.now() + 12;
   return async (progress?: Parameters<RuntimeSink['progress']>[0]) => {

@@ -4945,6 +4945,11 @@ elliptic@^6.5.3, elliptic@^6.6.1:
     minimalistic-assert "^1.0.1"
     minimalistic-crypto-utils "^1.0.1"
 
+emf-converter@^2.0.2:
+  version "2.0.2"
+  resolved "https://registry.npmmirror.com/emf-converter/-/emf-converter-2.0.2.tgz#e4c90776c35495f900ffed3613f522c3784e27a6"
+  integrity sha512-QLUufb45P3LlOudCoizBtJpO8cBw8LayH0mkvkRvIjvMlb6junwP0EXgUkdDyZUEF2QSEZUPV8rO8DS5rsJmkA==
+
 emoji-regex@^8.0.0:
   version "8.0.0"
   resolved "https://registry.npmmirror.com/emoji-regex/-/emoji-regex-8.0.0.tgz#e818fd69ce5ccfcb404594f842963bf53164cc37"

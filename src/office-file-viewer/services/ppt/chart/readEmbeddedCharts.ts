@@ -6,6 +6,7 @@ import { PptRecordReader } from '../binary/PptRecordReader';
 import { readPptPersistObject } from '../readPptPersistObject';
 import type { PptEditChain, PptParseContext, PptRecord } from '../types';
 
+/** PPT 外嵌 OLE 对象原子记录的类型编号。 */
 const EX_OLE_OBJ_ATOM = 0x0fc3;
 
 /** 将输入标准化为 `normalizeEmbeddedChart` 返回的结构。 */
@@ -43,7 +44,6 @@ function collectRecords(
   }
 }
 
-/** 执行 `inflateOleStorage` 封装的PPT 二进制解析处理步骤。 */
 async function inflateOleStorage(record: PptRecord) {
   if (record.data.length < 6) throw new Error('OLE 存储记录长度不足');
   if (typeof DecompressionStream === 'undefined') {

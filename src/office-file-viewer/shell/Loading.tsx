@@ -3,13 +3,13 @@ import { Spin } from 'antd';
 import React, { memo } from 'react';
 import { useOfficeFileViewerMessages } from '../locale';
 
-/** 定义 OfficeLoading 组件可接收的属性。 */
+/** Office 文件解析加载组件属性。 */
 type OfficeLoadingProps = {
-  /** OfficeLoadingProps 的 tip 文本值。 */
+  /** 加载指示器下方展示的提示文字。 */
   tip?: string;
 };
 
-/** 渲染 OfficeLoadingComponent 组件。 */
+/** 展示 Office 文件解析中的统一加载状态。 */
 function OfficeLoadingComponent({ tip }: OfficeLoadingProps) {
   const messages = useOfficeFileViewerMessages();
   return (

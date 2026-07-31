@@ -13,7 +13,6 @@ import type {
   PptTextDefaults,
 } from './types';
 
-/** 执行 `styleAt` 封装的PPT 二进制解析处理步骤。 */
 function styleAt(
   runs: PptCharacterStyleRun[],
   position: number,
@@ -26,7 +25,6 @@ function styleAt(
   return runs.length ? runs[runs.length - 1].style : undefined;
 }
 
-/** 执行 `paragraphStyleAt` 封装的PPT 二进制解析处理步骤。 */
 function paragraphStyleAt(
   runs: ReturnType<typeof readPptTextStyles>['paragraphs'],
   position: number,
@@ -39,7 +37,6 @@ function paragraphStyleAt(
   return runs.length ? runs[runs.length - 1] : undefined;
 }
 
-/** 执行 `appendRuns` 封装的PPT 二进制解析处理步骤。 */
 function appendRuns(
   text: string,
   start: number,
@@ -64,7 +61,6 @@ function appendRuns(
   return runs;
 }
 
-/** 根据输入构建 `buildParagraphs` 返回的标准化结果。 */
 function buildParagraphs(
   text: string,
   defaults: PptTextDefaults,

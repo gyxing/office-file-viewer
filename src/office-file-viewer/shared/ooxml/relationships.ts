@@ -1,7 +1,7 @@
 import { normalizeRelationshipTarget, type OfficeRelationship } from './media';
 import { attr, descendantsByLocalName, parseXml } from './xml';
 
-/** 读取 `readRelationships` 所需的源数据，供 OOXML 公共解析使用。 */
+/** 读取 OOXML 关系文件并解析目标路径。 */
 export function readRelationships(xml: string, relsPath: string) {
   const doc = parseXml(xml);
   const relationships: Record<string, OfficeRelationship> = {};

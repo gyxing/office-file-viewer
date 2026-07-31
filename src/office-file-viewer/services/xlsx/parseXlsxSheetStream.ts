@@ -14,6 +14,10 @@ import type {
   SpreadsheetMerge,
   SpreadsheetRowMetric,
 } from '../spreadsheet/types';
+import {
+  readWpsCellImageId,
+  type WpsCellImagePlacement,
+} from '../spreadsheet/wpsCellImages';
 import type {
   XlsxPackageContext,
   XlsxSheetDescriptor,
@@ -30,28 +34,58 @@ import {
 
 /** 单个 Sheet 流式解析后的稀疏结构。 */
 export type ParsedXlsxSheetStream = {
+  /** 当前内容使用的布局信息。 */
   layout: SpreadsheetSheetLayout;
+  /** 按显示顺序排列的单元格。 */
   cells: readonly SpreadsheetCell[];
+  /** 当前工作表声明的合并区域。 */
   merges: readonly SpreadsheetMerge[];
+  /** 流式解析过程中生成的工作表分片。 */
   tiles: readonly SpreadsheetTile[];
+  /** 由 WPS 单元格图片公式引用的图片位置。 */
+  cellImages: readonly WpsCellImagePlacement[];
+  /** 当前工作表绘图部件的关系标识。 */
   drawingRelationshipId?: string;
 };
 
 /** 控制 Sheet 解析期间的 tile 输出，避免大 Sheet 聚合全部单元格。 */
 export type ParseXlsxSheetStreamOptions = {
+  /** 是否在输出中保留全部单元格；分片模式可关闭以降低内存占用。 */
   collectCells?: boolean;
+  /** 分片发生时触发的回调。 */
   onTile?: (tile: SpreadsheetTile) => Promise<void>;
 };
 
+/** XML 事件读取期间尚未完成组装的 XLSX 单元格。 */
 type PendingCell = {
+  /** 待解析单元格的 A1 引用。 */
   ref: string;
+  /** 行的零基索引。 */
   rowIndex: number;
+  /** 列的零基索引。 */
   columnIndex: number;
+  /** 样式标识。 */
   styleId?: number;
+  /** OOXML 单元格值的编码类型。 */
   type?: string;
+  /** 单元格值节点累积的原始文本。 */
   value: string;
+  /** 单元格公式节点累积的公式文本。 */
   formula: string;
+  /** 单元格内联字符串累积的文本。 */
   inlineText: string;
+};
+
+/** 等待转换为标准列宽模型的 XLSX 列区间。 */
+type PendingColumnMetric = {
+  /** 当前范围的起始位置。 */
+  start: number;
+  /** 当前范围的结束位置。 */
+  end: number;
+  /** 宽度，单位为标准化渲染像素。 */
+  width: number;
+  /** 是否隐藏当前项目。 */
+  hidden: boolean;
 };
 
 function readBoolean(value: string | undefined) {
@@ -79,7 +113,9 @@ export async function parseXlsxSheetStream(
   const pendingTiles = new Map<string, SpreadsheetCell[]>();
   const rows = new Map<number, SpreadsheetRowMetric>();
   const columns = new Map<number, SpreadsheetColumnMetric>();
+  const pendingColumns: PendingColumnMetric[] = [];
   const merges: SpreadsheetMerge[] = [];
+  const cellImages: WpsCellImagePlacement[] = [];
   let rowCount = Math.max(1, descriptor.rowCount);
   let columnCount = Math.max(1, descriptor.columnCount);
   let defaultRowHeight = 20;
@@ -143,25 +179,22 @@ export async function parseXlsxSheetStream(
           maxDigitWidth,
         );
         const hidden = readBoolean(event.attributes.get('hidden'));
-        for (let index = start; index <= end; index += 1) {
-          columns.set(index, { index, width, hidden });
-        }
-        columnCount = Math.max(columnCount, end);
+        pendingColumns.push({ start, end, width, hidden });
       } else if (event.localName === 'row') {
         const index = Math.max(1, Number(event.attributes.get('r') ?? 1));
         const hasHeight = event.attributes.has('ht');
+        const customHeight = readBoolean(event.attributes.get('customHeight'));
         const hidden = readBoolean(event.attributes.get('hidden'));
-        if (hasHeight || hidden) {
+        if (hasHeight || customHeight || hidden) {
           rows.set(index, {
             index,
-            height: pointToPx(
-              Number(event.attributes.get('ht')),
-              defaultRowHeight,
-            ),
+            height: hasHeight
+              ? pointToPx(Number(event.attributes.get('ht')), defaultRowHeight)
+              : defaultRowHeight,
+            customHeight,
             hidden,
           });
         }
-        rowCount = Math.max(rowCount, index);
       } else if (event.localName === 'c') {
         const ref = event.attributes.get('r') ?? 'A1';
         const address = parseCellRef(ref);
@@ -221,24 +254,33 @@ export async function parseXlsxSheetStream(
     if (event.localName !== 'c' || !pendingCell) continue;
 
     const rawValue = pendingCell.value;
+    const cellImageId = readWpsCellImageId(pendingCell.formula, rawValue);
     const cell: SpreadsheetCell = {
       ref: pendingCell.ref,
       rowIndex: pendingCell.rowIndex,
       columnIndex: pendingCell.columnIndex,
       rawValue,
-      value:
-        pendingCell.type === 'inlineStr'
-          ? pendingCell.inlineText
-          : pendingCell.type === 'b'
-          ? rawValue === '1'
-            ? 'TRUE'
-            : 'FALSE'
-          : rawValue,
+      value: cellImageId
+        ? ''
+        : pendingCell.type === 'inlineStr'
+        ? pendingCell.inlineText
+        : pendingCell.type === 'b'
+        ? rawValue === '1'
+          ? 'TRUE'
+          : 'FALSE'
+        : rawValue,
       type: pendingCell.type,
       styleId: pendingCell.styleId,
       style: resolveStyle(pendingCell.styleId, context.styles),
       formula: pendingCell.formula || undefined,
     };
+    if (cellImageId) {
+      cellImages.push({
+        imageId: cellImageId,
+        row: pendingCell.rowIndex,
+        column: pendingCell.columnIndex,
+      });
+    }
     const { rowTile, columnTile } = tileCoordinates(cell);
     if (pendingTiles.size && rowTile !== activeRowTile) {
       await flushTiles();
@@ -254,6 +296,13 @@ export async function parseXlsxSheetStream(
   }
 
   await flushTiles();
+
+  // 列格式可能延伸到 XFD；内容边界确定后再截取，避免把样式范围当成已用列。
+  pendingColumns.forEach(({ start, end, width, hidden }) => {
+    for (let index = start; index <= Math.min(end, columnCount); index += 1) {
+      columns.set(index, { index, width, hidden });
+    }
+  });
 
   if (collectCells) {
     const sharedCells = cells
@@ -306,11 +355,12 @@ export async function parseXlsxSheetStream(
       columnCount,
       defaultRowHeight,
       defaultColumnWidth,
-      rows: [...rows.values()],
+      rows: [...rows.values()].filter((row) => row.index <= rowCount),
       columns: [...columns.values()],
     },
     cells,
     merges,
+    cellImages,
     tiles: [...collectedTiles].map(([key, tileCells]) => {
       const [rowTile, columnTile] = key.split(':').map(Number);
       return {

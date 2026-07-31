@@ -1,43 +1,43 @@
-/** 描述 CfbObjectType 在 CFB 复合文档中的数据结构。 */
+/** CFB 目录项支持的对象种类。 */
 export type CfbObjectType = 'storage' | 'stream' | 'root';
 
-/** 表示CFB 复合文档集合中的一个条目。 */
+/** CFB 复合文档目录中的单个存储或数据流。 */
 export type CfbDirectoryEntry = {
-  /** CfbDirectoryEntry 在所属文档或任务中的唯一标识。 */
+  /** 在所属集合中的唯一标识。 */
   id: number;
-  /** CfbDirectoryEntry 的可读名称。 */
+  /** 面向用户展示的名称。 */
   name: string;
-  /** CfbDirectoryEntry 在压缩包、复合文档或图形数据中的路径。 */
+  /** 在压缩包、复合文档或资源表中的路径。 */
   path: string;
-  /** CfbDirectoryEntry 关联的 objectType 结构；字段形状由 CfbObjectType 定义。 */
+  /** 目录项是存储、数据流还是根存储。 */
   objectType: CfbObjectType;
-  /** CfbDirectoryEntry 在 CFB 扇区链中的扇区索引。 */
+  /** 在 CFB 扇区链中的扇区索引。 */
   startSector: number;
-  /** CfbDirectoryEntry 占用或消费的字节数。 */
+  /** 占用或消费的字节数。 */
   streamSize: number;
-  /** CfbDirectoryEntry 在源文件记录中的数字标识。 */
+  /** 目录红黑树中的左兄弟项标识。 */
   leftSiblingId: number;
-  /** CfbDirectoryEntry 在源文件记录中的数字标识。 */
+  /** 目录红黑树中的右兄弟项标识。 */
   rightSiblingId: number;
-  /** CfbDirectoryEntry 在源文件记录中的数字标识。 */
+  /** 存储目录树中的首个子项标识。 */
   childId: number;
 };
 
-/** 描述 CfbFile 在 CFB 复合文档中的数据结构。 */
+/** 完成物化的 CFB 目录和命名数据流。 */
 export type CfbFile = {
-  /** CfbFile 包含的 entries 有序集合。 */
+  /** 按目录编号排列的 CFB 目录项。 */
   entries: CfbDirectoryEntry[];
-  /** CfbFile 按流名称索引的 CFB 数据流映射。 */
+  /** 按流名称索引的 CFB 数据流映射。 */
   streams: Map<string, Uint8Array>;
-  /** CfbFile 执行 getStream 操作时调用的函数。 */
+  /** 按候选名称读取首个匹配的数据流。 */
   getStream: (...names: string[]) => Uint8Array | undefined;
-  /** CfbFile 执行 hasEntry 操作时调用的函数。 */
+  /** 判断复合文档是否包含指定目录项。 */
   hasEntry: (name: string) => boolean;
 };
 
-/** 定义CFB 复合文档的可选配置。 */
+/** 读取 CFB 结构和数据流时使用的兼容与取消选项。 */
 export type CfbReadOptions = {
-  /** CfbReadOptions 执行 yieldIfNeeded 操作时调用的函数。 */
+  /** 长任务需要让出主线程时执行的回调。 */
   yieldIfNeeded?: () => Promise<void>;
   /** 兼容省略最后扇区零填充的 CFB 生成器；默认保持严格校验。 */
   allowPartialFinalSector?: boolean;
@@ -47,19 +47,26 @@ export type CfbReadOptions = {
 
 /** 提供单个 CFB 流的有界随机读取和兼容物化能力。 */
 export interface CfbStreamReader {
+  /** 当前处理的压缩包或复合文档条目。 */
   readonly entry: CfbDirectoryEntry;
+  /** 读取指定偏移与长度的连续字节。 */
   read(
     offset: number,
     length: number,
     signal?: AbortSignal,
   ): Promise<Uint8Array>;
+  /** 将当前数据流完整读取为内存字节。 */
   materialize(signal?: AbortSignal): Promise<Uint8Array>;
 }
 
 /** 提供 CFB 目录索引和命名流随机读取能力。 */
 export interface CfbRandomAccessReader {
+  /** 压缩包或复合文档包含的条目。 */
   readonly entries: readonly CfbDirectoryEntry[];
+  /** 判断 CFB 复合文档内是否存在指定条目。 */
   hasEntry(name: string): boolean;
+  /** 打开指定条目的随机读取数据流。 */
   openStream(...names: string[]): CfbStreamReader | undefined;
+  /** 幂等关闭读取器并释放底层数据源。 */
   close(): Promise<void>;
 }

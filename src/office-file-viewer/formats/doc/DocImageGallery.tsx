@@ -4,13 +4,13 @@ import React, { memo } from 'react';
 import { useOfficeFileViewerMessages } from '../../locale';
 import type { DocImage } from '../../services/doc/types';
 
-/** 定义 DocImageGallery 组件可接收的属性。 */
+/** DOC图片集组件属性。 */
 type DocImageGalleryProps = {
-  /** DocImageGalleryProps 包含的 images 有序集合。 */
+  /** 当前文档或页面包含的图片资源。 */
   images: DocImage[];
 };
 
-/** 渲染 DocImageGalleryComponent 组件。 */
+/** 渲染 DOC 文档中的独立图片集。 */
 function DocImageGalleryComponent({ images }: DocImageGalleryProps) {
   const messages = useOfficeFileViewerMessages();
   if (!images.length) return null;

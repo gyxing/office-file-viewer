@@ -2,9 +2,13 @@ import React, { memo } from 'react';
 import { useOfficeFileViewerMessages } from '../../locale';
 import type { PresentationSlideDescriptor } from '../../services/presentation/types';
 
+/** 演示文稿缩略图占位组件属性。 */
 type PptxThumbnailPlaceholderProps = {
+  /** 当前项目的轻量描述信息。 */
   descriptor: PresentationSlideDescriptor;
+  /** 占位区域的宽高比。 */
   aspectRatio: number;
+  /** 当前项目是否处于激活状态。 */
   active: boolean;
 };
 

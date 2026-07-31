@@ -2,11 +2,11 @@ import { PPT_RECORD } from '../binary/constants';
 import { PptRecordReader } from '../binary/PptRecordReader';
 import type { PptParseContext, PptRecord, PptSlideDescriptor } from '../types';
 
-/** 描述 PptMasterDescriptor 在 PPT 二进制解析中的数据结构。 */
+/** PPT 母版的持久化标识和母版编号。 */
 export type PptMasterDescriptor = {
-  /** PptMasterDescriptor 在源文件记录中的数字标识。 */
+  /** PPT 对象在持久化目录中的标识。 */
   persistId: number;
-  /** PptMasterDescriptor 在源文件记录中的数字标识。 */
+  /** 幻灯片引用的母版标识。 */
   masterId: number;
 };
 
@@ -18,7 +18,6 @@ export type PptNotesDescriptor = {
   notesId: number;
 };
 
-/** 读取 `readSlidePersistFields` 所需的源数据，供PPT 二进制解析使用。 */
 function readSlidePersistFields(record: PptRecord) {
   if (record.length < 16) return undefined;
   const view = new DataView(

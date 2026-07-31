@@ -18,12 +18,11 @@ function findSignature(bytes: Uint8Array, signature: number[]) {
   return -1;
 }
 
-/** 执行 `sniffRaster` 封装的XLS/BIFF8 解析处理步骤。 */
 function sniffRaster(bytes: Uint8Array) {
   const signatures: Array<{
-    /** 当前局部结构 的文件格式或协议类型标识。 */
+    /** 相关文件或资源的格式标识。 */
     format: Biff8DrawingImageFormat;
-    /** 当前局部结构 包含的 signature 集合。 */
+    /** 用于识别图片格式的字节签名。 */
     signature: number[];
   }> = [
     {
@@ -154,7 +153,6 @@ function collectRecords(
   return result;
 }
 
-/** 执行 `blipRecordTypeFromBse` 封装的XLS/BIFF8 解析处理步骤。 */
 function blipRecordTypeFromBse(value: number) {
   if (value === 2) return OFFICE_ART_RECORD.BLIP_EMF;
   if (value === 3) return OFFICE_ART_RECORD.BLIP_WMF;

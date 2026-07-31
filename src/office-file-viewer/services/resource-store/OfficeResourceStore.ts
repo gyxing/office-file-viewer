@@ -4,18 +4,35 @@ import type {
   OfficeResourceStoreOptions,
 } from './types';
 
+/** 资源存储允许暂存的未引用资源大小，单位为字节。 */
 const DEFAULT_UNUSED_RESOURCE_BYTES = 32 * 1024 * 1024;
 
-type LazySource = Extract<OfficeResourceSource, { kind: 'lazy' }>;
+/** 等待首次读取时再加载的资源源。 */
+type LazySource = Extract<
+  OfficeResourceSource,
+  {
+    /** 标识该资源需要等到实际使用时再加载。 */
+    kind: 'lazy';
+  }
+>;
 
+/** 按需资源的引用计数、缓存和加载状态。 */
 type ResourceEntry = {
+  /** 尚未物化的资源加载定义。 */
   source: LazySource;
+  /** 当前资源被预览节点持有的引用数量。 */
   references: number;
+  /** 当前数据占用的空间大小。 */
   size: number;
+  /** 资源最近一次被访问时的递增序号。 */
   lastUsed: number;
+  /** 完成按需读取后缓存的二进制对象。 */
   blob?: Blob;
+  /** 资源访问地址。 */
   url?: string;
+  /** 用于控制当前视图或任务的控制器。 */
   controller?: AbortController;
+  /** 加载状态相关文案。 */
   loading?: Promise<string>;
 };
 

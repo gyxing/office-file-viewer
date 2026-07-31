@@ -8,11 +8,11 @@ import { readPptByteString, readPptUnicodeString } from '../binary/readStrings';
 import { PptParseError } from '../errors';
 import type { PptParseContext } from '../types';
 
-/** 描述 PptCurrentUser 在 PPT 二进制解析中的数据结构。 */
+/** PPT Current User 流中的最新编辑偏移和用户名。 */
 export type PptCurrentUser = {
-  /** PptCurrentUser 在对应二进制流中的字节偏移。 */
+  /** 在对应二进制流中的字节偏移。 */
   offsetToCurrentEdit: number;
-  /** PptCurrentUser 的 userName 文本值。 */
+  /** 最后保存当前 PPT 文件的用户名。 */
   userName?: string;
 };
 

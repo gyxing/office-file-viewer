@@ -1,5 +1,6 @@
 import type { DocxPosition } from '../../services/docx/types';
 
+/** 浏览器可稳定使用的最大 CSS z-index 值。 */
 const CSS_MAX_Z_INDEX = 2147483647;
 
 /**

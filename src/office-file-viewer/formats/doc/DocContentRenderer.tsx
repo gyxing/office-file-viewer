@@ -6,15 +6,14 @@ import { DocBlockRenderer } from './DocBlockRenderer';
 import { DocImageLayout } from './DocImageLayout';
 import { imagesFromImageOnlyParagraph } from './docRenderUtils';
 
-/** 定义 DocContentRenderer 组件可接收的属性。 */
+/** DOC内容渲染器组件属性。 */
 type DocContentRendererProps = {
-  /** DocContentRendererProps 包含的 blocks 有序集合。 */
+  /** 按源文档顺序排列的内容块。 */
   blocks: DocBlock[];
-  /** DocContentRendererProps 的 contentWidth 尺寸或坐标，单位为标准化渲染像素。 */
+  /** 可用于排版内容的宽度，单位为标准化渲染像素。 */
   contentWidth: number;
 };
 
-/** 根据输入构建 `buildDocContent` 返回的标准化结果。 */
 function buildDocContent(blocks: DocBlock[], contentWidth: number) {
   const renderedBlocks: ReactNode[] = [];
   let index = 0;
@@ -68,7 +67,7 @@ function buildDocContent(blocks: DocBlock[], contentWidth: number) {
   return renderedBlocks;
 }
 
-/** 渲染 DocContentRendererComponent 组件。 */
+/** 渲染DOC内容渲染器。 */
 function DocContentRendererComponent({
   blocks,
   contentWidth,

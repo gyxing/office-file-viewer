@@ -27,14 +27,19 @@ import type {
   Biff8Worksheet,
 } from './types';
 
+/** CSS 像素换算使用的每英寸点数。 */
 const CSS_DPI = 96;
+/** 一英寸包含的 twip 数量。 */
 const TWIPS_PER_INCH = 1440;
+/** 一英寸包含的磅数。 */
 const POINTS_PER_INCH = 72;
+/** Excel 缺少列宽时使用的默认像素宽度。 */
 const DEFAULT_COLUMN_PIXELS = 64;
+/** Excel 缺少行高时使用的默认像素高度。 */
 const DEFAULT_ROW_PIXELS = 20;
+/** 一英寸包含的 EMU 数量。 */
 const EMUS_PER_INCH = 914400;
 
-/** 执行 `columnLabel` 封装的XLS/BIFF8 解析处理步骤。 */
 function columnLabel(index: number) {
   let value = index;
   let label = '';
@@ -46,18 +51,15 @@ function columnLabel(index: number) {
   return label;
 }
 
-/** 执行 `cellRef` 封装的XLS/BIFF8 解析处理步骤。 */
 function cellRef(row: number, column: number) {
   return `${columnLabel(column + 1)}${row + 1}`;
 }
 
-/** 执行 `twipsToPixels` 封装的XLS/BIFF8 解析处理步骤。 */
 function twipsToPixels(value: number) {
   // Excel 在屏幕布局中把 BIFF 行高截断到整像素；保留小数会让下方绘图锚点持续累积偏移。
   return Math.max(1, Math.floor((value / TWIPS_PER_INCH) * CSS_DPI));
 }
 
-/** 执行 `pointsToPixels` 封装的XLS/BIFF8 解析处理步骤。 */
 function pointsToPixels(value: number) {
   return (value / POINTS_PER_INCH) * CSS_DPI;
 }
@@ -88,6 +90,7 @@ function columnWidthToPixels(width: number, maxDigitWidth: number) {
   );
 }
 
+/** Excel 系统颜色索引到 CSS 颜色值的映射。 */
 const SYSTEM_COLORS: Record<number, string> = {
   0: '#000000',
   1: '#ffffff',
@@ -105,7 +108,6 @@ function resolveColor(index: number | undefined, palette: string[]) {
   return SYSTEM_COLORS[index] ?? palette[index - 8];
 }
 
-/** 执行 `borderToCss` 封装的XLS/BIFF8 解析处理步骤。 */
 function borderToCss(border: Biff8BorderStyle | undefined, palette: string[]) {
   if (!border?.style) return undefined;
   const width = border.style === 2 ? 2 : border.style === 5 ? 3 : 1;
@@ -170,7 +172,6 @@ function diagonalBorderToStyle(
   };
 }
 
-/** 执行 `alignmentFromValue` 封装的XLS/BIFF8 解析处理步骤。 */
 function alignmentFromValue(value: number | undefined) {
   if (value === 1) return 'left' as const;
   if (value === 2 || value === 6) return 'center' as const;
@@ -179,12 +180,22 @@ function alignmentFromValue(value: number | undefined) {
   return undefined;
 }
 
-/** 执行 `verticalAlignmentFromValue` 封装的XLS/BIFF8 解析处理步骤。 */
 function verticalAlignmentFromValue(value: number | undefined) {
   if (value === 0) return 'top' as const;
   if (value === 1) return 'middle' as const;
   if (value === 2) return 'bottom' as const;
   return undefined;
+}
+
+/**
+ * 将 XF 字体编号映射到实际 FONT 记录。
+ *
+ * BIFF8 固定保留字体编号 4，工作簿不会为它写入 FONT 记录，因此后续
+ * 编号必须前移一项；直接按数组下标读取会让所有编号 5 及以上的字体错位。
+ */
+function resolveBiff8Font(fontIndex: number, fonts: readonly Biff8Font[]) {
+  if (fontIndex === 4) return undefined;
+  return fonts[fontIndex > 4 ? fontIndex - 1 : fontIndex];
 }
 
 /** 解析并确定 `resolveCellStyle` 对应的引用或配置。 */
@@ -194,7 +205,7 @@ function resolveCellStyle(
 ): SpreadsheetCellStyle | undefined {
   if (!xf) return undefined;
   const { globals } = workbook;
-  const font = globals.fonts[xf.fontIndex];
+  const font = resolveBiff8Font(xf.fontIndex, globals.fonts);
   const borderTop = borderToCss(xf.topBorder, globals.palette);
   const borderRight = borderToCss(xf.rightBorder, globals.palette);
   const borderBottom = borderToCss(xf.bottomBorder, globals.palette);
@@ -212,6 +223,7 @@ function resolveCellStyle(
     horizontalAlign: alignmentFromValue(xf.horizontalAlign),
     verticalAlign: verticalAlignmentFromValue(xf.verticalAlign),
     wrapText: xf.wrapText,
+    shrinkToFit: xf.shrinkToFit,
     border: Boolean(borderTop || borderRight || borderBottom || borderLeft),
     borderTop,
     borderRight,
@@ -232,10 +244,7 @@ function computeUsedRange(sheet: Biff8Worksheet) {
     maxRow = Math.max(maxRow, cell.row);
     maxColumn = Math.max(maxColumn, cell.column);
   }
-  for (const row of sheet.rows) maxRow = Math.max(maxRow, row.index);
-  for (const column of sheet.columns) {
-    maxColumn = Math.max(maxColumn, column.lastColumn);
-  }
+  // ROW/COLINFO 可能只为整行整列保存尺寸或默认样式，不能据此扩大实际内容范围。
   for (const merge of sheet.merges) {
     maxRow = Math.max(maxRow, merge.endRow);
     maxColumn = Math.max(maxColumn, merge.endColumn);
@@ -363,6 +372,7 @@ function adaptWorksheet(
         : sheet.defaultRowHeightTwips
         ? twipsToPixels(sheet.defaultRowHeightTwips)
         : DEFAULT_ROW_PIXELS,
+      customHeight: rowInfo?.customHeight,
       hidden: rowInfo?.hidden,
       cells: rowCells,
     };
@@ -392,7 +402,6 @@ function adaptWorksheet(
   };
 }
 
-/** 创建 `createChartSheetPlaceholder` 返回的对象，供XLS/BIFF8 解析使用。 */
 function createChartSheetPlaceholder(
   descriptor: Biff8SheetDescriptor,
 ): SpreadsheetSheet {
@@ -505,6 +514,7 @@ export function adaptBiff8WorksheetSparse(
       height: row.heightTwips
         ? twipsToPixels(row.heightTwips)
         : defaultRowHeight,
+      customHeight: row.customHeight,
       hidden: Boolean(row.hidden),
     })),
     columns: [...columnMetrics.values()],
@@ -524,7 +534,6 @@ export function adaptBiff8Workbook(source: Biff8Workbook): SpreadsheetWorkbook {
   };
 }
 
-/** 执行 `concatenateChunks` 封装的XLS/BIFF8 解析处理步骤。 */
 function concatenateChunks(chunks: Uint8Array[]) {
   const length = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
   const result = new Uint8Array(length);
@@ -536,17 +545,16 @@ function concatenateChunks(chunks: Uint8Array[]) {
   return result;
 }
 
-/** 执行 `pointGeometry` 封装的XLS/BIFF8 解析处理步骤。 */
 function pointGeometry(
   sheet: SpreadsheetSheet,
   point: {
-    /** 当前局部结构 使用的零基行列索引。 */
+    /** 锚点单元格的零基行索引。 */
     row: number;
-    /** 当前局部结构 使用的零基行列索引。 */
+    /** 锚点单元格的零基列索引。 */
     column: number;
-    /** 当前局部结构 在锚点单元格内的相对位置比例。 */
+    /** 锚点在单元格内的纵向位置比例。 */
     rowFraction: number;
-    /** 当前局部结构 在锚点单元格内的相对位置比例。 */
+    /** 锚点在单元格内的横向位置比例。 */
     columnFraction: number;
   },
 ) {
@@ -572,7 +580,6 @@ function pointGeometry(
   };
 }
 
-/** 执行 `ensureSheetBounds` 封装的XLS/BIFF8 解析处理步骤。 */
 function ensureSheetBounds(
   sheet: SpreadsheetSheet,
   requiredRows: number,
@@ -615,7 +622,7 @@ function ensureSheetBounds(
   sheet.range = endRef === 'A1' ? 'A1' : `A1:${endRef}`;
 }
 
-/** 描述 XlsResourceCollector 在 XLS/BIFF8 解析中的数据结构。 */
+/** 接收 XLS 图片资源并返回稳定引用的接口。 */
 export type XlsResourceCollector = {
   /** 向当前聚合器添加一个解析结果。 */
   add(resource: PortableResource): Promise<string>;

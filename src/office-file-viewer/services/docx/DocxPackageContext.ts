@@ -4,8 +4,11 @@ import type { OfficeArchiveReader } from '../../shared/ooxml/OfficeArchiveReader
 import type { OfficeResourceSource } from '../resource-store/types';
 import { createDocxParseContext, type DocxParseContext } from './parseDocx';
 
+/** DOCX 压缩包内共享关系、主题和资源的解析上下文。 */
 export type DocxPackageContext = {
+  /** 压缩包或复合文档包含的条目。 */
   entries: OfficeEntryMap;
+  /** 当前解析任务共享的上下文。 */
   parseContext: DocxParseContext;
 };
 

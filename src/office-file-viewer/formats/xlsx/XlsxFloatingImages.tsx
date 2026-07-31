@@ -14,7 +14,7 @@ import {
   type XlsxSheetMetrics,
 } from './sheetRenderUtils';
 
-/** 定义 XlsxFloatingImages 组件可接收的属性。 */
+/** Excel浮动图片集合组件属性。 */
 type XlsxFloatingImagesProps = {
   /** 当前关联的工作表模型。 */
   sheet: XlsxSheet;
@@ -22,7 +22,7 @@ type XlsxFloatingImagesProps = {
   metrics: XlsxSheetMetrics;
 };
 
-/** 渲染 XlsxFloatingImage 组件。 */
+/** 渲染工作表中的单个浮动图片。 */
 function XlsxFloatingImage({
   image,
   rect,
@@ -76,7 +76,7 @@ function XlsxFloatingImage({
 
 const MemoXlsxFloatingImage = memo(XlsxFloatingImage);
 
-/** 渲染 XlsxFloatingImagesComponent 组件。 */
+/** 渲染工作表中的全部浮动图片。 */
 function XlsxFloatingImagesComponent({
   sheet,
   metrics,

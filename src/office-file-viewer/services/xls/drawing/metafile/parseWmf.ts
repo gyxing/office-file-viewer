@@ -2,59 +2,57 @@ import type { SpreadsheetWarning } from '../../../spreadsheet/types';
 import { XlsParseError } from '../../errors';
 import type { VectorElement, VectorScene, VectorStyle } from './types';
 
-/** 描述 WmfObject 在 XLS/BIFF8 解析中的数据结构。 */
+/** WMF 对象表中的画笔、画刷或字体。 */
 type WmfObject =
   | {
-      /** 标识 WmfObject 对应的 Office 文件或数据种类。 */
+      /** 对象表条目的种类。 */
       kind: 'pen';
-      /** WmfObject 的前景或文本颜色，使用标准化 CSS 颜色值。 */
+      /** 前景或文字颜色，使用 CSS 颜色值。 */
       color: string;
-      /** WmfObject 的 width 几何值，单位遵循对应 Office 二进制记录定义。 */
+      /** 宽度，单位为标准化渲染像素。 */
       width: number;
     }
   | {
-      /** 标识 WmfObject 对应的 Office 文件或数据种类。 */
+      /** 对象表条目的种类。 */
       kind: 'brush';
-      /** WmfObject 的前景或文本颜色，使用标准化 CSS 颜色值；未提供时沿用来源格式或渲染器的默认规则。 */
+      /** 前景或文字颜色，使用 CSS 颜色值。 */
       color?: string;
     }
   | {
-      /** 标识 WmfObject 对应的 Office 文件或数据种类。 */
+      /** 对象表条目的种类。 */
       kind: 'font';
-      /** WmfObject 的 family 文本值。 */
+      /** WMF 逻辑字体的字体族名称。 */
       family: string;
-      /** WmfObject 对应二进制记录或数据块的字节长度。 */
+      /** WMF 逻辑字体的高度。 */
       size: number;
-      /** WmfObject 的 weight 数值；具体语义遵循对应源文件格式。 */
+      /** WMF 逻辑字体的粗细值。 */
       weight: number;
     };
 
 /** 枚举XLS/BIFF8 解析可能处于的状态。 */
 type WmfState = {
-  /** WmfState 关联的 current 结构；字段形状由 [number, number] 定义。 */
+  /** 当前画笔位置。 */
   current: [number, number];
-  /** WmfState 关联的 windowOrigin 结构；字段形状由 [number, number] 定义。 */
+  /** WMF 逻辑窗口的原点。 */
   windowOrigin: [number, number];
-  /** WmfState 关联的 windowExtent 结构；字段形状由 [number, number] 定义。 */
+  /** WMF 逻辑窗口的宽高。 */
   windowExtent: [number, number];
-  /** WmfState 关联的 viewportOrigin 结构；字段形状由 [number, number] 定义。 */
+  /** 目标视口的原点。 */
   viewportOrigin: [number, number];
-  /** WmfState 关联的 viewportExtent 结构；字段形状由 [number, number] 定义。 */
+  /** 目标视口的宽高。 */
   viewportExtent: [number, number];
-  /** WmfState 使用的渲染或文本样式。 */
+  /** 当前内容使用的渲染样式。 */
   style: VectorStyle;
-  /** WmfState 的 textColor 文本值。 */
+  /** 当前文字绘制颜色。 */
   textColor: string;
 };
 
-/** 执行 `colorRef` 封装的XLS/BIFF8 解析处理步骤。 */
 function colorRef(value: number) {
   return `#${[value & 0xff, (value >> 8) & 0xff, (value >> 16) & 0xff]
     .map((component) => component.toString(16).padStart(2, '0'))
     .join('')}`;
 }
 
-/** 执行 `cloneState` 封装的XLS/BIFF8 解析处理步骤。 */
 function cloneState(state: WmfState): WmfState {
   return {
     ...state,
@@ -67,7 +65,6 @@ function cloneState(state: WmfState): WmfState {
   };
 }
 
-/** 把输入映射为 `mapPoint` 返回的结构。 */
 function mapPoint(state: WmfState, x: number, y: number): [number, number] {
   const scaleX = state.windowExtent[0]
     ? state.viewportExtent[0] / state.windowExtent[0]
@@ -81,12 +78,10 @@ function mapPoint(state: WmfState, x: number, y: number): [number, number] {
   ];
 }
 
-/** 读取 `readPoint` 所需的源数据，供XLS/BIFF8 解析使用。 */
 function readPoint(view: DataView, offset: number): [number, number] {
   return [view.getInt16(offset + 2, true), view.getInt16(offset, true)];
 }
 
-/** 读取 `readRect` 所需的源数据，供XLS/BIFF8 解析使用。 */
 function readRect(view: DataView, offset: number) {
   const bottom = view.getInt16(offset, true);
   const right = view.getInt16(offset + 2, true);
@@ -95,7 +90,6 @@ function readRect(view: DataView, offset: number) {
   return { left, top, right, bottom };
 }
 
-/** 执行 `addRectangle` 封装的XLS/BIFF8 解析处理步骤。 */
 function addRectangle(
   elements: VectorElement[],
   state: WmfState,

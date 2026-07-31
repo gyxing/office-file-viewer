@@ -5,6 +5,7 @@ import type {
   XlsxRow,
   XlsxSheet,
 } from '../../services/xlsx/types';
+import { isSpreadsheetCellOccupied } from './spreadsheetCellOverflow';
 
 /** 描述渲染层实际输出的一列。 */
 export type XlsxVisibleTableColumn = {
@@ -18,6 +19,8 @@ export type XlsxVisibleTableColumn = {
 export type XlsxVisibleTableCell = {
   /** 单元格内容和样式的来源模型。 */
   cell: XlsxCell;
+  /** 当前单元格在可见列集合中的起始位置。 */
+  columnOffset: number;
   /** 过滤隐藏列后仍需跨越的可见列数。 */
   colSpan?: number;
   /** 过滤隐藏行后仍需跨越的可见行数。 */
@@ -32,6 +35,8 @@ export type XlsxVisibleTableRow = {
   height: number;
   /** 该行经过隐藏行列和合并区域投影后的单元格。 */
   cells: XlsxVisibleTableCell[];
+  /** 标记会截停相邻非换行文本的可见列。 */
+  occupiedColumns: boolean[];
 };
 
 /** 描述工作表过滤隐藏行列后的完整表格模型。 */
@@ -129,33 +134,44 @@ export function buildXlsxVisibleTableModel(
   });
 
   const rows = sourceRows.map((row, rowOffset) => {
-    const cells = columns.flatMap<XlsxVisibleTableCell>(({ column }) => {
+    const occupiedColumns = columns.map(({ column }) => {
       const key = positionKey(row.index, column.index);
-      const merge = mergeByPosition.get(key);
-      if (merge) {
-        if (
-          row.index !== merge.representativeRowIndex ||
-          column.index !== merge.representativeColumnIndex
-        ) {
-          return [];
-        }
-        return [
-          {
-            cell: merge.cell,
-            colSpan: merge.colSpan > 1 ? merge.colSpan : undefined,
-            rowSpan: merge.rowSpan > 1 ? merge.rowSpan : undefined,
-          },
-        ];
-      }
-
-      const cell =
-        cellByPosition.get(key) ?? createEmptyCell(row.index, column);
-      return [{ cell }];
+      return Boolean(
+        mergeByPosition.has(key) ||
+          isSpreadsheetCellOccupied(cellByPosition.get(key)),
+      );
     });
+    const cells = columns.flatMap<XlsxVisibleTableCell>(
+      ({ column }, columnOffset) => {
+        const key = positionKey(row.index, column.index);
+        const merge = mergeByPosition.get(key);
+        if (merge) {
+          if (
+            row.index !== merge.representativeRowIndex ||
+            column.index !== merge.representativeColumnIndex
+          ) {
+            return [];
+          }
+          return [
+            {
+              cell: merge.cell,
+              columnOffset,
+              colSpan: merge.colSpan > 1 ? merge.colSpan : undefined,
+              rowSpan: merge.rowSpan > 1 ? merge.rowSpan : undefined,
+            },
+          ];
+        }
+
+        const cell =
+          cellByPosition.get(key) ?? createEmptyCell(row.index, column);
+        return [{ cell, columnOffset }];
+      },
+    );
     return {
       row,
       height: visibleRowHeights[rowOffset],
       cells,
+      occupiedColumns,
     };
   });
 

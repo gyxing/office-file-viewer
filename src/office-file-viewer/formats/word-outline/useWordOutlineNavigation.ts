@@ -5,23 +5,37 @@ import type { WordOutlineItem } from '../../services/word/types';
 import type { WordBlockPageIndex } from '../word-pages/WordBlockPageIndex';
 import type { WordPageNavigationController } from '../word-pages/types';
 
+/** Word 大纲定位 Hook 的输入选项。 */
 type UseWordOutlineNavigationOptions = {
+  /** 可用于正文定位的大纲条目。 */
   items: WordOutlineItem[];
+  /** 滚动容器的可变引用。 */
   scrollContainerRef: RefObject<HTMLElement>;
+  /** 页面布局变化时更新的稳定键。 */
   layoutKey: string;
+  /** 当前能力是否启用。 */
   enabled: boolean;
+  /** 当前使用的页面加载模式。 */
   pageMode: 'normal' | 'windowed';
+  /** 按需提供页面内容的数据源。 */
   pageSource?: WordPageSource<unknown>;
+  /** 正文块到页面索引的查询结构。 */
   blockPageIndex?: WordBlockPageIndex;
+  /** 页面导航控制器的可变引用。 */
   pageNavigationControllerRef?: MutableRefObject<
     WordPageNavigationController | undefined
   >;
+  /** 当前文档解析会话的标识。 */
   documentSessionId: string;
 };
 
+/** 大纲条目在正文中的定位目标。 */
 type OutlineTarget = {
+  /** 用于稳定识别或缓存当前项目的键。 */
   key: string;
+  /** 定位目标相对页面顶部的位置。 */
   top: number;
+  /** 大纲条目对应的正文 DOM 元素。 */
   element: HTMLElement;
 };
 

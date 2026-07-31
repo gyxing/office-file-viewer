@@ -6,8 +6,11 @@ const OfficeResourceContext = createContext<OfficeResourceStore | undefined>(
   undefined,
 );
 
+/** Office 资源存储上下文组件属性。 */
 type OfficeResourceStoreProviderProps = {
+  /** 当前文档会话独占的资源存储。 */
   store: OfficeResourceStore;
+  /** 当前组件包含的子节点。 */
   children?: ReactNode;
 };
 

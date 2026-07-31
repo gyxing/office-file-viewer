@@ -1,4 +1,4 @@
-/** 描述 PptParseErrorCode 在 PPT 二进制解析中的数据结构。 */
+/** PPT 解析失败原因的稳定代码。 */
 export type PptParseErrorCode =
   | 'PPT_RECORD_TRUNCATED'
   | 'PPT_RECORD_OUT_OF_RANGE'
@@ -23,7 +23,7 @@ export class PptParseError extends Error {
     options: {
       /** PptParseError 在源二进制流中的字节偏移。 */
       offset?: number;
-      /** 当前局部结构 从源格式读取的 recordType 枚举或标识值。 */
+      /** 发生错误的 PPT 二进制记录类型。 */
       recordType?: number;
     } = {},
   ) {

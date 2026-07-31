@@ -11,19 +11,29 @@ import { PptxThumbnail } from './PptxThumbnail';
 import { PptxThumbnailPlaceholder } from './PptxThumbnailPlaceholder';
 import { VirtualPptxThumbnailList } from './VirtualPptxThumbnailList';
 
-/** 定义 PptxThumbnailPane 组件可接收的属性。 */
+/** PPTX缩略图面板组件属性。 */
 type PptxThumbnailPaneProps = {
+  /** 当前预览使用的按需加载数据源。 */
   source: PresentationSource;
+  /** 当前数据源的只读快照。 */
   snapshot: PresentationSourceSnapshot;
+  /** 当前激活项的零基索引。 */
   activeIndex: number;
+  /** 用户选择幻灯片时触发的回调。 */
   onSelectSlide: (index: number) => void;
 };
 
+/** 单张演示文稿缩略图内容组件属性。 */
 type ThumbnailContentProps = {
+  /** 当前预览使用的按需加载数据源。 */
   source: PresentationSource;
+  /** 当前项目的轻量描述信息。 */
   descriptor: PresentationSlideDescriptor;
+  /** 在所属集合中的零基索引。 */
   index: number;
+  /** 当前项目是否处于激活状态。 */
   active: boolean;
+  /** 是否跳过可见性等待并立即读取缩略图。 */
   shouldLoadImmediately: boolean;
 };
 
@@ -91,7 +101,7 @@ function ThumbnailContent({
   );
 }
 
-/** 渲染 PptxThumbnailPaneComponent 组件。 */
+/** 渲染幻灯片缩略图导航并切换当前页。 */
 function PptxThumbnailPaneComponent({
   source,
   snapshot,

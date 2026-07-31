@@ -6,9 +6,13 @@ import type {
   OfficeContentStore,
 } from './types';
 
+/** 内存内容存储中的资源条目。 */
 type MemoryEntry<TMeta, TValue> = {
+  /** 当前内存条目保存的内容记录。 */
   record: OfficeContentRecord<TMeta, TValue>;
+  /** 当前数据占用的空间大小。 */
   size: number;
+  /** 当前内存条目的最近访问序号。 */
   lastAccess: number;
 };
 

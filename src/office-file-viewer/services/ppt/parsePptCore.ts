@@ -17,29 +17,29 @@ import {
   type PptParseContext,
 } from './types';
 
-/** 描述 PptCoreOutput 在 PPT 二进制解析中的数据结构。 */
+/** PPT 核心解析生成的文档和性能档案。 */
 export type PptCoreOutput = {
   /** 接收解析器产生的可移植资源分块。 */
   resource(resource: PortableResource): Promise<void>;
   /** 接收演示文稿的主体元数据。 */
   presentationMetadata(metadata: PortablePresentationMetadata): Promise<void>;
-  /** PptCoreOutput 当前关联的幻灯片。 */
+  /** 接收解析产生的单张幻灯片。 */
   slide(index: number, slide: SlideModel): Promise<void>;
 };
 
-/** 汇总PPT 二进制解析当前步骤需要共享的上下文。 */
+/** 汇总 PPT 二进制解析各步骤共享的上下文。 */
 export type PptCoreContext = {
   /** 在长任务检查点报告进度并响应取消信号。 */
   checkpoint(progress?: ParseProgress): Promise<void>;
-  /** PptCoreContext 处理完成后生成的输出结果。 */
+  /** 处理完成后生成的输出结果。 */
   output?: PptCoreOutput;
 };
 
-/** 描述 PPT 二进制解析产生的处理结果。 */
+/** PPT 核心解析生成的演示文稿和可移植资源。 */
 export type PptCoreResult = {
-  /** PptCoreResult 当前关联的标准化文档模型。 */
+  /** 当前处理的标准化文档模型。 */
   document: PresentationDocument;
-  /** PptCoreResult 持有的图片、字体或对象 URL 等资源；文档释放时需同步清理。 */
+  /** 持有的图片、字体或对象 URL 等资源；文档释放时需同步清理。 */
   resources: PortableResource[];
 };
 
@@ -55,7 +55,6 @@ async function flushPptResources(
   }
 }
 
-/** 判断 `hasVbaStorage` 对应的条件是否成立。 */
 function hasVbaStorage(
   entries: Awaited<ReturnType<typeof parseCfb>>['entries'],
 ) {

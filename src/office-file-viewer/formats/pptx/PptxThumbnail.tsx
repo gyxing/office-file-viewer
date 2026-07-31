@@ -6,15 +6,15 @@ import type { SlideModel } from '../../services/pptx/types';
 import { PptxSlide } from './PptxSlide';
 import { colorWithOpacity } from './renderers/paint';
 
-/** 定义 PptxThumbnail 组件可接收的属性。 */
+/** PPTX缩略图组件属性。 */
 type PptxThumbnailProps = {
-  /** PptxThumbnailProps 当前关联的幻灯片。 */
+  /** 当前处理或展示的幻灯片。 */
   slide: SlideModel;
   /** 当前项目是否处于选中状态。 */
   active: boolean;
 };
 
-/** 渲染 PptxThumbnailComponent 组件。 */
+/** 渲染PPTX缩略图。 */
 function PptxThumbnailComponent({ slide, active }: PptxThumbnailProps) {
   const messages = useOfficeFileViewerMessages();
   const canvasRef = useRef<HTMLDivElement>(null);

@@ -1,6 +1,5 @@
 import type { VectorElement, VectorScene, VectorStyle } from './types';
 
-/** 执行 `escapeXml` 封装的XLS/BIFF8 解析处理步骤。 */
 function escapeXml(value: string) {
   return value
     .replace(/&/g, '&amp;')
@@ -10,7 +9,6 @@ function escapeXml(value: string) {
     .replace(/'/g, '&apos;');
 }
 
-/** 执行 `styleAttributes` 封装的XLS/BIFF8 解析处理步骤。 */
 function styleAttributes(style: VectorStyle, isText = false) {
   const fill = isText ? style.textColor ?? style.fill ?? '#000000' : style.fill;
   return [
@@ -60,7 +58,7 @@ function serializeElement(element: VectorElement) {
     const safeDataUrl = element.dataUrl.startsWith('data:')
       ? escapeXml(element.dataUrl)
       : '';
-    return `<image x="${element.x}" y="${element.y}" width="${element.width}" height="${element.height}" href="${safeDataUrl}" ${style}/>`;
+    return `<image x="${element.x}" y="${element.y}" width="${element.width}" height="${element.height}" preserveAspectRatio="none" href="${safeDataUrl}" ${style}/>`;
   }
   return '';
 }

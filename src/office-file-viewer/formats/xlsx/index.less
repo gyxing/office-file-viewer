@@ -58,7 +58,7 @@
 .office-file-xlsx-virtual-grid__cell {
   z-index: 1;
   box-sizing: border-box;
-  padding: 0 4px;
+  padding: 0 2px;
   overflow: visible;
   color: #1f2937;
   line-height: 1.2;
@@ -297,7 +297,7 @@
 .office-file-xlsx-sheet-table__cell {
   position: relative;
   box-sizing: border-box;
-  padding: 0 4px;
+  padding: 0 2px;
   overflow: visible;
   color: #1f2937;
   // Excel 的行高包含边框；较大的默认行高会让浮动对象锚点逐行累积偏移。
@@ -322,11 +322,35 @@
   overflow: visible;
 }
 
+.office-file-xlsx-sheet-table__cell-content--wrapped {
+  width: 100%;
+  min-width: 0;
+}
+
 .office-file-xlsx-sheet-table__cell-content--clipped {
   position: absolute;
-  right: 4px;
-  left: 4px;
+  right: 2px;
+  left: 2px;
   width: auto;
   min-width: 0;
+  // 固定边界仍需给字形留足上下空间，避免 Times New Roman 等字体被裁掉底部。
+  line-height: 1.2;
   overflow: hidden;
+}
+
+.office-file-xlsx-sheet-table__cell-content--bounded {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.office-file-xlsx-sheet-table__cell-text {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  overflow: visible;
+}
+
+.office-file-xlsx-sheet-table__cell-text-value {
+  display: block;
+  width: max-content;
 }

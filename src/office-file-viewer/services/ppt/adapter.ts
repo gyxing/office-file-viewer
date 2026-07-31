@@ -5,7 +5,6 @@ import type {
 } from '../presentation/types';
 import type { PptBinaryDocument, PptMasterModel, PptSlideModel } from './types';
 
-/** 执行 `cloneMasterElement` 封装的PPT 二进制解析处理步骤。 */
 function cloneMasterElement(
   element: SlideElement,
   slideId: string,

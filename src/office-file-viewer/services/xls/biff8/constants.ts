@@ -95,13 +95,16 @@ export const BIFF8_RECORD = {
   GELFRAME: 0x1066,
 } as const;
 
+/** 当前解析器支持的 BIFF8 文件版本编号。 */
 export const BIFF8_VERSION = 0x0600;
+/** BIFF8 子流名称到子流类型编号的映射。 */
 export const BIFF8_SUBSTREAM = {
   WORKBOOK_GLOBALS: 0x0005,
   WORKSHEET: 0x0010,
   CHART: 0x0020,
 } as const;
 
+/** BIFF8 工作簿未声明调色板时使用的默认颜色表。 */
 export const DEFAULT_BIFF8_PALETTE = [
   '#000000',
   '#ffffff',

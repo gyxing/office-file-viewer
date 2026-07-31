@@ -5,17 +5,17 @@ import { DocxChartBlock } from './DocxChartBlock';
 import { DocxParagraph } from './DocxParagraph';
 import { DocxTableBlock } from './DocxTableBlock';
 
-/** 定义 DocxBlockRenderer 组件可接收的属性。 */
+/** DOCX内容块渲染器组件属性。 */
 type DocxBlockRendererProps = {
-  /** DocxBlockRendererProps 当前负责渲染的文档块模型。 */
+  /** 当前负责处理或渲染的内容块。 */
   block: DocxBlock;
-  /** DocxBlockRendererProps 的 availableWidth 尺寸或坐标，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 当前可用宽度，单位为标准化渲染像素。 */
   availableWidth?: number;
   /** 当前页面或容器允许块内容占用的最大物理宽度。 */
   maximumWidth?: number;
 };
 
-/** 渲染 DocxBlockRendererComponent 组件。 */
+/** 渲染DOCX内容块渲染器。 */
 function DocxBlockRendererComponent({
   block,
   availableWidth,

@@ -3,13 +3,13 @@ import type { CSSProperties, ReactNode } from 'react';
 import React, { memo, useMemo } from 'react';
 import type { DocxPage } from '../../services/docx/types';
 
-/** 定义 DocxPageFrame 组件可接收的属性。 */
+/** DOCX页面框架组件属性。 */
 type DocxPageFrameProps = {
-  /** DocxPageFrameProps 当前关联的页面模型。 */
+  /** 当前关联的页面模型。 */
   page: DocxPage;
   /** 当前预览缩放比例。 */
   zoom: number;
-  /** DocxPageFrameProps 包含并负责布局的 React 子节点。 */
+  /** 当前组件包含的子节点。 */
   children: ReactNode;
   /** 当前页面的页眉内容。 */
   header?: ReactNode;
@@ -17,7 +17,7 @@ type DocxPageFrameProps = {
   footer?: ReactNode;
 };
 
-/** 渲染 DocxPageFrameComponent 组件。 */
+/** 渲染DOCX页面框架。 */
 function DocxPageFrameComponent({
   page,
   zoom,

@@ -5,13 +5,13 @@ import { DocListBlock } from './DocListBlock';
 import { DocParagraphBlock } from './DocParagraphBlock';
 import { DocTableBlock } from './DocTableBlock';
 
-/** 定义 DocBlockRenderer 组件可接收的属性。 */
+/** DOC内容块渲染器组件属性。 */
 type DocBlockRendererProps = {
-  /** DocBlockRendererProps 当前负责渲染的文档块模型。 */
+  /** 当前负责处理或渲染的内容块。 */
   block: DocBlock;
 };
 
-/** 渲染 DocBlockRendererComponent 组件。 */
+/** 渲染DOC内容块渲染器。 */
 function DocBlockRendererComponent({ block }: DocBlockRendererProps) {
   if (block.type === 'table') return <DocTableBlock block={block} />;
   if (block.type === 'list') return <DocListBlock block={block} />;

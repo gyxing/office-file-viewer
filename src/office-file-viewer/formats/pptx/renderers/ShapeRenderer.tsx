@@ -9,22 +9,21 @@ import {
 } from './paint';
 import { buildRendererId } from './renderIds';
 
-/** 定义 ShapeRenderer 组件可接收的属性。 */
+/** 形状渲染器组件属性。 */
 type ShapeRendererProps = {
-  /** ShapeRendererProps 当前负责渲染的演示文稿元素模型。 */
+  /** 当前处理或渲染的演示文稿元素。 */
   element: ShapeElement;
-  /** ShapeRendererProps 的 renderKey 文本值。 */
+  /** 内容变化时用于刷新渲染结果的键。 */
   renderKey: string;
 };
 
-/** 执行 `lineStyle` 封装的演示文稿渲染处理步骤。 */
 function lineStyle(dash?: string) {
   if (!dash || dash === 'solid') return 'solid';
   if (dash.includes('dot')) return 'dotted';
   return 'dashed';
 }
 
-/** 渲染 ShapeRendererComponent 组件。 */
+/** 渲染形状渲染器。 */
 function ShapeRendererComponent({ element, renderKey }: ShapeRendererProps) {
   const fillPaint = element.fill;
   const isGradientFill = isGradientPaint(fillPaint);

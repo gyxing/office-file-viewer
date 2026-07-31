@@ -1,3 +1,4 @@
+/** 解析模型中标识延迟资源引用的字符串前缀。 */
 const RESOURCE_REFERENCE_PREFIX = 'office-resource:';
 
 /** 创建只在解析传输模型内部使用的资源引用。 */

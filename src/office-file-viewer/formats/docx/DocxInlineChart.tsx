@@ -4,19 +4,19 @@ import React, { memo, useMemo } from 'react';
 import type { DocxInline } from '../../services/docx/types';
 import { DocxChartView } from './DocxChartView';
 
-/** 定义 DocxInlineChart 组件可接收的属性。 */
+/** DOCX行内内容图表组件属性。 */
 type DocxInlineChartProps = {
-  /** DocxInlineChartProps 当前负责渲染的行内内容模型。 */
+  /** 当前负责渲染的行内内容模型。 */
   inline: Extract<
     DocxInline,
     {
-      /** 用于区分 DocxInlineChartProps 不同结构分支的类型标识。 */
+      /** 用于区分联合类型分支的类型标识。 */
       type: 'chart';
     }
   >;
 };
 
-/** 渲染 DocxInlineChartComponent 组件。 */
+/** 渲染DOCX行内内容图表。 */
 function DocxInlineChartComponent({ inline }: DocxInlineChartProps) {
   const chart = inline.chart;
   const chartStyle = useMemo<CSSProperties>(

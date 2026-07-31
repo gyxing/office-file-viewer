@@ -11,6 +11,10 @@ import {
   parseXml,
 } from '../../shared/ooxml/xml';
 import {
+  convertOfficeImageBlob,
+  officeImageMimeType,
+} from '../media/officeMetafile';
+import {
   createPresentationPerformanceProfile,
   type PresentationPerformanceProfile,
 } from '../presentation/presentationPerformance';
@@ -28,18 +32,29 @@ import type {
   PptxSlideDescriptor,
 } from './PptxPackageContext';
 
+/** PPTX 压缩包的大文件判定指标。 */
 export type PptxArchiveProfile = {
+  /** 当前文档的性能统计信息。 */
   performance: PresentationPerformanceProfile;
+  /** 压缩包中相关内容的压缩大小，单位为字节。 */
   compressedSize: number;
+  /** 相关内容解压后的大小，单位为字节。 */
   uncompressedSize: number;
+  /** 演示文稿包含的幻灯片数量。 */
   slideCount: number;
+  /** 所有幻灯片 XML 解压后的累计大小，单位为字节。 */
   slideXmlBytes: number;
+  /** 媒体资源累计大小，单位为字节。 */
   mediaBytes: number;
+  /** 压缩包内最大媒体文件的大小，单位为字节。 */
   largestMediaSize: number;
 };
 
+/** 附带性能档案的 PPTX 压缩包读取器。 */
 export type ProfiledPptxArchive = {
+  /** 用于按需读取源数据的读取器。 */
   reader: OfficeArchiveReader;
+  /** 控制解析或渲染策略的性能档案。 */
   profile: PptxArchiveProfile;
 };
 
@@ -156,14 +171,16 @@ export async function readPptxStructure(
       const source: OfficeResourceSource = {
         kind: 'lazy',
         id: `${sessionId}:pptx:${entry.path}`,
-        mimeType: imageMimeType(entry.path),
+        mimeType: officeImageMimeType(entry.path),
         size: entry.uncompressedSize,
-        load: (resourceSignal) =>
-          reader.readBlob(
+        async load(resourceSignal) {
+          const blob = await reader.readBlob(
             entry.path,
             imageMimeType(entry.path),
             resourceSignal,
-          ),
+          );
+          return convertOfficeImageBlob(entry.path, blob);
+        },
       };
       mediaByPath[entry.path] = source;
       mediaByName[entry.path.split('/').pop() ?? entry.path] = source;

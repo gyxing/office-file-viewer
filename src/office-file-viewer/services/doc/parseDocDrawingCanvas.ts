@@ -5,54 +5,97 @@ import {
 } from '../../shared/officeart';
 import { createResourceReference } from '../parsing/assembly/resourceReferences';
 import type { PortableResource } from '../parsing/protocol/messages';
-import type { DocImage, DocParagraphBlock } from './types';
+import type { DocImage, DocPage, DocParagraphBlock } from './types';
 
 /** DOC 主文档中 OfficeArt 绘图索引所需的 FIB 字段。 */
 export type DocDrawingFibFields = {
+  /** 正文绘图锚点表在 Table 流中的起始偏移。 */
   fcPlcSpaMom: number;
+  /** 正文绘图锚点表占用的字节数。 */
   lcbPlcSpaMom: number;
+  /** OfficeArt 绘图数据在 Table 流中的起始偏移。 */
   fcDggInfo: number;
+  /** OfficeArt 绘图数据占用的字节数。 */
   lcbDggInfo: number;
 };
 
 /** DOC 绘图画布解析时可复用的文本框段落。 */
 export type DocDrawingTextBox = Pick<DocParagraphBlock, 'text' | 'style'>;
 
+/** DOC SPA 记录中的形状定位锚点。 */
 type SpaAnchor = {
+  /** 绘图锚点对应的正文字符位置。 */
   cp: number;
+  /** 绘图形状在 OfficeArt 数据中的标识。 */
   shapeId: number;
+  /** 左侧位置或间距，单位由所属模型定义。 */
   left: number;
+  /** 顶部位置或间距，单位由所属模型定义。 */
   top: number;
+  /** 右侧位置或间距，单位由所属模型定义。 */
   right: number;
+  /** 底部位置或间距，单位由所属模型定义。 */
   bottom: number;
+  /** 水平坐标使用的 Word 定位参考类型。 */
+  horizontalReference: number;
+  /** 垂直坐标使用的 Word 定位参考类型。 */
+  verticalReference: number;
 };
 
+/** OfficeArt 属性编号、数值和可选复杂数据。 */
 type OfficeArtProperty = {
+  /** OfficeArt 属性的标量值。 */
   value: number;
+  /** OfficeArt 属性携带的可选复杂字节数据。 */
   complexData?: Uint8Array;
 };
 
+/** 将 OfficeArt 形状转换为 SVG 所需的坐标和文本上下文。 */
 type ShapeRenderContext = {
+  /** 源绘图坐标转换为页面坐标的水平比例。 */
   scaleX: number;
+  /** 源绘图坐标转换为页面坐标的垂直比例。 */
   scaleY: number;
+  /** 源绘图坐标系的水平原点。 */
   originX: number;
+  /** 源绘图坐标系的垂直原点。 */
   originY: number;
+  /** 当前绘图组合包含的文本框。 */
   textBoxes: DocDrawingTextBox[];
-  connectorColors: Array<{ y: number; color: string }>;
+  /** 按纵坐标记录的连接线颜色。 */
+  connectorColors: Array<{
+    /** 相对定位区域顶部的纵坐标，单位为标准化渲染像素。 */
+    y: number;
+    /** 前景或文字颜色，使用 CSS 颜色值。 */
+    color: string;
+  }>;
 };
 
+/** OfficeArt 子形状锚点记录的类型编号。 */
 const OFFICE_ART_CHILD_ANCHOR = 0xf00f;
+/** OfficeArt 组合图形边界记录的类型编号。 */
 const OFFICE_ART_GROUP_BOUNDS = 0xf009;
+/** OfficeArt 矩形形状的类型编号。 */
 const SHAPE_TYPE_RECT = 1;
+/** OfficeArt 椭圆形状的类型编号。 */
 const SHAPE_TYPE_ELLIPSE = 3;
+/** OfficeArt 直线形状的类型编号。 */
 const SHAPE_TYPE_LINE = 20;
+/** OfficeArt 填充颜色属性的编号。 */
 const FILL_COLOR = 0x0181;
+/** OfficeArt 填充开关标志属性的编号。 */
 const FILL_FLAGS = 0x01bf;
+/** OfficeArt 线条颜色属性的编号。 */
 const LINE_COLOR = 0x01c0;
+/** OfficeArt 线条宽度属性的编号。 */
 const LINE_WIDTH = 0x01cb;
+/** OfficeArt 线条虚线样式属性的编号。 */
 const LINE_DASHING = 0x01ce;
+/** OfficeArt 线条开关标志属性的编号。 */
 const LINE_FLAGS = 0x01ff;
+/** OfficeArt 自定义几何顶点属性的编号。 */
 const CUSTOM_VERTICES = 0x0145;
+/** OfficeArt 自定义几何路径段属性的编号。 */
 const CUSTOM_SEGMENTS = 0x0146;
 
 /** 安全读取小端无符号 32 位整数。 */
@@ -127,25 +170,30 @@ function escapeXml(value: string) {
     .replace(/"/g, '&quot;');
 }
 
-/** 按实际字符视觉宽度拆分文本框行。 */
+/** 按实际字符视觉宽度拆分文本框行，并保留源段落换行。 */
 function wrapText(text: string, maxUnits: number) {
-  const lines: string[] = [];
-  let line = '';
-  let units = 0;
-  for (const character of Array.from(text)) {
-    const nextUnits = /[\u4e00-\u9fff]/.test(character) ? 1 : 0.55;
-    if (line && units + nextUnits > maxUnits) {
-      lines.push(line);
-      line = '';
-      units = 0;
-    }
-    line += character;
-    units += nextUnits;
+  const paragraphs = text.replace(/\r/g, '').split('\n');
+  while (paragraphs.length > 1 && !paragraphs[paragraphs.length - 1]) {
+    paragraphs.pop();
   }
-  if (line) lines.push(line);
+  const lines: string[] = [];
+  paragraphs.forEach((paragraph) => {
+    let line = '';
+    let units = 0;
+    for (const character of Array.from(paragraph)) {
+      const nextUnits = /[\u4e00-\u9fff]/.test(character) ? 1 : 0.55;
+      if (line && units + nextUnits > maxUnits) {
+        lines.push(line);
+        line = '';
+        units = 0;
+      }
+      line += character;
+      units += nextUnits;
+    }
+    lines.push(line);
+  });
   return lines.length ? lines : [''];
 }
-
 /** 读取 PlcfSpa 中主文档绘图的锚点矩形。 */
 function parseSpaAnchors(
   tableStream: Uint8Array,
@@ -162,6 +210,7 @@ function parseSpaAnchors(
   const spaOffset = (count + 1) * 4;
   return Array.from({ length: count }, (_, index) => {
     const offset = spaOffset + index * 26;
+    const flags = view.getUint16(offset + 20, true);
     return {
       cp: view.getUint32(index * 4, true),
       shapeId: view.getUint32(offset, true),
@@ -169,9 +218,11 @@ function parseSpaAnchors(
       top: view.getInt32(offset + 8, true),
       right: view.getInt32(offset + 12, true),
       bottom: view.getInt32(offset + 16, true),
+      horizontalReference: (flags >> 1) & 0x03,
+      verticalReference: (flags >> 3) & 0x03,
     };
   }).filter(
-    (anchor) => anchor.right !== anchor.left && anchor.bottom !== anchor.top,
+    (anchor) => anchor.right !== anchor.left || anchor.bottom !== anchor.top,
   );
 }
 
@@ -233,6 +284,27 @@ function findShapeGroup(
   return matched;
 }
 
+/** 在 OfficeArt 记录树中查找指定 spid 的形状容器。 */
+function findShapeRecord(
+  records: OfficeArtRecord[],
+  targetShapeId: number,
+): OfficeArtRecord | undefined {
+  let matched: OfficeArtRecord | undefined;
+  const visit = (items: OfficeArtRecord[]) => {
+    for (const item of items) {
+      if (
+        item.type === OFFICE_ART_RECORD.SP_CONTAINER &&
+        shapeId(item) === targetShapeId
+      ) {
+        matched = item;
+        return;
+      }
+      if (item.children && !matched) visit(item.children);
+    }
+  };
+  visit(records);
+  return matched;
+}
 /** 把组坐标中的形状锚点转换到 SVG 像素坐标。 */
 function readShapeRect(record: OfficeArtRecord, context: ShapeRenderContext) {
   const anchor = child(record, OFFICE_ART_CHILD_ANCHOR);
@@ -332,27 +404,44 @@ function renderTextBox(
   }
   const padding = isHeading ? 10 : 13;
   const maxUnits = Math.max(1, (rect.width - padding * 2) / (fontSize * 0.96));
-  const lines = wrapText(textBox.text, maxUnits);
   const lineHeight = fontSize * (isHeading ? 1.25 : 1.48);
-  return `<text x="${rect.x + padding}" y="${
+  const maxLines = Math.max(1, Math.floor(rect.height / lineHeight));
+  const lines = wrapText(textBox.text, maxUnits).slice(0, maxLines);
+  const textAlign = style?.textAlign ?? 'left';
+  const textX =
+    textAlign === 'center'
+      ? rect.x + rect.width / 2
+      : textAlign === 'right'
+      ? rect.x + rect.width - padding
+      : rect.x + padding;
+  const textAnchor =
+    textAlign === 'center' ? 'middle' : textAlign === 'right' ? 'end' : 'start';
+  const fontFamily =
+    style?.fontFamily ?? 'Microsoft YaHei, PingFang SC, sans-serif';
+  return `<text x="${textX}" y="${
     rect.y + fontSize
-  }" fill="${color}" font-family="Microsoft YaHei, PingFang SC, sans-serif" font-size="${fontSize}" font-weight="${
+  }" fill="${color}" font-family="${escapeXml(
+    fontFamily,
+  )}" font-size="${fontSize}" font-weight="${
     style?.fontWeight ?? 400
-  }">${lines
+  }" text-anchor="${textAnchor}">${lines
     .map(
       (line, index) =>
-        `<tspan x="${rect.x + padding}" dy="${
-          index === 0 ? 0 : lineHeight
-        }">${escapeXml(line)}</tspan>`,
+        `<tspan x="${textX}" dy="${index === 0 ? 0 : lineHeight}">${escapeXml(
+          line,
+        )}</tspan>`,
     )
     .join('')}</text>`;
 }
-
 /** 把一条 OfficeArt 形状记录转换为 SVG 元素。 */
-function renderShape(record: OfficeArtRecord, context: ShapeRenderContext) {
+function renderShape(
+  record: OfficeArtRecord,
+  context: ShapeRenderContext,
+  rectOverride?: NonNullable<ReturnType<typeof readShapeRect>>,
+) {
   const fsp = child(record, OFFICE_ART_RECORD.FSP);
   if (!fsp || fsp.data.length < 8) return '';
-  const rect = readShapeRect(record, context);
+  const rect = rectOverride ?? readShapeRect(record, context);
   if (!rect) return '';
   const properties = readProperties(child(record, OFFICE_ART_RECORD.FOPT));
   const paint = shapePaint(properties, rect);
@@ -443,6 +532,172 @@ function renderDrawingSvg(
   };
 }
 
+/** 无需组合容器即可直接处理的 OfficeArt 形状。 */
+type DirectShape = {
+  /** 对象在工作表或画布中的定位锚点。 */
+  anchor: SpaAnchor;
+  /** 当前内存条目保存的内容记录。 */
+  record: OfficeArtRecord;
+};
+
+/** 已转换为 SVG 和页面尺寸的 DOC 绘图。 */
+type RenderedDrawing = {
+  /** 宽度，单位为标准化渲染像素。 */
+  width: number;
+  /** 高度，单位为标准化渲染像素。 */
+  height: number;
+  /** 转换完成的 SVG 图片内容。 */
+  svg: string;
+  /** 绘图相对页面四周的定位边距。 */
+  pageInsets?: NonNullable<DocImage['pageInsets']>;
+};
+
+/** DOC 节的正文字符范围与页面尺寸。 */
+export type DocDrawingSection = {
+  /** 对应内容在文档字符流中的起始位置。 */
+  charStart: number;
+  /** 对应内容在文档字符流中的结束位置。 */
+  charEnd: number;
+  /** 当前关联的页面模型。 */
+  page: DocPage;
+};
+
+/** DOC 绘图提取时需要的页面布局信息。 */
+export type DocDrawingCanvasOptions = {
+  /** 按文档顺序排列的节级绘图信息。 */
+  sections?: DocDrawingSection[];
+  /** 当前用于展示的页面模型。 */
+  displayPage?: DocPage;
+};
+
+/** 把 FSPA 的相对坐标转换为页面坐标。 */
+function directShapeRect(anchor: SpaAnchor, page: DocPage) {
+  // bx/by 为 1 时相对页面边缘；栏、页边距与段落定位在缺少实时排版坐标时以正文起点降级。
+  const horizontalOffset =
+    anchor.horizontalReference === 1 ? 0 : page.marginLeft;
+  const verticalOffset = anchor.verticalReference === 1 ? 0 : page.marginTop;
+  const left = twipToPx(anchor.left) + horizontalOffset;
+  const top = twipToPx(anchor.top) + verticalOffset;
+  const right = twipToPx(anchor.right) + horizontalOffset;
+  const bottom = twipToPx(anchor.bottom) + verticalOffset;
+  return {
+    x: Math.min(left, right),
+    y: Math.min(top, bottom),
+    width: Math.abs(right - left),
+    height: Math.abs(bottom - top),
+    x1: left,
+    y1: top,
+    x2: right,
+    y2: bottom,
+  };
+}
+
+/** 把页面坐标中的直属形状组合为一个 SVG，保留相互位置和空白区域。 */
+function renderDirectDrawingSvg(
+  shapes: DirectShape[],
+  textBoxes: DocDrawingTextBox[],
+  sourcePage?: DocPage,
+  displayPage?: DocPage,
+): RenderedDrawing | undefined {
+  const originX = sourcePage
+    ? 0
+    : Math.min(0, ...shapes.map(({ anchor }) => anchor.left));
+  const originY = sourcePage
+    ? 0
+    : Math.min(0, ...shapes.map(({ anchor }) => anchor.top));
+  const width = sourcePage
+    ? sourcePage.width
+    : twipToPx(Math.max(...shapes.map(({ anchor }) => anchor.right)) - originX);
+  const height = sourcePage
+    ? sourcePage.minHeight
+    : twipToPx(
+        Math.max(...shapes.map(({ anchor }) => anchor.bottom)) - originY,
+      );
+  if (width <= 0 || height <= 0) return undefined;
+
+  const context: ShapeRenderContext = {
+    scaleX: 1,
+    scaleY: 1,
+    originX: 0,
+    originY: 0,
+    textBoxes,
+    connectorColors: [],
+  };
+  const body = shapes
+    .map(({ anchor, record }) => {
+      const rect = sourcePage
+        ? directShapeRect(anchor, sourcePage)
+        : (() => {
+            const left = twipToPx(anchor.left - originX);
+            const top = twipToPx(anchor.top - originY);
+            const right = twipToPx(anchor.right - originX);
+            const bottom = twipToPx(anchor.bottom - originY);
+            return {
+              x: Math.min(left, right),
+              y: Math.min(top, bottom),
+              width: Math.abs(right - left),
+              height: Math.abs(bottom - top),
+              x1: left,
+              y1: top,
+              x2: right,
+              y2: bottom,
+            };
+          })();
+      return renderShape(record, context, rect);
+    })
+    .join('');
+  if (!body) return undefined;
+  return {
+    width,
+    height,
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${body}</svg>`,
+    pageInsets:
+      sourcePage && displayPage
+        ? {
+            top: displayPage.marginTop,
+            right: displayPage.marginRight,
+            bottom: displayPage.marginBottom,
+            left: displayPage.marginLeft,
+          }
+        : undefined,
+  };
+}
+
+/** 注册 SVG 资源并创建对应的 DOC 图片模型。 */
+function createDrawingImage(
+  rendered: RenderedDrawing,
+  anchor: SpaAnchor,
+  index: number,
+  resources: PortableResource[],
+): DocImage {
+  const resourceId = `doc:drawing:${index + 1}`;
+  const buffer = new TextEncoder().encode(rendered.svg);
+  resources.push({
+    id: resourceId,
+    encoding: 'binary',
+    mimeType: 'image/svg+xml',
+    buffer: buffer.buffer,
+  });
+  return {
+    id: `doc-drawing-${index + 1}`,
+    src: createResourceReference(resourceId),
+    mimeType: 'image/svg+xml',
+    width: rendered.width,
+    height: rendered.height,
+    offset: anchor.cp,
+    anchored: true,
+    pageInsets: rendered.pageInsets,
+  };
+}
+
+/** DOC 绘图资源及其与正文绘图标记一一对应的槽位。 */
+export type DocDrawingCanvasExtraction = {
+  /** 当前文档或页面包含的图片资源。 */
+  images: DocImage[];
+  /** 按绘图顺序排列的图片或空占位。 */
+  slots: Array<DocImage | undefined>;
+};
+
 /**
  * 提取 DOC/WPS 主文档中的 OfficeArt 画布，并以 SVG 图片接入现有正文布局。
  * SVG 保留源锚点尺寸，避免把流程图形状和文本框再次展平成普通段落。
@@ -452,34 +707,72 @@ export function extractDocDrawingCanvases(
   fib: DocDrawingFibFields,
   textBoxes: DocDrawingTextBox[],
   resources: PortableResource[],
-): DocImage[] {
+  options: DocDrawingCanvasOptions = {},
+): DocDrawingCanvasExtraction {
   const anchors = parseSpaAnchors(tableStream, fib);
   const drawingRecords = parseMainDrawingRecords(tableStream, fib);
-  if (!anchors.length || !drawingRecords.length) return [];
+  const emptyResult: DocDrawingCanvasExtraction = { images: [], slots: [] };
+  if (!anchors.length || !drawingRecords.length) return emptyResult;
 
-  return anchors.flatMap((anchor, index) => {
+  const images: DocImage[] = [];
+  const slots: Array<DocImage | undefined> = Array.from(
+    { length: anchors.length },
+    () => undefined,
+  );
+  let index = 0;
+  while (index < anchors.length) {
+    const anchor = anchors[index];
     const group = findShapeGroup(drawingRecords, anchor.shapeId);
-    if (!group) return [];
-    const rendered = renderDrawingSvg(group, anchor, textBoxes);
-    if (!rendered) return [];
-    const resourceId = `doc:drawing:${index + 1}`;
-    const buffer = new TextEncoder().encode(rendered.svg);
-    resources.push({
-      id: resourceId,
-      encoding: 'binary',
-      mimeType: 'image/svg+xml',
-      buffer: buffer.buffer,
-    });
-    return [
-      {
-        id: `doc-drawing-${index + 1}`,
-        src: createResourceReference(resourceId),
-        mimeType: 'image/svg+xml',
-        width: rendered.width,
-        height: rendered.height,
-        offset: anchor.cp,
-        anchored: true,
-      },
-    ];
-  });
+    if (group) {
+      const rendered = renderDrawingSvg(group, anchor, textBoxes);
+      if (rendered) {
+        const image = createDrawingImage(rendered, anchor, index, resources);
+        images.push(image);
+        slots[index] = image;
+      }
+      index += 1;
+      continue;
+    }
+
+    const sourceSection = options.sections?.find(
+      (section) =>
+        anchor.cp >= section.charStart && anchor.cp < section.charEnd,
+    );
+    const directShapes: DirectShape[] = [];
+    let nextIndex = index;
+    while (nextIndex < anchors.length) {
+      const currentAnchor = anchors[nextIndex];
+      if (nextIndex > index) {
+        const leftSourceSection = sourceSection
+          ? currentAnchor.cp < sourceSection.charStart ||
+            currentAnchor.cp >= sourceSection.charEnd
+          : currentAnchor.cp !== anchors[nextIndex - 1].cp + 1;
+        if (leftSourceSection) break;
+      }
+      if (findShapeGroup(drawingRecords, currentAnchor.shapeId)) break;
+      const record = findShapeRecord(drawingRecords, currentAnchor.shapeId);
+      if (!record) break;
+      directShapes.push({ anchor: currentAnchor, record });
+      nextIndex += 1;
+    }
+
+    const sourcePage = sourceSection?.page;
+    const rendered = directShapes.length
+      ? renderDirectDrawingSvg(
+          directShapes,
+          textBoxes,
+          sourcePage,
+          options.displayPage,
+        )
+      : undefined;
+    if (rendered) {
+      // 连续直属形状属于同一浮动画布；只在首个标记渲染，后续槽位保留为空以维持顺序。
+      const image = createDrawingImage(rendered, anchor, index, resources);
+      images.push(image);
+      slots[index] = image;
+    }
+    index = Math.max(index + 1, nextIndex);
+  }
+
+  return { images, slots };
 }

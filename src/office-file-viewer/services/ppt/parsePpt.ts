@@ -3,7 +3,6 @@ import { ResourceRegistry } from '../parsing/assembly/ResourceRegistry';
 import type { PresentationDocument } from '../presentation/types';
 import { parsePptCore } from './parsePptCore';
 
-/** 创建 `createYieldIfNeeded` 返回的对象，供PPT 二进制解析使用。 */
 function createYieldIfNeeded() {
   let deadline = Date.now() + 12;
   return async () => {

@@ -3,19 +3,19 @@ import type { OfficeResourceSource } from '../resource-store';
 
 /** 描述电子表格标准模型过程中可继续处理的警告。 */
 export type SpreadsheetWarning = {
-  /** SpreadsheetWarning 的稳定代码，用于程序化识别具体情况。 */
+  /** 供程序识别当前情况的稳定代码。 */
   code: string;
-  /** SpreadsheetWarning 面向调用方或用户展示的具体警告、错误说明。 */
+  /** 面向调用方或用户展示的说明。 */
   message: string;
-  /** SpreadsheetWarning 的 sheetName 文本值。 */
+  /** 产生警告的工作表名称。 */
   sheetName?: string;
-  /** SpreadsheetWarning 在所属数据范围中的偏移位置。 */
+  /** 在所属数据范围中的偏移位置。 */
   offset?: number;
 };
 
-/** 描述 SpreadsheetWorkbook 在电子表格标准模型中的数据结构。 */
+/** 包含工作表和资源的标准化工作簿。 */
 export type SpreadsheetWorkbook = {
-  /** SpreadsheetWorkbook 包含的 sheets 有序集合。 */
+  /** 按工作簿顺序排列的工作表。 */
   sheets: SpreadsheetSheet[];
   /** 解析时产生但不阻止继续预览的警告；未提供表示没有警告。 */
   warnings?: SpreadsheetWarning[];
@@ -43,15 +43,15 @@ export function disposeSpreadsheetWorkbook(
   uniqueUrls.forEach((url) => URL.revokeObjectURL(url));
 }
 
-/** 描述 SpreadsheetSheet 在电子表格标准模型中的数据结构。 */
+/** 单张工作表的网格、合并区域及浮动对象。 */
 export type SpreadsheetSheet = {
-  /** SpreadsheetSheet 在所属文档或任务中的唯一标识。 */
+  /** 在所属集合中的唯一标识。 */
   id: string;
-  /** SpreadsheetSheet 的可读名称。 */
+  /** 面向用户展示的名称。 */
   name: string;
-  /** SpreadsheetSheet 在压缩包、复合文档或图形数据中的路径。 */
+  /** 在压缩包、复合文档或资源表中的路径。 */
   path: string;
-  /** 标识 SpreadsheetSheet 对应的 Office 文件或数据种类。 */
+  /** 当前模型对应的 Office 内容类型。 */
   kind?: 'worksheet' | 'chart';
   /** 工作表未单独设置列宽时使用的默认宽度，单位为标准化渲染像素。 */
   defaultColumnWidth?: number;
@@ -63,43 +63,45 @@ export type SpreadsheetSheet = {
   rowCount: number;
   /** 工作表标准化后的总行数或总列数，具体含义由属性名确定。 */
   columnCount: number;
-  /** SpreadsheetSheet 包含的 columns 有序集合。 */
+  /** 按列号排列的工作表列。 */
   columns: SpreadsheetColumn[];
-  /** SpreadsheetSheet 包含的 rows 有序集合。 */
+  /** 按行号排列的工作表行。 */
   rows: SpreadsheetRow[];
-  /** SpreadsheetSheet 包含的 merges 有序集合。 */
+  /** 工作表声明的合并单元格区域。 */
   merges: SpreadsheetMerge[];
-  /** SpreadsheetSheet 包含的 images 有序集合。 */
+  /** 工作表包含的浮动图片。 */
   images: SpreadsheetImage[];
-  /** SpreadsheetSheet 包含的 charts 有序集合。 */
+  /** 工作表包含的浮动图表。 */
   charts: SpreadsheetChart[];
 };
 
-/** 描述 SpreadsheetColumn 在电子表格标准模型中的数据结构。 */
+/** 工作表列的位置、宽度和隐藏状态。 */
 export type SpreadsheetColumn = {
-  /** SpreadsheetColumn 在所属集合中的位置索引。 */
+  /** 在所属集合中的零基索引。 */
   index: number;
-  /** SpreadsheetColumn 面向用户展示的标签文本。 */
+  /** 面向用户展示的标签文本。 */
   label: string;
-  /** SpreadsheetColumn 的 width 尺寸或坐标，单位为标准化渲染像素。 */
+  /** 宽度，单位为标准化渲染像素。 */
   width: number;
-  /** 是否隐藏 SpreadsheetColumn；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 是否隐藏当前项目。 */
   hidden?: boolean;
 };
 
-/** 描述 SpreadsheetRow 在电子表格标准模型中的数据结构。 */
+/** 工作表行的位置、高度、隐藏状态和单元格。 */
 export type SpreadsheetRow = {
-  /** SpreadsheetRow 在所属集合中的位置索引。 */
+  /** 在所属集合中的零基索引。 */
   index: number;
-  /** SpreadsheetRow 的 height 尺寸或坐标，单位为标准化渲染像素。 */
+  /** 高度，单位为标准化渲染像素。 */
   height: number;
-  /** 是否隐藏 SpreadsheetRow；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 是否由源文件显式固定行高；否则允许换行内容按 Excel 规则自动撑高。 */
+  customHeight?: boolean;
+  /** 是否隐藏当前项目。 */
   hidden?: boolean;
-  /** SpreadsheetRow 包含的 cells 有序集合。 */
+  /** 按显示顺序排列的单元格。 */
   cells: SpreadsheetCell[];
 };
 
-/** 描述 SpreadsheetCell 在电子表格标准模型中的数据结构。 */
+/** 工作表单元格的值、公式、类型和样式。 */
 export type SpreadsheetCell = {
   /** 单元格 A1 引用，例如 C5。 */
   ref: string;
@@ -107,7 +109,7 @@ export type SpreadsheetCell = {
   rowIndex: number;
   /** 单元格或记录所在的列索引。 */
   columnIndex: number;
-  /** SpreadsheetCell 保存的解析值或业务值。 */
+  /** 单元格格式化后的显示文本。 */
   value: string;
   /** 格式化前从源文件读取的原始值。 */
   rawValue?: string;
@@ -115,7 +117,7 @@ export type SpreadsheetCell = {
   type?: string;
   /** 单元格引用的样式表索引。 */
   styleId?: number;
-  /** SpreadsheetCell 使用的渲染或文本样式。 */
+  /** 当前内容使用的渲染样式。 */
   style?: SpreadsheetCellStyle;
   /** 单元格公式文本，不包含计算结果。 */
   formula?: string;
@@ -129,9 +131,9 @@ export type SpreadsheetCell = {
   hiddenByMerge?: boolean;
 };
 
-/** 描述 SpreadsheetMerge 在电子表格标准模型中的数据结构。 */
+/** 工作表合并区域及其行列边界。 */
 export type SpreadsheetMerge = {
-  /** SpreadsheetMerge 的 ref 文本值。 */
+  /** 合并区域的 A1 引用文本。 */
   ref: string;
   /** 合并区域起始行索引。 */
   startRow: number;
@@ -143,7 +145,7 @@ export type SpreadsheetMerge = {
   endColumn: number;
 };
 
-/** 描述 SpreadsheetAnchorPoint 在电子表格标准模型中的数据结构。 */
+/** 浮动对象锚点对应的单元格和偏移比例。 */
 export type SpreadsheetAnchorPoint = {
   /** 锚点所在的行索引。 */
   row: number;
@@ -155,49 +157,49 @@ export type SpreadsheetAnchorPoint = {
   columnOffset: number;
 };
 
-/** 描述 SpreadsheetImage 在电子表格标准模型中的数据结构。 */
+/** 工作表浮动图片的资源、锚点和显示尺寸。 */
 export type SpreadsheetImage = {
-  /** SpreadsheetImage 在所属文档或任务中的唯一标识。 */
+  /** 在所属集合中的唯一标识。 */
   id: string;
-  /** SpreadsheetImage 的可读名称。 */
+  /** 面向用户展示的名称。 */
   name?: string;
   /** 图片可直接用于 img 元素的资源地址。 */
   src: string | OfficeResourceSource;
   /** 图片无法显示时使用的替代文本。 */
   alt?: string;
-  /** SpreadsheetImage 的起始锚点。 */
+  /** 起始锚点。 */
   from: SpreadsheetAnchorPoint;
-  /** SpreadsheetImage 的结束锚点。 */
+  /** 结束锚点。 */
   to: SpreadsheetAnchorPoint;
-  /** SpreadsheetImage 的 x 尺寸或坐标，单位为标准化渲染像素。 */
+  /** 相对定位区域左侧的横坐标，单位为标准化渲染像素。 */
   x: number;
-  /** SpreadsheetImage 的 y 尺寸或坐标，单位为标准化渲染像素。 */
+  /** 相对定位区域顶部的纵坐标，单位为标准化渲染像素。 */
   y: number;
-  /** SpreadsheetImage 的 width 尺寸或坐标，单位为标准化渲染像素。 */
+  /** 宽度，单位为标准化渲染像素。 */
   width: number;
-  /** SpreadsheetImage 的 height 尺寸或坐标，单位为标准化渲染像素。 */
+  /** 高度，单位为标准化渲染像素。 */
   height: number;
 };
 
-/** 描述 SpreadsheetChart 在电子表格标准模型中的数据结构。 */
+/** 工作表浮动图表的模型、锚点和显示尺寸。 */
 export type SpreadsheetChart = {
-  /** SpreadsheetChart 在所属文档或任务中的唯一标识。 */
+  /** 在所属集合中的唯一标识。 */
   id: string;
-  /** SpreadsheetChart 对外展示的标题。 */
+  /** 面向用户展示的标题。 */
   title?: string;
-  /** SpreadsheetChart 当前关联的图表模型。 */
+  /** 当前浮动对象承载的标准图表模型。 */
   chart: OfficeChartModel;
-  /** SpreadsheetChart 的起始锚点。 */
+  /** 起始锚点。 */
   from: SpreadsheetAnchorPoint;
-  /** SpreadsheetChart 的结束锚点。 */
+  /** 结束锚点。 */
   to: SpreadsheetAnchorPoint;
-  /** SpreadsheetChart 的 x 尺寸或坐标，单位为标准化渲染像素。 */
+  /** 相对定位区域左侧的横坐标，单位为标准化渲染像素。 */
   x: number;
-  /** SpreadsheetChart 的 y 尺寸或坐标，单位为标准化渲染像素。 */
+  /** 相对定位区域顶部的纵坐标，单位为标准化渲染像素。 */
   y: number;
-  /** SpreadsheetChart 的 width 尺寸或坐标，单位为标准化渲染像素。 */
+  /** 宽度，单位为标准化渲染像素。 */
   width: number;
-  /** SpreadsheetChart 的 height 尺寸或坐标，单位为标准化渲染像素。 */
+  /** 高度，单位为标准化渲染像素。 */
   height: number;
 };
 
@@ -227,35 +229,37 @@ export type SpreadsheetDiagonalBorder = {
 
 /** 描述电子表格标准模型使用的样式参数。 */
 export type SpreadsheetCellStyle = {
-  /** 是否使用粗体渲染 SpreadsheetCellStyle；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 是否使用粗体。 */
   bold?: boolean;
-  /** 是否使用斜体渲染 SpreadsheetCellStyle；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 是否使用斜体。 */
   italic?: boolean;
-  /** 是否为 SpreadsheetCellStyle 绘制下划线；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 是否绘制下划线。 */
   underline?: boolean;
-  /** SpreadsheetCellStyle 的前景或文本颜色，使用标准化 CSS 颜色值；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 前景或文字颜色，使用 CSS 颜色值。 */
   color?: string;
-  /** SpreadsheetCellStyle 的字体族名称；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 字体族名称。 */
   fontFamily?: string;
-  /** SpreadsheetCellStyle 的字号，单位为标准化渲染像素；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 字号，单位为标准化渲染像素。 */
   fontSize?: number;
-  /** SpreadsheetCellStyle 的背景颜色，使用 CSS 颜色值；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 背景颜色，使用 CSS 颜色值。 */
   backgroundColor?: string;
   /** 单元格内容的水平对齐方式。 */
   horizontalAlign?: 'left' | 'center' | 'right' | 'justify';
-  /** SpreadsheetCellStyle 的垂直对齐方式；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 垂直对齐方式。 */
   verticalAlign?: 'top' | 'middle' | 'bottom';
   /** 是否允许单元格文本自动换行。 */
   wrapText?: boolean;
+  /** 是否在单元格宽度不足时缩小文字以适应边界。 */
+  shrinkToFit?: boolean;
   /** 是否存在任意方向的有效边框。 */
   border?: boolean;
-  /** SpreadsheetCellStyle 对应方向的 CSS 边框样式；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 上边框的 CSS 样式。 */
   borderTop?: string;
-  /** SpreadsheetCellStyle 对应方向的 CSS 边框样式；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 右边框的 CSS 样式。 */
   borderRight?: string;
-  /** SpreadsheetCellStyle 对应方向的 CSS 边框样式；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 下边框的 CSS 样式。 */
   borderBottom?: string;
-  /** SpreadsheetCellStyle 对应方向的 CSS 边框样式；未提供时沿用来源格式或渲染器的默认规则。 */
+  /** 左边框的 CSS 样式。 */
   borderLeft?: string;
   /** 未单独指定方向时使用的统一边框颜色。 */
   borderColor?: string;
@@ -288,6 +292,8 @@ export type SpreadsheetRowMetric = {
   index: number;
   /** 行高，单位为标准化渲染像素。 */
   height: number;
+  /** 是否由源文件显式固定行高；否则为自动行高。 */
+  customHeight?: boolean;
   /** 当前行是否隐藏。 */
   hidden: boolean;
 };

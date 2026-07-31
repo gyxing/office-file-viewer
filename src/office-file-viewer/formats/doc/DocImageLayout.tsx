@@ -8,11 +8,11 @@ import {
   imageRows,
 } from './docRenderUtils';
 
-/** 定义 DocImageLayout 组件可接收的属性。 */
+/** DOC图片布局组件属性。 */
 type DocImageLayoutProps = {
-  /** DocImageLayoutProps 包含的 images 有序集合。 */
+  /** 当前文档或页面包含的图片资源。 */
   images: DocImage[];
-  /** DocImageLayoutProps 的 contentWidth 尺寸或坐标，单位为标准化渲染像素。 */
+  /** 可用于排版内容的宽度，单位为标准化渲染像素。 */
   contentWidth: number;
   /** 图片所在源段落的水平对齐方式。 */
   alignment?: DocTextStyle['textAlign'];
@@ -20,7 +20,7 @@ type DocImageLayoutProps = {
   spacingBefore?: number;
 };
 
-/** 渲染 DocImageLayoutComponent 组件。 */
+/** 渲染DOC图片布局。 */
 function DocImageLayoutComponent({
   images,
   contentWidth,
@@ -31,13 +31,23 @@ function DocImageLayoutComponent({
     () => imageRows(images, contentWidth),
     [contentWidth, images],
   );
+  const pageCanvas = images.length === 1 ? images[0].pageInsets : undefined;
 
   if (!images.length) return null;
 
   return (
     <div
       className="office-file-doc-image-layout"
-      style={{ marginTop: spacingBefore }}
+      style={
+        pageCanvas
+          ? {
+              marginTop: -pageCanvas.top,
+              marginRight: -pageCanvas.right,
+              marginBottom: -pageCanvas.bottom,
+              marginLeft: -pageCanvas.left,
+            }
+          : { marginTop: spacingBefore }
+      }
     >
       {rows.map((row) => {
         const firstImage = row[0];
@@ -46,6 +56,7 @@ function DocImageLayoutComponent({
             ? firstImage.width / firstImage.height
             : 0;
         const centerSingleImage =
+          !pageCanvas &&
           row.length === 1 &&
           (alignment === 'center' ||
             (!alignment &&
@@ -57,13 +68,14 @@ function DocImageLayoutComponent({
             key={row.map((image) => image.id).join('-')}
             className="office-file-doc-image-layout__row"
             style={{
-              maxWidth: contentWidth,
-              justifyContent:
-                alignment === 'center' || centerSingleImage
-                  ? 'center'
-                  : alignment === 'right'
-                  ? 'flex-end'
-                  : 'flex-start',
+              maxWidth: pageCanvas ? firstImage.width : contentWidth,
+              justifyContent: pageCanvas
+                ? 'flex-start'
+                : alignment === 'center' || centerSingleImage
+                ? 'center'
+                : alignment === 'right'
+                ? 'flex-end'
+                : 'flex-start',
             }}
           >
             {row.map((image) => {
@@ -74,10 +86,11 @@ function DocImageLayoutComponent({
               );
               const figureStyle: CSSProperties = {
                 width: rowWidth,
-                maxWidth:
-                  row.length > 1
-                    ? `calc((100% - ${DOC_IMAGE_ROW_GAP}px) / ${row.length})`
-                    : '100%',
+                maxWidth: pageCanvas
+                  ? 'none'
+                  : row.length > 1
+                  ? `calc((100% - ${DOC_IMAGE_ROW_GAP}px) / ${row.length})`
+                  : '100%',
                 marginInline: centerSingleImage ? 'auto' : undefined,
               };
 

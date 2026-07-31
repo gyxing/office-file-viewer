@@ -2,9 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { useOfficeResourceStore } from './OfficeResourceContext';
 import type { OfficeResourceSource } from './types';
 
+/** 资源引用转换为浏览器地址时的加载状态。 */
 type OfficeResourceUrlState = {
+  /** 资源访问地址。 */
   url?: string;
+  /** 加载状态相关文案。 */
   loading: boolean;
+  /** 当前操作产生的错误；未提供表示没有错误。 */
   error?: Error;
 };
 

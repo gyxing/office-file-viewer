@@ -2,10 +2,15 @@ import { IndexedDbContentStore } from './IndexedDbContentStore';
 import { MemoryContentStore } from './MemoryContentStore';
 import type { OfficeContentRecord, OfficeContentStore } from './types';
 
+/** 创建内容存储实例时使用的选项。 */
 export type CreateContentStoreOptions<TValue> = {
+  /** 当前解析或预览会话的标识。 */
   sessionId: string;
+  /** 用于隔离不同内容类别的存储命名空间。 */
   namespace: string;
+  /** 内存热缓存允许占用的最大字节数。 */
   maxMemoryBytes: number;
+  /** 估算单个缓存值占用的字节数。 */
   estimateSize(value: TValue): number;
   /** IndexedDB 降级时接收一次诊断信息，不影响继续预览。 */
   onWarning?: (error: unknown) => void;

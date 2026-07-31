@@ -1,7 +1,10 @@
 import type { WordPageMeta } from '../../services/word/WordPageSource';
 
+/** Word 内容块所在页面及其布局修订号。 */
 export type WordBlockPageLocation = {
+  /** 页面在文档中的零基索引。 */
   pageIndex: number;
+  /** 页面内容变化时递增的修订号。 */
   pageRevision: number;
 };
 

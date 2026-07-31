@@ -3,13 +3,13 @@ import React, { memo } from 'react';
 import { useOfficeFileViewerMessages } from '../locale';
 import { OfficeNotice } from './Notice';
 
-/** 定义 OfficeError 组件可接收的属性。 */
+/** Office错误组件属性。 */
 type OfficeErrorProps = {
-  /** OfficeErrorProps 面向调用方或用户展示的具体警告、错误说明。 */
+  /** 面向调用方或用户展示的说明。 */
   message: string;
 };
 
-/** 渲染 OfficeErrorComponent 组件。 */
+/** 展示阻止继续预览的错误信息。 */
 function OfficeErrorComponent({ message }: OfficeErrorProps) {
   const messages = useOfficeFileViewerMessages();
   return (

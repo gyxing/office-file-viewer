@@ -2,6 +2,7 @@
 /** 枚举组件能够识别和预览的 Office 文件格式。 */
 export type PreviewKind = 'pptx' | 'ppt' | 'xlsx' | 'xls' | 'docx' | 'doc';
 
+/** 当前预览器支持解析的 Office 文件扩展名。 */
 export const SUPPORTED_OFFICE_EXTENSIONS = [
   '.pptx',
   '.ppt',
@@ -12,7 +13,7 @@ export const SUPPORTED_OFFICE_EXTENSIONS = [
   '.wps',
 ] as const;
 
-/** 判断 `isSupportedOfficeFileName` 对应的条件是否成立。 */
+/** 判断文件名是否属于支持的 Office 格式。 */
 export function isSupportedOfficeFileName(fileName: string): boolean {
   const lower = fileName.toLowerCase();
   return SUPPORTED_OFFICE_EXTENSIONS.some((extension) =>
@@ -25,6 +26,11 @@ export function isSpreadsheetPreviewKind(
   kind: PreviewKind,
 ): kind is 'xlsx' | 'xls' {
   return kind === 'xlsx' || kind === 'xls';
+}
+
+/** 判断当前格式是否复用统一文字文档预览链路。 */
+export function isWordPreviewKind(kind: PreviewKind): kind is 'docx' | 'doc' {
+  return kind === 'docx' || kind === 'doc';
 }
 
 /** 判断当前格式是否复用统一演示文稿渲染链路。 */

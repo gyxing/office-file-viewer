@@ -12,7 +12,6 @@ import type {
   Biff8ChartSeries,
 } from './types';
 
-/** 执行 `setCacheValue` 封装的XLS/BIFF8 解析处理步骤。 */
 function setCacheValue(
   cache: Biff8ChartCache,
   kind: number,
@@ -66,7 +65,6 @@ export function parseChartCache(records: Biff8Record[]) {
   return cache;
 }
 
-/** 执行 `cacheColumn` 封装的XLS/BIFF8 解析处理步骤。 */
 function cacheColumn(cache: Biff8ChartCache, kind: number, series: number) {
   const points = cache.get(kind)?.get(series);
   if (!points?.size) return [];
@@ -74,7 +72,6 @@ function cacheColumn(cache: Biff8ChartCache, kind: number, series: number) {
   return Array.from({ length }, (_, index) => points.get(index) ?? null);
 }
 
-/** 执行 `columnIndex` 封装的XLS/BIFF8 解析处理步骤。 */
 function columnIndex(label: string) {
   return Array.from(label.toUpperCase()).reduce(
     (value, character) => value * 26 + character.charCodeAt(0) - 64,
@@ -124,7 +121,6 @@ function resolveCells(
   return result;
 }
 
-/** 解析 `parseAiFormulas` 接收的数据，并返回XLS/BIFF8 解析结果。 */
 function parseAiFormulas(
   node: Biff8ChartRecordNode,
   context: Biff8ChartContext,
@@ -151,7 +147,6 @@ function parseAiFormulas(
   return formulas;
 }
 
-/** 解析 `parseSeriesName` 接收的数据，并返回XLS/BIFF8 解析结果。 */
 function parseSeriesName(node: Biff8ChartRecordNode) {
   const text = collectChartNodes(node.children, BIFF8_RECORD.SERTXT)[0];
   if (!text || text.data.length < 4) return undefined;
