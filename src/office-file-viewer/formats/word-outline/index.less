@@ -1,9 +1,12 @@
 .office-file-word-outline {
+  --office-file-word-outline-width: 260px;
+
+  position: relative;
   box-sizing: border-box;
   display: flex;
-  flex: 0 0 260px;
+  flex: 0 0 var(--office-file-word-outline-width);
   flex-direction: column;
-  width: 260px;
+  width: var(--office-file-word-outline-width);
   min-width: 0;
   height: 100%;
   color: #1f2937;
@@ -85,4 +88,38 @@
   line-height: 28px;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.office-file-word-outline__resize-handle {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: -6px;
+  display: flex;
+  width: 12px;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  cursor: col-resize;
+  background: transparent;
+  outline: none;
+  touch-action: none;
+  user-select: none;
+}
+
+.office-file-word-outline__resize-handle span {
+  width: 4px;
+  height: 48px;
+  background: #b8c2d1;
+  border-radius: 2px;
+}
+
+.office-file-word-outline__resize-handle:hover span,
+.office-file-word-outline__resize-handle:focus-visible span,
+.office-file-word-outline__resize-handle:active span {
+  background: #2f6fed;
+}
+
+.office-file-word-outline__resize-handle:focus-visible span {
+  box-shadow: 0 0 0 2px rgba(47, 111, 237, 35%);
 }

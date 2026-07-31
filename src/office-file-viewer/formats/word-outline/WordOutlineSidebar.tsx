@@ -21,6 +21,7 @@ import type { WordBlockPageIndex } from '../word-pages/WordBlockPageIndex';
 import type { WordPageNavigationController } from '../word-pages/types';
 import './index.less';
 import { useWordOutlineNavigation } from './useWordOutlineNavigation';
+import { useWordOutlineResize } from './useWordOutlineResize';
 
 /** Word 大纲侧栏组件属性。 */
 type WordOutlineSidebarProps = {
@@ -205,6 +206,59 @@ function VirtualOutlineTree({
   );
 }
 
+/** Word 大纲宽度调整分隔条属性。 */
+type WordOutlineResizeHandleProps = {
+  /** 待调整宽度的侧栏元素。 */
+  panelRef: RefObject<HTMLElement>;
+  /** 用于在切换文件时恢复默认宽度。 */
+  documentSessionId: string;
+  /** 分隔条的无障碍名称。 */
+  label: string;
+};
+
+/** 渲染支持指针与键盘操作的大纲宽度分隔条。 */
+function WordOutlineResizeHandleComponent({
+  panelRef,
+  documentSessionId,
+  label,
+}: WordOutlineResizeHandleProps) {
+  const {
+    width,
+    maxWidth,
+    minWidth,
+    handleRef,
+    handleKeyDown,
+    handlePointerDown,
+    handlePointerMove,
+    handlePointerEnd,
+  } = useWordOutlineResize(panelRef, documentSessionId);
+
+  return (
+    <div
+      ref={handleRef}
+      className="office-file-word-outline__resize-handle"
+      role="separator"
+      aria-label={label}
+      aria-orientation="vertical"
+      aria-valuemin={minWidth}
+      aria-valuemax={Math.round(maxWidth)}
+      aria-valuenow={Math.round(width)}
+      title={label}
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerEnd}
+      onPointerCancel={handlePointerEnd}
+      onLostPointerCapture={handlePointerEnd}
+    >
+      <span aria-hidden="true" />
+    </div>
+  );
+}
+
+const WordOutlineResizeHandle = memo(WordOutlineResizeHandleComponent);
+
 /** 渲染 Word 文档大纲侧栏。 */
 function WordOutlineSidebarComponent({
   items,
@@ -220,6 +274,7 @@ function WordOutlineSidebarComponent({
   onClose,
 }: WordOutlineSidebarProps) {
   const messages = useOfficeFileViewerMessages();
+  const panelRef = useRef<HTMLElement>(null);
   const snapshot = useSyncExternalStore(
     provider.subscribe,
     provider.getSnapshot,
@@ -284,6 +339,7 @@ function WordOutlineSidebarComponent({
 
   return (
     <aside
+      ref={panelRef}
       className="office-file-word-outline"
       aria-label={messages.outline.region}
       data-outline-count={snapshot.count}
@@ -333,6 +389,11 @@ function WordOutlineSidebarComponent({
           />
         </div>
       )}
+      <WordOutlineResizeHandle
+        panelRef={panelRef}
+        documentSessionId={documentSessionId}
+        label={messages.outline.resize}
+      />
     </aside>
   );
 }

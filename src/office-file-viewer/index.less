@@ -43,8 +43,37 @@
   border-bottom: 1px solid #dde3ec;
 }
 
-.office-file-toolbar__filename {
+.office-file-toolbar__file-info {
+  display: flex;
+  flex: 0 1 360px;
+  align-items: center;
+  min-width: 0;
   max-width: 360px;
+  gap: 8px;
+}
+
+.office-file-type-icon {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.office-file-toolbar__filename-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.office-file-toolbar__filename {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.office-file-toolbar .ant-btn-icon {
+  line-height: 0;
+}
+
+.office-file-toolbar .office-file-icon {
+  font-size: 16px;
 }
 
 .office-file-toolbar__zoom {

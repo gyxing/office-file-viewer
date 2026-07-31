@@ -1,25 +1,38 @@
 import type { ReactNode, SVGProps } from 'react';
 import React from 'react';
 
-/** Office图标组件属性。 */
+/** 工具栏 SVG 图标可接收的属性。 */
 type OfficeIconProps = Omit<SVGProps<SVGSVGElement>, 'children'>;
 
-/** Office 文件图标基础组件属性。 */
+/** 线性 SVG 图标基础组件属性。 */
 type OfficeIconBaseProps = OfficeIconProps & {
   /** 当前组件包含的子节点。 */
   children: ReactNode;
 };
 
-/** Office 文件类型图标共用的文件轮廓路径。 */
-const FILE_FRAME = <path d="M6 2.75h7l5 5v13.5H6zM13 2.75v5h5" />;
+/** 复制原始矢量路径以保持 Ant Design FolderOpenOutlined 的外观，避免新增运行时依赖。 */
+const FOLDER_OPEN_OUTLINED_PATH =
+  'M928 444H820V330.4c0-17.7-14.3-32-32-32H473L355.7 186.2a8.15 8.15 0 00-5.5-2.2H96c-17.7 0-32 14.3-32 32v592c0 17.7 14.3 32 32 32h698c13 0 24.8-7.9 29.7-20l134-332c1.5-3.8 2.3-7.9 2.3-12 0-17.7-14.3-32-32-32zM136 256h188.5l119.6 114.4H748V444H238c-13 0-24.8 7.9-29.7 20L136 643.2V256zm635.3 512H159l103.3-256h612.4L771.3 768z';
 
-// OfficeIconBase 统一工具栏图标的尺寸、描边和无障碍属性。
-/** 渲染 Office 文件类型图标共用的基础轮廓。 */
-function OfficeIconBase({ children, ...props }: OfficeIconBaseProps) {
+/** 复制原始矢量路径以保持 Ant Design BarsOutlined 的外观，供大纲入口复用。 */
+const BARS_OUTLINED_PATH =
+  'M912 192H328c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h584c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 284H328c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h584c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 284H328c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h584c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM104 228a56 56 0 10112 0 56 56 0 10-112 0zm0 284a56 56 0 10112 0 56 56 0 10-112 0zm0 284a56 56 0 10112 0 56 56 0 10-112 0z';
+
+/** 统一线性图标的 SVG 画布、描边和无障碍属性。 */
+function OfficeIconBase({
+  children,
+  className,
+  ...props
+}: OfficeIconBaseProps) {
+  const mergedClassName = ['office-file-icon', className]
+    .filter(Boolean)
+    .join(' ');
+
   return (
     <svg
       {...props}
       aria-hidden="true"
+      className={mergedClassName}
       focusable="false"
       width="1em"
       height="1em"
@@ -35,45 +48,28 @@ function OfficeIconBase({ children, ...props }: OfficeIconBaseProps) {
   );
 }
 
-/** 渲染尚未识别格式时使用的通用文件图标。 */
-export function FileIcon(props: OfficeIconProps) {
-  return <OfficeIconBase {...props}>{FILE_FRAME}</OfficeIconBase>;
-}
+/** 渲染与 Ant Design FolderOpenOutlined 一致的打开文件图标。 */
+export function FolderOpenIcon({ className, ...props }: OfficeIconProps) {
+  const mergedClassName = ['office-file-icon', className]
+    .filter(Boolean)
+    .join(' ');
 
-// FileExcelIcon 表示电子表格文件。
-/** 渲染 Excel 文件图标。 */
-export function FileExcelIcon(props: OfficeIconProps) {
   return (
-    <OfficeIconBase {...props}>
-      {FILE_FRAME}
-      <path d="M8.5 11h7v6h-7zM12 11v6M8.5 14h7" />
-    </OfficeIconBase>
+    <svg
+      {...props}
+      aria-hidden="true"
+      className={mergedClassName}
+      focusable="false"
+      width="1em"
+      height="1em"
+      viewBox="64 64 896 896"
+      fill="currentColor"
+    >
+      <path d={FOLDER_OPEN_OUTLINED_PATH} />
+    </svg>
   );
 }
 
-// FilePptIcon 表示演示文稿文件。
-/** 渲染 PowerPoint 文件图标。 */
-export function FilePptIcon(props: OfficeIconProps) {
-  return (
-    <OfficeIconBase {...props}>
-      {FILE_FRAME}
-      <path d="M9 16.5v-5h2.5a1.75 1.75 0 0 1 0 3.5H9" />
-    </OfficeIconBase>
-  );
-}
-
-// FileWordIcon 表示文字文档文件。
-/** 渲染 Word 文件图标。 */
-export function FileWordIcon(props: OfficeIconProps) {
-  return (
-    <OfficeIconBase {...props}>
-      {FILE_FRAME}
-      <path d="m8.5 11 1.25 6 2.25-4 2.25 4 1.25-6" />
-    </OfficeIconBase>
-  );
-}
-
-// ChevronLeftIcon 表示上一页操作。
 /** 渲染向左翻页箭头图标。 */
 export function ChevronLeftIcon(props: OfficeIconProps) {
   return (
@@ -83,7 +79,6 @@ export function ChevronLeftIcon(props: OfficeIconProps) {
   );
 }
 
-// ChevronRightIcon 表示下一页操作。
 /** 渲染向右翻页箭头图标。 */
 export function ChevronRightIcon(props: OfficeIconProps) {
   return (
@@ -93,7 +88,6 @@ export function ChevronRightIcon(props: OfficeIconProps) {
   );
 }
 
-// ZoomOutIcon 表示缩小操作。
 /** 渲染缩小预览图标。 */
 export function ZoomOutIcon(props: OfficeIconProps) {
   return (
@@ -104,7 +98,6 @@ export function ZoomOutIcon(props: OfficeIconProps) {
   );
 }
 
-// ZoomInIcon 表示放大操作。
 /** 渲染放大预览图标。 */
 export function ZoomInIcon(props: OfficeIconProps) {
   return (
@@ -115,7 +108,6 @@ export function ZoomInIcon(props: OfficeIconProps) {
   );
 }
 
-// NotesIcon 表示演讲者备注面板。
 /** 渲染演讲者备注图标。 */
 export function NotesIcon(props: OfficeIconProps) {
   return (
@@ -125,7 +117,6 @@ export function NotesIcon(props: OfficeIconProps) {
   );
 }
 
-// FullscreenIcon 表示进入全屏操作。
 /** 渲染全屏切换图标。 */
 export function FullscreenIcon(props: OfficeIconProps) {
   return (
@@ -135,20 +126,28 @@ export function FullscreenIcon(props: OfficeIconProps) {
   );
 }
 
-// OutlineIcon 表示 Word 文档的层级大纲。
-/** 渲染文档大纲图标。 */
-export function OutlineIcon(props: OfficeIconProps) {
+/** 渲染与 Ant Design BarsOutlined 一致的文档大纲图标。 */
+export function OutlineIcon({ className, ...props }: OfficeIconProps) {
+  const mergedClassName = ['office-file-icon', className]
+    .filter(Boolean)
+    .join(' ');
+
   return (
-    <OfficeIconBase {...props}>
-      <circle cx="5" cy="7" r="1" />
-      <circle cx="5" cy="12" r="1" />
-      <circle cx="8" cy="17" r="1" />
-      <path d="M9 7h10M9 12h10M12 17h7" />
-    </OfficeIconBase>
+    <svg
+      {...props}
+      aria-hidden="true"
+      className={mergedClassName}
+      focusable="false"
+      width="1em"
+      height="1em"
+      viewBox="0 0 1024 1024"
+      fill="currentColor"
+    >
+      <path d={BARS_OUTLINED_PATH} />
+    </svg>
   );
 }
 
-// PanelLeftCloseIcon 表示收起左侧面板。
 /** 渲染收起左侧面板图标。 */
 export function PanelLeftCloseIcon(props: OfficeIconProps) {
   return (
@@ -159,7 +158,6 @@ export function PanelLeftCloseIcon(props: OfficeIconProps) {
   );
 }
 
-// PanelLeftOpenIcon 表示展开左侧面板。
 /** 渲染展开左侧面板图标。 */
 export function PanelLeftOpenIcon(props: OfficeIconProps) {
   return (
