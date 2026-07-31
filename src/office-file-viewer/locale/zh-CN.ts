@@ -19,7 +19,7 @@ export const zhCN: OfficeFileViewerMessages = {
     fullscreenFailed: (reason) => `全屏操作失败：${reason}`,
   },
   toolbar: {
-    selectFile: '选择文件',
+    selectFile: '打开文件',
     previousSlide: '上一页',
     nextSlide: '下一页',
     showSpeakerNotes: '显示演讲者备注',
@@ -66,6 +66,7 @@ export const zhCN: OfficeFileViewerMessages = {
     collapse: '收起文档大纲',
     title: '大纲',
     tree: '大纲目录',
+    resize: '调整文档大纲宽度',
   },
   spreadsheet: {
     dimensions: (rows, columns) => `${rows} 行 × ${columns} 列`,

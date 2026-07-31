@@ -31,7 +31,7 @@ export type OfficeFileViewerMessages = {
   };
   /** 预览器工具栏相关文案。 */
   toolbar: {
-    /** 选择文件按钮文案。 */
+    /** 打开文件按钮文案。 */
     selectFile: string;
     /** 上一张幻灯片按钮文案。 */
     previousSlide: string;
@@ -100,6 +100,8 @@ export type OfficeFileViewerMessages = {
     title: string;
     /** 大纲树相关文案。 */
     tree: string;
+    /** 调整大纲侧栏宽度时使用的文案。 */
+    resize: string;
   };
   /** 电子表格预览相关文案。 */
   spreadsheet: {

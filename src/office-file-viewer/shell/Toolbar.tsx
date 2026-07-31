@@ -1,11 +1,10 @@
-// OfficeToolbar 提供选择文件、翻页、缩放、全屏等 OfficeFileViewer 顶部通用操作。
+// OfficeToolbar 提供打开文件、翻页、缩放、全屏等 OfficeFileViewer 顶部通用操作。
 import { Button, Select, Space, Tooltip, Typography, Upload } from 'antd';
 import React, { memo, useMemo } from 'react';
 import { useOfficeFileViewerMessages } from '../locale';
 import type { PreviewKind } from '../services/preview';
 import {
   isPresentationPreviewKind,
-  isSpreadsheetPreviewKind,
   isWordPreviewKind,
 } from '../services/preview';
 import {
@@ -14,13 +13,11 @@ import {
   OFFICE_MIN_ZOOM,
   OFFICE_ZOOM_LEVELS,
 } from './constants';
+import { OfficeFileTypeIcon } from './FileTypeIcon';
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
-  FileExcelIcon,
-  FileIcon,
-  FilePptIcon,
-  FileWordIcon,
+  FolderOpenIcon,
   FullscreenIcon,
   NotesIcon,
   OutlineIcon,
@@ -76,14 +73,6 @@ type OfficeToolbarProps = {
   onFullscreen: () => void;
 };
 
-/** 根据当前识别状态选择通用或格式专属文件图标。 */
-function getPreviewIcon(kind?: PreviewKind) {
-  if (!kind) return <FileIcon />;
-  if (isSpreadsheetPreviewKind(kind)) return <FileExcelIcon />;
-  if (kind === 'docx' || kind === 'doc') return <FileWordIcon />;
-  return <FilePptIcon />;
-}
-
 /** 提供缩放、翻页、备注和全屏等预览操作。 */
 function OfficeToolbarComponent({
   fileName,
@@ -135,13 +124,19 @@ function OfficeToolbarComponent({
 
   return (
     <div className="office-file-toolbar">
-      <Typography.Text
-        strong
-        ellipsis
-        className="office-file-toolbar__filename"
-      >
-        {fileName}
-      </Typography.Text>
+      <div className="office-file-toolbar__file-info">
+        <OfficeFileTypeIcon
+          className="office-file-toolbar__filename-icon"
+          previewKind={previewKind}
+        />
+        <Typography.Text
+          strong
+          ellipsis
+          className="office-file-toolbar__filename"
+        >
+          {fileName}
+        </Typography.Text>
+      </div>
       <Space size={8} wrap>
         <Upload
           accept={OFFICE_FILE_ACCEPT}
@@ -151,7 +146,7 @@ function OfficeToolbarComponent({
             return false;
           }}
         >
-          <Button icon={getPreviewIcon(previewKind)}>
+          <Button icon={<FolderOpenIcon />}>
             {messages.toolbar.selectFile}
           </Button>
         </Upload>

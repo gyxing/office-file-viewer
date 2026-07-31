@@ -19,7 +19,7 @@ export const enUS: OfficeFileViewerMessages = {
     fullscreenFailed: (reason) => `Fullscreen failed: ${reason}`,
   },
   toolbar: {
-    selectFile: 'Select file',
+    selectFile: 'Open file',
     previousSlide: 'Previous slide',
     nextSlide: 'Next slide',
     showSpeakerNotes: 'Show speaker notes',
@@ -66,6 +66,7 @@ export const enUS: OfficeFileViewerMessages = {
     collapse: 'Collapse document outline',
     title: 'Outline',
     tree: 'Outline navigation',
+    resize: 'Resize document outline',
   },
   spreadsheet: {
     dimensions: (rows, columns) => `${rows} rows × ${columns} columns`,
