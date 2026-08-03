@@ -1,4 +1,4 @@
-import type { PreviewKind } from './detectPreviewKind';
+import type { PreviewKind } from './formatDefinitions';
 
 /** 控制解析任务是否使用 Web Worker：自动选择、强制使用或禁用。 */
 export type WorkerMode = 'auto' | 'always' | 'never';

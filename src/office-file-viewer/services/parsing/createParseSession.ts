@@ -12,11 +12,8 @@ import {
   XlsDocumentAssembler,
 } from './assembly/DocumentAssembler';
 import { ResourceRegistry } from './assembly/ResourceRegistry';
-import {
-  detectPreviewKind,
-  tryDetectPreviewKind,
-  type PreviewKind,
-} from './detectPreviewKind';
+import { detectPreviewKind } from './detectPreviewKind';
+import { tryDetectPreviewKind, type PreviewKind } from './formatDefinitions';
 import { loadOfficeSourcePreviewFactory } from './formatParserRegistry';
 import type {
   OfficeFileViewerParseSession,

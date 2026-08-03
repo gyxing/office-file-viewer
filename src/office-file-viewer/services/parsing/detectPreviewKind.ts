@@ -4,19 +4,6 @@ import {
   type PreviewKind,
 } from './formatDefinitions';
 
-export {
-  getOfficeFormatMetadata,
-  getPreviewFamily,
-  OFFICE_FORMAT_METADATA,
-  SUPPORTED_OFFICE_EXTENSIONS,
-  tryDetectPreviewKind,
-} from './formatDefinitions';
-export type {
-  OfficeFormatMetadata,
-  PreviewFamily,
-  PreviewKind,
-} from './formatDefinitions';
-
 /** 判断文件名是否属于支持的 Office 格式。 */
 export function isSupportedOfficeFileName(fileName: string): boolean {
   return tryDetectPreviewKind(fileName) !== undefined;
