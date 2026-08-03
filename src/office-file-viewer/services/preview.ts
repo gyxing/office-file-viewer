@@ -14,13 +14,14 @@ import {
 // 组件入口只关心“文件类型 + 解析结果”，具体格式的包结构解析都收敛在各自 service 中。
 export {
   detectPreviewKind,
+  getPreviewFamily,
   isPresentationPreviewKind,
   isSpreadsheetPreviewKind,
   isSupportedOfficeFileName,
   isWordPreviewKind,
   SUPPORTED_OFFICE_EXTENSIONS,
 } from './parsing/detectPreviewKind';
-export type { PreviewKind } from './parsing/detectPreviewKind';
+export type { PreviewFamily, PreviewKind } from './parsing/detectPreviewKind';
 
 /** 使用格式判别字段关联对应的标准化文档或工作簿结果。 */
 export type ParsedOfficeFile =

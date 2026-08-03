@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { PRESENTATION_PRELOAD_RADIUS } from '../../services/presentation/presentationPerformance';
 import type {
   PresentationSource,
@@ -6,6 +6,7 @@ import type {
   SlideModel,
   SpeakerNotesModel,
 } from '../../services/presentation/types';
+import { useExternalStoreSnapshot } from '../../shared/react/useExternalStoreSnapshot';
 
 /** 演示文稿数据尚未加载时使用的空快照。 */
 const EMPTY_PRESENTATION_SNAPSHOT: PresentationSourceSnapshot = {
@@ -40,19 +41,9 @@ export function usePresentationSource(
   activeIndex: number,
   showSpeakerNotes: boolean,
 ) {
-  const subscribe = useCallback(
-    (listener: () => void) =>
-      source ? source.subscribe(listener) : () => undefined,
-    [source],
-  );
-  const getSnapshot = useCallback(
-    () => source?.getSnapshot() ?? EMPTY_PRESENTATION_SNAPSHOT,
-    [source],
-  );
-  const snapshot = useSyncExternalStore(
-    subscribe,
-    getSnapshot,
-    () => EMPTY_PRESENTATION_SNAPSHOT,
+  const snapshot = useExternalStoreSnapshot(
+    source,
+    EMPTY_PRESENTATION_SNAPSHOT,
   );
   const [retryRevision, setRetryRevision] = useState(0);
   const [state, setState] = useState<PresentationContentState>({

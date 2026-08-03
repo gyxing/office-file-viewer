@@ -1,6 +1,8 @@
 import { openOfficeArchive } from '../../shared/ooxml/archive';
 import type { OfficeArchiveReader } from '../../shared/ooxml/OfficeArchiveReader';
 import { ResourceRegistry } from '../parsing/assembly/ResourceRegistry';
+import type { OfficeSourcePreviewFactory } from '../parsing/formatParserRegistry';
+import { disposeDocumentSession } from '../session';
 import { createSpreadsheetAxisIndex } from '../spreadsheet/SpreadsheetAxisIndex';
 import {
   createSpreadsheetPerformanceProfile,
@@ -688,6 +690,50 @@ export async function createXlsSpreadsheetSourceFromArchive(
     requiresSource: result.requiresSource,
   };
 }
+
+/** 仅在 XLS 结构画像命中大文件阈值时创建按 Sheet 预览源。 */
+export const tryCreateXlsSourcePreview: OfficeSourcePreviewFactory = async (
+  file,
+  { documentSession, emitProgress, emitPartial },
+) => {
+  emitProgress({
+    stage: 'container',
+    percent: 0.02,
+    message: '正在读取 XLS 复合文档目录',
+  });
+  const archive = await profileXlsArchive(file, documentSession.signal);
+  let source: XlsSpreadsheetSource | undefined;
+  try {
+    const created = await createXlsSpreadsheetSourceFromArchive(
+      archive,
+      documentSession.id,
+      documentSession.signal,
+    );
+    source = created.source;
+    if (!created.requiresSource) {
+      await source.dispose();
+      return undefined;
+    }
+
+    documentSession.register({ dispose: () => source?.dispose() });
+    documentSession.transferTo(source);
+    const state = {
+      sessionId: documentSession.id,
+      previewKind: 'xls' as const,
+      mode: 'source' as const,
+      source,
+      summary: source.getSnapshot(),
+    };
+    emitPartial(state);
+    return {
+      ...state,
+      dispose: () => disposeDocumentSession(source),
+    };
+  } catch (error) {
+    await (source?.dispose() ?? archive.reader.close());
+    throw error;
+  }
+};
 
 /** 打开 XLS 并创建按需 Source，失败时保证 CFB Reader 被关闭。 */
 export async function createXlsSpreadsheetSource(

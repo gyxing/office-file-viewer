@@ -1,5 +1,6 @@
 import { createContentStore } from '../content-store/createContentStore';
 import type { OfficeContentStore } from '../content-store/types';
+import type { OfficeSourcePreviewFactory } from '../parsing/formatParserRegistry';
 import {
   getPresentationSlideWeight,
   type PresentationPerformanceProfile,
@@ -15,6 +16,7 @@ import type {
   SlideModel,
   SpeakerNotesModel,
 } from '../presentation/types';
+import { disposeDocumentSession } from '../session';
 import { readPptNotes } from './document/readNotes';
 import { loadPptSlide } from './loadPptSlide';
 import {
@@ -22,6 +24,7 @@ import {
   readPptPersistObject,
 } from './readPptPersistObject';
 import {
+  profilePptArchive,
   readPptStructure,
   type PptStructure,
   type ProfiledPptArchive,
@@ -310,3 +313,46 @@ export async function createPptPresentationSourceFromArchive(
     sessionId,
   );
 }
+
+/** 仅在 PPT 画像命中大文件阈值时创建按页预览源。 */
+export const tryCreatePptSourcePreview: OfficeSourcePreviewFactory = async (
+  file,
+  { documentSession, emitProgress, emitPartial },
+) => {
+  emitProgress({
+    stage: 'container',
+    percent: 0.02,
+    message: '正在读取 PPT 复合文档目录',
+  });
+  const archive = await profilePptArchive(file, documentSession.signal);
+  if (archive.profile.performance.slideMode !== 'lazy') {
+    await archive.reader.close();
+    return undefined;
+  }
+
+  let source: PptPresentationSource | undefined;
+  try {
+    source = await createPptPresentationSourceFromArchive(
+      archive,
+      documentSession.id,
+      documentSession.signal,
+    );
+    documentSession.register({ dispose: () => source?.dispose() });
+    documentSession.transferTo(source);
+    const state = {
+      sessionId: documentSession.id,
+      previewKind: 'ppt' as const,
+      mode: 'source' as const,
+      source,
+      summary: source.getSnapshot(),
+    };
+    emitPartial(state);
+    return {
+      ...state,
+      dispose: () => disposeDocumentSession(source),
+    };
+  } catch (error) {
+    await (source?.dispose() ?? archive.reader.close());
+    throw error;
+  }
+};

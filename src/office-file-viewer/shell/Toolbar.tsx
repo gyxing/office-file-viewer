@@ -2,11 +2,7 @@
 import { Button, Select, Space, Tooltip, Typography, Upload } from 'antd';
 import React, { memo, useMemo } from 'react';
 import { useOfficeFileViewerMessages } from '../locale';
-import type { PreviewKind } from '../services/preview';
-import {
-  isPresentationPreviewKind,
-  isWordPreviewKind,
-} from '../services/preview';
+import { getPreviewFamily, type PreviewKind } from '../services/preview';
 import {
   OFFICE_DEFAULT_ZOOM,
   OFFICE_MAX_ZOOM,
@@ -102,10 +98,9 @@ function OfficeToolbarComponent({
     () => OFFICE_ZOOM_LEVELS.map((value) => ({ value, label: `${value}%` })),
     [],
   );
-  const isPresentationPreview = previewKind
-    ? isPresentationPreviewKind(previewKind)
-    : false;
-  const isWordPreview = previewKind ? isWordPreviewKind(previewKind) : false;
+  const previewFamily = previewKind ? getPreviewFamily(previewKind) : undefined;
+  const isPresentationPreview = previewFamily === 'presentation';
+  const isWordPreview = previewFamily === 'word';
   // 只有已加载且至少存在一个可切换方向的演示文稿才需要显示翻页导航。
   const showSlideNavigation =
     isPresentationPreview &&

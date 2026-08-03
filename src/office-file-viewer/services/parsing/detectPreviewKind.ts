@@ -1,54 +1,48 @@
-// 文件类型检测属于解析运行时公共能力，避免会话与 preview 入口形成循环依赖。
-/** 枚举组件能够识别和预览的 Office 文件格式。 */
-export type PreviewKind = 'pptx' | 'ppt' | 'xlsx' | 'xls' | 'docx' | 'doc';
+import {
+  getPreviewFamily,
+  tryDetectPreviewKind,
+  type PreviewKind,
+} from './formatDefinitions';
 
-/** 当前预览器支持解析的 Office 文件扩展名。 */
-export const SUPPORTED_OFFICE_EXTENSIONS = [
-  '.pptx',
-  '.ppt',
-  '.xlsx',
-  '.xls',
-  '.docx',
-  '.doc',
-  '.wps',
-] as const;
+export {
+  getOfficeFormatMetadata,
+  getPreviewFamily,
+  OFFICE_FORMAT_METADATA,
+  SUPPORTED_OFFICE_EXTENSIONS,
+  tryDetectPreviewKind,
+} from './formatDefinitions';
+export type {
+  OfficeFormatMetadata,
+  PreviewFamily,
+  PreviewKind,
+} from './formatDefinitions';
 
 /** 判断文件名是否属于支持的 Office 格式。 */
 export function isSupportedOfficeFileName(fileName: string): boolean {
-  const lower = fileName.toLowerCase();
-  return SUPPORTED_OFFICE_EXTENSIONS.some((extension) =>
-    lower.endsWith(extension),
-  );
+  return tryDetectPreviewKind(fileName) !== undefined;
 }
 
 /** 判断当前格式是否复用电子表格预览链路。 */
 export function isSpreadsheetPreviewKind(
   kind: PreviewKind,
 ): kind is 'xlsx' | 'xls' {
-  return kind === 'xlsx' || kind === 'xls';
+  return getPreviewFamily(kind) === 'spreadsheet';
 }
 
 /** 判断当前格式是否复用统一文字文档预览链路。 */
 export function isWordPreviewKind(kind: PreviewKind): kind is 'docx' | 'doc' {
-  return kind === 'docx' || kind === 'doc';
+  return getPreviewFamily(kind) === 'word';
 }
 
 /** 判断当前格式是否复用统一演示文稿渲染链路。 */
 export function isPresentationPreviewKind(
   kind: PreviewKind,
 ): kind is 'pptx' | 'ppt' {
-  return kind === 'pptx' || kind === 'ppt';
+  return getPreviewFamily(kind) === 'presentation';
 }
 
 /** 根据文件名推断 Office 预览格式。 */
 export function detectPreviewKind(fileName: string): PreviewKind {
-  const lower = fileName.toLowerCase();
-  if (lower.endsWith('.pptx')) return 'pptx';
-  if (lower.endsWith('.ppt')) return 'ppt';
-  if (lower.endsWith('.xlsx')) return 'xlsx';
-  if (lower.endsWith('.xls')) return 'xls';
-  if (lower.endsWith('.docx')) return 'docx';
-  if (lower.endsWith('.doc') || lower.endsWith('.wps')) return 'doc';
   // 保留历史行为：无可识别扩展名时按 PPTX 尝试解析。
-  return 'pptx';
+  return tryDetectPreviewKind(fileName) ?? 'pptx';
 }

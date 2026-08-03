@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import React, { createContext, useContext } from 'react';
 import type { OfficeResourceStore } from './types';
 
@@ -18,7 +18,7 @@ type OfficeResourceStoreProviderProps = {
 export function OfficeResourceStoreProvider({
   store,
   children,
-}: OfficeResourceStoreProviderProps) {
+}: OfficeResourceStoreProviderProps): ReactElement {
   return (
     <OfficeResourceContext.Provider value={store}>
       {children}

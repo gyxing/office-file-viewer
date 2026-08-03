@@ -1,5 +1,6 @@
 import { createContentStore } from '../content-store/createContentStore';
 import type { OfficeContentStore } from '../content-store/types';
+import type { OfficeSourcePreviewFactory } from '../parsing/formatParserRegistry';
 import {
   getPresentationSlideWeight,
   type PresentationPerformanceProfile,
@@ -15,6 +16,7 @@ import type {
   SlideModel,
   SpeakerNotesModel,
 } from '../presentation/types';
+import { disposeDocumentSession } from '../session';
 import { loadPptxSlide } from './loadPptxSlide';
 import { parsePptxSpeakerNotes } from './parseSpeakerNotes';
 import type {
@@ -276,6 +278,49 @@ export async function createPptxPresentationSourceFromArchive(
   );
   return new PptxPresentationSource(context, archive.profile.performance);
 }
+
+/** 仅在 PPTX 画像命中大文件阈值时创建按页预览源。 */
+export const tryCreatePptxSourcePreview: OfficeSourcePreviewFactory = async (
+  file,
+  { documentSession, emitProgress, emitPartial },
+) => {
+  emitProgress({
+    stage: 'container',
+    percent: 0.02,
+    message: '正在读取 PPTX 包目录',
+  });
+  const archive = await profilePptxArchive(file, documentSession.signal);
+  if (archive.profile.performance.slideMode !== 'lazy') {
+    await archive.reader.close();
+    return undefined;
+  }
+
+  let source: PptxPresentationSource | undefined;
+  try {
+    source = await createPptxPresentationSourceFromArchive(
+      archive,
+      documentSession.id,
+      documentSession.signal,
+    );
+    documentSession.register({ dispose: () => source?.dispose() });
+    documentSession.transferTo(source);
+    const state = {
+      sessionId: documentSession.id,
+      previewKind: 'pptx' as const,
+      mode: 'source' as const,
+      source,
+      summary: source.getSnapshot(),
+    };
+    emitPartial(state);
+    return {
+      ...state,
+      dispose: () => disposeDocumentSession(source),
+    };
+  } catch (error) {
+    await (source?.dispose() ?? archive.reader.close());
+    throw error;
+  }
+};
 
 /** 打开并创建大型 PPTX 数据源，失败时保证 Reader 被关闭。 */
 export async function createPptxPresentationSource(

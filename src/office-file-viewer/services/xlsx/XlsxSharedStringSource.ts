@@ -4,7 +4,7 @@ import {
   throwIfSpreadsheetAborted,
   waitForSpreadsheetResult,
 } from '../spreadsheet/SpreadsheetSource';
-import { decodeMojibake } from './parseXlsx';
+import { decodeMojibake } from './xlsxCellFormatting';
 
 /** 按当前 Sheet 实际引用读取 sharedStrings 的协议。 */
 export interface XlsxSharedStringSource {

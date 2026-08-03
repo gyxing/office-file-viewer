@@ -30,7 +30,7 @@ import {
   pointToPx,
   resolveStyle,
   resolveXlsxMaxDigitWidth,
-} from './parseXlsx';
+} from './xlsxCellFormatting';
 
 /** 单个 Sheet 流式解析后的稀疏结构。 */
 export type ParsedXlsxSheetStream = {

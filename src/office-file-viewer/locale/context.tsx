@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import React, { createContext, useContext } from 'react';
 import { enUS } from './en-US';
 import type { OfficeFileViewerLocale, OfficeFileViewerMessages } from './types';
@@ -27,7 +27,7 @@ const OfficeFileViewerLocaleContext = createContext(zhCN);
 export function OfficeFileViewerLocaleProvider({
   locale,
   children,
-}: OfficeFileViewerLocaleProviderProps) {
+}: OfficeFileViewerLocaleProviderProps): ReactElement {
   return (
     <OfficeFileViewerLocaleContext.Provider
       value={OFFICE_FILE_VIEWER_LOCALES[locale]}

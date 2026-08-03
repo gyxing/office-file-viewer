@@ -3,7 +3,7 @@ import type { OfficeArchiveReader } from '../../shared/ooxml/OfficeArchiveReader
 import type { OfficeTheme } from '../../shared/ooxml/theme';
 import type { SpreadsheetPerformanceProfile } from '../spreadsheet/spreadsheetPerformance';
 import type { SpreadsheetSheetDescriptor } from '../spreadsheet/SpreadsheetSource';
-import type { StyleBook } from './parseXlsx';
+import type { StyleBook } from './xlsxCellFormatting';
 import type { XlsxSharedStringSource } from './XlsxSharedStringSource';
 
 /** XLSX Source 使用的 Sheet 描述符和包内路径。 */

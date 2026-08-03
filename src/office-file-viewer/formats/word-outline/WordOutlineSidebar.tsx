@@ -7,7 +7,6 @@ import React, {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
 } from 'react';
 import { useOfficeFileViewerMessages } from '../../locale';
 import type { WordOutlineProvider } from '../../services/word/WordOutlineProvider';
@@ -16,6 +15,7 @@ import type {
   WordOutlineItem,
   WordOutlineTreeNode,
 } from '../../services/word/types';
+import { useExternalStoreSnapshot } from '../../shared/react/useExternalStoreSnapshot';
 import { OutlineIcon, PanelLeftCloseIcon } from '../../shell/icons';
 import type { WordBlockPageIndex } from '../word-pages/WordBlockPageIndex';
 import type { WordPageNavigationController } from '../word-pages/types';
@@ -275,11 +275,7 @@ function WordOutlineSidebarComponent({
 }: WordOutlineSidebarProps) {
   const messages = useOfficeFileViewerMessages();
   const panelRef = useRef<HTMLElement>(null);
-  const snapshot = useSyncExternalStore(
-    provider.subscribe,
-    provider.getSnapshot,
-    provider.getSnapshot,
-  );
+  const snapshot = useExternalStoreSnapshot(provider);
   const normalTree = useMemo(
     () => (outlineMode === 'normal' ? provider.getRoots() : []),
     [outlineMode, provider, snapshot.revision],

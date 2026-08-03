@@ -166,3 +166,11 @@ export type PptxPackageContext = {
   /** 按源顺序排列的轻量描述信息。 */
   descriptors: readonly PptxSlideDescriptor[];
 };
+
+/** 在取消信号已触发时抛出标准的 AbortError。 */
+export function throwIfPptxParseAborted(signal?: AbortSignal) {
+  if (!signal?.aborted) return;
+  const error = new Error('PPTX 解析已取消');
+  error.name = 'AbortError';
+  throw error;
+}

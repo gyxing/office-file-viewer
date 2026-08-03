@@ -8,7 +8,6 @@ import React, {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
 } from 'react';
 import type {
   DocxWordPageSource,
@@ -22,6 +21,7 @@ import type {
 import { collectWordPerformanceStats } from '../../services/word/collectWordPerformanceStats';
 import { createMaterializedWordPageSource } from '../../services/word/createMaterializedWordPageSource';
 import { createMemoryWordOutlineProvider } from '../../services/word/createMemoryWordOutlineProvider';
+import { useExternalStoreSnapshot } from '../../shared/react/useExternalStoreSnapshot';
 import { OfficeEmpty } from '../../shell/Empty';
 import { WordOutlineSidebar } from '../word-outline/WordOutlineSidebar';
 import type { WordPageNavigationController } from '../word-pages/types';
@@ -236,11 +236,7 @@ function DocxViewerComponent({
     [materializedPageSource],
   );
   const pageSource = source ?? materializedPageSource;
-  const pageSnapshot = useSyncExternalStore(
-    pageSource.subscribe,
-    pageSource.getSnapshot,
-    pageSource.getSnapshot,
-  );
+  const pageSnapshot = useExternalStoreSnapshot(pageSource);
   const outlineItems = useMemo(
     () =>
       showOutline
