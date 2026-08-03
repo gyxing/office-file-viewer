@@ -1,17 +1,14 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { SpreadsheetSource } from '../../services/spreadsheet/SpreadsheetSource';
 import type { SpreadsheetSheet } from '../../services/spreadsheet/types';
+import { useExternalStoreSnapshot } from '../../shared/react/useExternalStoreSnapshot';
 
 /** 订阅 Source，并只为当前激活 Sheet 请求所需模型。 */
 export function useSpreadsheetSource(
   source: SpreadsheetSource,
   activeSheetId: string | undefined,
 ) {
-  const snapshot = useSyncExternalStore(
-    source.subscribe.bind(source),
-    source.getSnapshot.bind(source),
-    source.getSnapshot.bind(source),
-  );
+  const snapshot = useExternalStoreSnapshot(source);
   const activeDescriptor =
     snapshot.sheets.find((sheet) => sheet.id === activeSheetId) ??
     snapshot.sheets[0];

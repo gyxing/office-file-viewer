@@ -15,6 +15,7 @@ import type {
   PresentationSource,
 } from '../services/presentation/types';
 import {
+  getPreviewFamily,
   isSpreadsheetPreviewKind,
   type PreviewKind,
 } from '../services/preview';
@@ -129,15 +130,20 @@ function OfficePreviewStageComponent({
     return <OfficeLoading tip={loadingTip} />;
   }
   if (!previewKind) return <OfficeEmpty />;
+  const previewFamily = getPreviewFamily(previewKind);
+  const spreadsheetPreviewKind =
+    previewFamily === 'spreadsheet' && isSpreadsheetPreviewKind(previewKind)
+      ? previewKind
+      : undefined;
 
   // 格式 viewer 是真正的重渲染模块，按文件类型懒加载，避免首屏一次性拉取所有预览实现。
   return (
     <Suspense fallback={<OfficeLoading />}>
-      {isSpreadsheetPreviewKind(previewKind) ? (
+      {spreadsheetPreviewKind ? (
         <LazyXlsxViewer
           workbook={spreadsheetWorkbook}
           source={spreadsheetPreviewSource}
-          kind={previewKind}
+          kind={spreadsheetPreviewKind}
           activeSheetId={activeSheetId}
           zoom={zoom}
           onSelectSheet={onSelectSheet}

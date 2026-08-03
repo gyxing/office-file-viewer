@@ -6,14 +6,18 @@ import {
   descendantByLocalName,
   matchesLocalName,
 } from '../../shared/ooxml/xml';
+import type { OfficeSourcePreviewFactory } from '../parsing/formatParserRegistry';
+import { disposeDocumentSession } from '../session';
+import { profileDocxArchive } from './docxArchiveProfile';
 import { loadDocxPackageContext } from './DocxPackageContext';
+import { DocxWordPageSource } from './DocxWordPageSource';
+import { parseDocxBlock, type DocxBlockParseResult } from './parseDocxBlock';
 import {
   docxBlockParseOperations,
   markDocxTitle,
   normalizeDocxPageContents,
   readDocxBodyPage,
-} from './parseDocx';
-import { parseDocxBlock, type DocxBlockParseResult } from './parseDocxBlock';
+} from './parseDocxContent';
 import type {
   DocxBlock,
   DocxCharacterSpacingControl,
@@ -231,3 +235,84 @@ export async function parseDocxSource(
     images: context.images,
   });
 }
+
+/** 仅在 DOCX 画像命中大文件阈值时创建流式分页预览源。 */
+export const tryCreateDocxSourcePreview: OfficeSourcePreviewFactory = async (
+  file,
+  { documentSession, emitProgress, emitPartial },
+) => {
+  emitProgress({
+    stage: 'container',
+    percent: 0.02,
+    message: '正在读取 DOCX 包目录',
+  });
+  const archive = await profileDocxArchive(file, documentSession.signal);
+  if (archive.profile.mode !== 'lazy') {
+    await archive.reader.close();
+    return undefined;
+  }
+
+  const source = new DocxWordPageSource({
+    sessionId: documentSession.id,
+    reader: archive.reader,
+    signal: documentSession.signal,
+  });
+  documentSession.register({ dispose: () => source.dispose() });
+  documentSession.transferTo(source);
+
+  const createState = () => ({
+    sessionId: documentSession.id,
+    previewKind: 'docx' as const,
+    mode: 'source' as const,
+    source,
+    summary: source.getSummary(),
+  });
+  const emitRenderablePartial = () => {
+    if (source.hasRenderableContent()) emitPartial(createState());
+  };
+
+  try {
+    await parseDocxSource(
+      archive.reader,
+      {
+        metadata: (metadata) => {
+          source.setMetadata(metadata);
+          emitRenderablePartial();
+        },
+        page: async (page) => {
+          await source.addSourcePage(page);
+          emitRenderablePartial();
+        },
+        complete: (result) => {
+          source.finishParsing(result);
+          emitRenderablePartial();
+        },
+      },
+      documentSession.signal,
+      documentSession.id,
+    );
+    await source.waitForCompletion(documentSession.signal);
+    if (!source.getSnapshot().pages.length) {
+      throw new Error('DOCX PageSource 未生成可渲染页面');
+    }
+    const state = createState();
+    return {
+      ...state,
+      dispose: () => disposeDocumentSession(source),
+    };
+  } catch (error) {
+    if (source.hasRenderableContent()) {
+      const summary = source.getSummary();
+      try {
+        source.finishParsing({
+          title: summary.title,
+          images: summary.images,
+        });
+      } catch {
+        // 已完成或已取消的 Source 保留当前可渲染快照即可。
+      }
+      emitRenderablePartial();
+    }
+    throw error;
+  }
+};

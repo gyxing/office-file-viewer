@@ -1,4 +1,7 @@
-import type { PreviewKind } from '../../preview';
+import {
+  getOfficeFormatMetadata,
+  type PreviewKind,
+} from '../formatDefinitions';
 import type { WorkerMode } from '../types';
 import { MainThreadRuntime } from './MainThreadRuntime';
 import { createWorkerConfigurationError, WorkerRuntime } from './WorkerRuntime';
@@ -10,7 +13,7 @@ export function createRuntime(
   workerFactory?: () => Worker,
 ) {
   if (mode === 'never') return new MainThreadRuntime();
-  if (kind !== 'xls' && kind !== 'ppt' && kind !== 'doc') {
+  if (!getOfficeFormatMetadata(kind).supportsWorker) {
     if (mode === 'always') {
       throw createWorkerConfigurationError(
         'WORKER_FORMAT_NOT_READY',

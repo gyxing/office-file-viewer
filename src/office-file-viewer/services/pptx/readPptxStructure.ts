@@ -19,18 +19,18 @@ import {
   type PresentationPerformanceProfile,
 } from '../presentation/presentationPerformance';
 import type { OfficeResourceSource } from '../resource-store';
+import type {
+  PptxPackageContext,
+  PptxSlideDescriptor,
+} from './PptxPackageContext';
+import { throwIfPptxParseAborted } from './PptxPackageContext';
 import {
   buildPptxPackageState,
   readPresentationLayouts,
   readPresentationSize,
   readTableStyles,
   readTheme,
-  throwIfPptxParseAborted,
-} from './parsePptx';
-import type {
-  PptxPackageContext,
-  PptxSlideDescriptor,
-} from './PptxPackageContext';
+} from './readPptxPresentationParts';
 
 /** PPTX 压缩包的大文件判定指标。 */
 export type PptxArchiveProfile = {

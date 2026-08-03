@@ -17,7 +17,7 @@ import {
   type SpreadsheetPerformanceProfile,
 } from '../spreadsheet/spreadsheetPerformance';
 import type { SpreadsheetRange } from '../spreadsheet/types';
-import { decodeMojibake, parseRange, parseStyles } from './parseXlsx';
+import { decodeMojibake, parseRange, parseStyles } from './xlsxCellFormatting';
 import type {
   XlsxPackageContext,
   XlsxSheetDescriptor,

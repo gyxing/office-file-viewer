@@ -1,9 +1,10 @@
 import type { SlideModel } from '../presentation/types';
-import { parseSlideXml, throwIfPptxParseAborted } from './parsePptx';
+import { parseSlideXml } from './parsePptxSlide';
 import type {
   PptxPackageContext,
   PptxSlideDescriptor,
 } from './PptxPackageContext';
+import { throwIfPptxParseAborted } from './PptxPackageContext';
 
 /** 补齐当前页直接引用的图表或 WPS 扩展 XML。 */
 async function loadReferencedXml(

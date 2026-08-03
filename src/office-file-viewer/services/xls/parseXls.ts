@@ -1,19 +1,51 @@
 import { XlsDocumentAssembler } from '../parsing/assembly/DocumentAssembler';
 import { ResourceRegistry } from '../parsing/assembly/ResourceRegistry';
-import { MainThreadRuntime } from '../parsing/runtime/MainThreadRuntime';
+import type { OfficeFormatParser } from '../parsing/formatParserRegistry';
+import { throwIfParseAborted } from '../parsing/runtime/types';
 import { createOfficeDocumentSession } from '../session';
 import type { SpreadsheetWorkbook } from '../spreadsheet/types';
+import { parseXlsCore } from './parseXlsCore';
+
+/** 通过统一运行时合同解析 XLS，并逐张输出工作表和资源。 */
+export const runXlsParser: OfficeFormatParser = async (
+  file,
+  { signal },
+  sink,
+) => {
+  sink.progress({
+    stage: 'reading',
+    percent: 0.01,
+    message: '正在读取 XLS 文件',
+  });
+  const input = await file.arrayBuffer();
+  throwIfParseAborted(signal);
+  const result = await parseXlsCore(input, {
+    checkpoint: async (progress) => {
+      throwIfParseAborted(signal);
+      if (progress) sink.progress(progress);
+    },
+    output: {
+      resource: async (resource) => {
+        throwIfParseAborted(signal);
+        await sink.resource(resource);
+      },
+      sheet: async (index, revision, sheet) => {
+        throwIfParseAborted(signal);
+        await sink.sheet(index, revision, sheet);
+      },
+    },
+  });
+  await sink.complete(result.workbook.warnings);
+};
 
 /** 在纯浏览器中解析未加密的 Excel 97–2003 BIFF8 工作簿。 */
 export async function parseXls(file: File): Promise<SpreadsheetWorkbook> {
   const documentSession = createOfficeDocumentSession();
-  const runtime = new MainThreadRuntime();
   const assembler = new XlsDocumentAssembler(new ResourceRegistry());
   let target: SpreadsheetWorkbook | undefined;
   try {
-    await runtime.run(
+    await runXlsParser(
       file,
-      'xls',
       {
         documentSessionId: documentSession.id,
         signal: documentSession.signal,
@@ -51,7 +83,6 @@ export async function parseXls(file: File): Promise<SpreadsheetWorkbook> {
     assembler.dispose();
     throw error;
   } finally {
-    runtime.dispose();
     await documentSession.dispose();
   }
 }

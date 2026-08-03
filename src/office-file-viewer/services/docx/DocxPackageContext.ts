@@ -2,7 +2,10 @@ import type { OfficeEntryMap } from '../../shared/ooxml/archive';
 import { imageMimeType } from '../../shared/ooxml/media';
 import type { OfficeArchiveReader } from '../../shared/ooxml/OfficeArchiveReader';
 import type { OfficeResourceSource } from '../resource-store/types';
-import { createDocxParseContext, type DocxParseContext } from './parseDocx';
+import {
+  createDocxParseContext,
+  type DocxParseContext,
+} from './docxParsingContext';
 
 /** DOCX 压缩包内共享关系、主题和资源的解析上下文。 */
 export type DocxPackageContext = {

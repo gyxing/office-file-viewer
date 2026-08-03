@@ -1,10 +1,4 @@
-import React, {
-  memo,
-  useEffect,
-  useMemo,
-  useRef,
-  useSyncExternalStore,
-} from 'react';
+import React, { memo, useEffect, useMemo, useRef } from 'react';
 import type {
   DocWordPageSource,
   DocWordPreviewSummary,
@@ -13,6 +7,7 @@ import type { DocDocument } from '../../services/doc/types';
 import { collectWordPerformanceStats } from '../../services/word/collectWordPerformanceStats';
 import { createMaterializedWordPageSource } from '../../services/word/createMaterializedWordPageSource';
 import { createMemoryWordOutlineProvider } from '../../services/word/createMemoryWordOutlineProvider';
+import { useExternalStoreSnapshot } from '../../shared/react/useExternalStoreSnapshot';
 import { OfficeEmpty } from '../../shell/Empty';
 import { WordOutlineSidebar } from '../word-outline/WordOutlineSidebar';
 import type { WordPageNavigationController } from '../word-pages/types';
@@ -136,11 +131,7 @@ function DocViewerComponent({
     [materializedPageSource],
   );
   const pageSource = source?.pages ?? materializedPageSource;
-  const pageSnapshot = useSyncExternalStore(
-    pageSource.subscribe,
-    pageSource.getSnapshot,
-    pageSource.getSnapshot,
-  );
+  const pageSnapshot = useExternalStoreSnapshot(pageSource);
   const blockPageIndex = useMemo(() => {
     const index = new WordBlockPageIndex();
     pageSnapshot.pages.forEach((meta) => index.replacePage(meta));

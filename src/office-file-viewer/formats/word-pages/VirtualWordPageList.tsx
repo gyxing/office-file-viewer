@@ -5,9 +5,9 @@ import React, {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
 } from 'react';
 import type { WordPageSource } from '../../services/word/WordPageSource';
+import { useExternalStoreSnapshot } from '../../shared/react/useExternalStoreSnapshot';
 import './index.less';
 import { PageHeightIndex } from './PageHeightIndex';
 import type {
@@ -84,11 +84,7 @@ export function VirtualWordPageList<TPage>({
   navigationControllerRef,
   renderPage,
 }: VirtualWordPageListProps<TPage>) {
-  const snapshot = useSyncExternalStore(
-    source.subscribe,
-    source.getSnapshot,
-    source.getSnapshot,
-  );
+  const snapshot = useExternalStoreSnapshot(source);
   const estimatedHeights = useMemo(
     () =>
       snapshot.pages.map(

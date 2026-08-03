@@ -1,10 +1,9 @@
 import type { ReactNode, SVGProps } from 'react';
 import React from 'react';
-import type { PreviewKind } from '../services/preview';
 import {
-  isPresentationPreviewKind,
-  isSpreadsheetPreviewKind,
-  isWordPreviewKind,
+  getPreviewFamily,
+  type PreviewFamily,
+  type PreviewKind,
 } from '../services/preview';
 
 /** 文件图标支持的视觉类别。 */
@@ -110,13 +109,17 @@ const FILE_TYPE_GLYPHS: Record<FileGlyphKind, ReactNode> = {
   ),
 };
 
+/** 预览界面族与工具栏文件图标视觉类别的对应关系。 */
+const FILE_GLYPH_KIND_BY_FAMILY: Record<PreviewFamily, FileGlyphKind> = {
+  word: 'word',
+  spreadsheet: 'excel',
+  presentation: 'powerpoint',
+};
+
 /** 根据解析格式选择对应的文件图标类别。 */
 function getFileGlyphKind(previewKind?: PreviewKind): FileGlyphKind {
   if (!previewKind) return 'generic';
-  if (isWordPreviewKind(previewKind)) return 'word';
-  if (isSpreadsheetPreviewKind(previewKind)) return 'excel';
-  if (isPresentationPreviewKind(previewKind)) return 'powerpoint';
-  return 'generic';
+  return FILE_GLYPH_KIND_BY_FAMILY[getPreviewFamily(previewKind)];
 }
 
 /** 渲染与当前 Office 格式对应的彩色文件图标。 */

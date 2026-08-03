@@ -1,3 +1,5 @@
+import type { OfficeSourcePreviewFactory } from '../parsing/formatParserRegistry';
+import { disposeDocumentSession } from '../session';
 import {
   createSpreadsheetPerformanceProfile,
   upgradeSpreadsheetPerformanceProfile,
@@ -25,13 +27,13 @@ import {
   loadXlsxOlePreviewImages,
   mergeXlsxPreviewImages,
 } from './loadXlsxOlePreviewImages';
-import { columnIndexToLabel } from './parseXlsx';
 import { parseXlsxSheetStream } from './parseXlsxSheetStream';
 import {
   profileXlsxArchive,
   readXlsxStructure,
   type ProfiledXlsxArchive,
 } from './readXlsxStructure';
+import { columnIndexToLabel } from './xlsxCellFormatting';
 import type {
   XlsxPackageContext,
   XlsxSheetDescriptor,
@@ -441,6 +443,50 @@ export async function createXlsxSpreadsheetSourceFromArchive(
     profile,
   };
 }
+
+/** 仅在 XLSX 画像命中大文件阈值时创建按 Sheet 预览源。 */
+export const tryCreateXlsxSourcePreview: OfficeSourcePreviewFactory = async (
+  file,
+  { documentSession, emitProgress, emitPartial },
+) => {
+  emitProgress({
+    stage: 'container',
+    percent: 0.02,
+    message: '正在读取 XLSX 包目录',
+  });
+  const archive = await profileXlsxArchive(file, documentSession.signal);
+  let source: XlsxSpreadsheetSource | undefined;
+  try {
+    const created = await createXlsxSpreadsheetSourceFromArchive(
+      archive,
+      documentSession.id,
+      documentSession.signal,
+    );
+    source = created.source;
+    if (!created.profile.requiresSource) {
+      await source.dispose();
+      return undefined;
+    }
+
+    documentSession.register({ dispose: () => source?.dispose() });
+    documentSession.transferTo(source);
+    const state = {
+      sessionId: documentSession.id,
+      previewKind: 'xlsx' as const,
+      mode: 'source' as const,
+      source,
+      summary: source.getSnapshot(),
+    };
+    emitPartial(state);
+    return {
+      ...state,
+      dispose: () => disposeDocumentSession(source),
+    };
+  } catch (error) {
+    await (source?.dispose() ?? archive.reader.close());
+    throw error;
+  }
+};
 
 /** 打开 XLSX 并创建按需 Source，失败时保证 Reader 被关闭。 */
 export async function createXlsxSpreadsheetSource(

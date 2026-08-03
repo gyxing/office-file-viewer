@@ -1,6 +1,6 @@
 // OfficeFileViewer 是组件库对外主入口，负责文件上传解析、格式状态和全局工具栏交互。
 import { Layout } from 'antd';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactElement } from 'react';
 import React, {
   memo,
   useCallback,
@@ -38,17 +38,14 @@ import type {
 } from './services/parsing/internalTypes';
 import type { PptxDocument } from './services/pptx/types';
 import { disposePresentationDocument } from './services/presentation/dispose';
-import type {
-  PresentationSource,
-  PresentationSourceSnapshot,
-} from './services/presentation/types';
+import type { PresentationSource } from './services/presentation/types';
 import {
   detectPreviewKind,
   disposeParsedOfficeFile,
+  getPreviewFamily,
   isPresentationPreviewKind,
   isSpreadsheetPreviewKind,
   isSupportedOfficeFileName,
-  isWordPreviewKind,
   type ParsedOfficeFile,
   type PreviewKind,
 } from './services/preview';
@@ -61,14 +58,12 @@ import {
   disposeDocumentSession,
   type OfficeDocumentSession,
 } from './services/session';
-import type {
-  SpreadsheetSource,
-  SpreadsheetSourceSnapshot,
-} from './services/spreadsheet/SpreadsheetSource';
+import type { SpreadsheetSource } from './services/spreadsheet/SpreadsheetSource';
 import {
   disposeSpreadsheetWorkbook,
   type SpreadsheetWorkbook,
 } from './services/spreadsheet/types';
+import { useExternalStoreSnapshot } from './shared/react/useExternalStoreSnapshot';
 import { OfficeParseStatus } from './shell/ParseStatus';
 import { OfficePreviewStage } from './shell/PreviewStage';
 import { OfficeToolbar } from './shell/Toolbar';
@@ -305,16 +300,18 @@ function OfficeFileViewerContent({
   const presentationDocumentRef = useRef<PptxDocument>();
   const [presentationPreviewSource, setPresentationPreviewSource] =
     useState<PresentationSource>();
-  const [presentationPreviewSummary, setPresentationPreviewSummary] =
-    useState<PresentationSourceSnapshot>();
+  const presentationPreviewSummary = useExternalStoreSnapshot(
+    presentationPreviewSource,
+  );
   const presentationPreviewSourceRef = useRef<PresentationSource>();
   const [spreadsheetWorkbook, setSpreadsheetWorkbook] =
     useState<SpreadsheetWorkbook>();
   const spreadsheetWorkbookRef = useRef<SpreadsheetWorkbook>();
   const [spreadsheetPreviewSource, setSpreadsheetPreviewSource] =
     useState<SpreadsheetSource>();
-  const [spreadsheetPreviewSummary, setSpreadsheetPreviewSummary] =
-    useState<SpreadsheetSourceSnapshot>();
+  const spreadsheetPreviewSummary = useExternalStoreSnapshot(
+    spreadsheetPreviewSource,
+  );
   const spreadsheetPreviewSourceRef = useRef<SpreadsheetSource>();
   const [docxDocument, setDocxDocument] = useState<DocxDocument>();
   const docxDocumentRef = useRef<DocxDocument>();
@@ -336,8 +333,23 @@ function OfficeFileViewerContent({
   const [internalShowSpeakerNotes, setInternalShowSpeakerNotes] = useState(
     defaultShowSpeakerNotes,
   );
-  const [hasWordOutline, setHasWordOutline] = useState(false);
   const [showWordOutline, setShowWordOutline] = useState(false);
+  const previewFamily = previewKind ? getPreviewFamily(previewKind) : undefined;
+  // 工具栏只订阅当前 Word 数据源的大纲计数，正文增量不会重复维护布尔状态。
+  const isWordPreview = previewFamily === 'word';
+  const wordOutlineProvider = isWordPreview
+    ? previewKind === 'docx'
+      ? docxPreviewSource?.outline
+      : docPreviewSource?.outline
+    : undefined;
+  const wordOutlineSnapshot = useExternalStoreSnapshot(wordOutlineProvider);
+  const materializedWordOutlineCount = isWordPreview
+    ? previewKind === 'docx'
+      ? docxDocument?.outline?.length ?? 0
+      : docDocument?.outline?.length ?? 0
+    : 0;
+  const hasWordOutline =
+    (wordOutlineSnapshot?.count ?? materializedWordOutlineCount) > 0;
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const resourceStore = useMemo(() => createOfficeResourceStore(), []);
   const loadGenerationRef = useRef(0);
@@ -379,10 +391,8 @@ function OfficeFileViewerContent({
     // 先移除 React 模型，再释放 refs 中唯一拥有资源的完整或失败冻结模型。
     setPptxDocument(undefined);
     setPresentationPreviewSource(undefined);
-    setPresentationPreviewSummary(undefined);
     setSpreadsheetWorkbook(undefined);
     setSpreadsheetPreviewSource(undefined);
-    setSpreadsheetPreviewSummary(undefined);
     setDocxDocument(undefined);
     setDocxPreviewSource(undefined);
     setDocxPreviewSummary(undefined);
@@ -392,7 +402,6 @@ function OfficeFileViewerContent({
     setPreviewKind(undefined);
     setActiveIndex(0);
     setActiveSheetId(undefined);
-    setHasWordOutline(false);
     setShowWordOutline(false);
 
     const spreadsheet = spreadsheetWorkbookRef.current;
@@ -438,7 +447,6 @@ function OfficeFileViewerContent({
         } else if (isSpreadsheetPreviewKind(preview.previewKind)) {
           spreadsheetPreviewSourceRef.current = preview.source;
           setSpreadsheetPreviewSource(preview.source);
-          setSpreadsheetPreviewSummary(preview.summary);
           setActiveSheetId((current) =>
             current &&
             preview.summary.sheets.some((sheet) => sheet.id === current)
@@ -448,7 +456,6 @@ function OfficeFileViewerContent({
         } else {
           presentationPreviewSourceRef.current = preview.source;
           setPresentationPreviewSource(preview.source);
-          setPresentationPreviewSummary(preview.summary);
           setActiveIndex((current) =>
             Math.min(current, Math.max(0, preview.summary.slideCount - 1)),
           );
@@ -683,7 +690,6 @@ function OfficeFileViewerContent({
           } else if (isSpreadsheetPreviewKind(preview.previewKind)) {
             spreadsheetPreviewSourceRef.current = preview.source;
             setSpreadsheetPreviewSource(preview.source);
-            setSpreadsheetPreviewSummary(preview.summary);
             setSpreadsheetWorkbook(undefined);
             spreadsheetWorkbookRef.current = undefined;
             setActiveSheetId((current) =>
@@ -695,7 +701,6 @@ function OfficeFileViewerContent({
           } else {
             presentationPreviewSourceRef.current = preview.source;
             setPresentationPreviewSource(preview.source);
-            setPresentationPreviewSummary(preview.summary);
             setPptxDocument(undefined);
             presentationDocumentRef.current = undefined;
           }
@@ -715,7 +720,6 @@ function OfficeFileViewerContent({
         setPptxDocument(nextPresentationDocument);
         presentationPreviewSourceRef.current = undefined;
         setPresentationPreviewSource(undefined);
-        setPresentationPreviewSummary(undefined);
         const nextSpreadsheetWorkbook = isSpreadsheetPreviewKind(parsed.kind)
           ? parsed.workbook
           : undefined;
@@ -725,7 +729,6 @@ function OfficeFileViewerContent({
         setSpreadsheetWorkbook(nextSpreadsheetWorkbook);
         spreadsheetPreviewSourceRef.current = undefined;
         setSpreadsheetPreviewSource(undefined);
-        setSpreadsheetPreviewSummary(undefined);
         const nextDocxDocument =
           parsed.kind === 'docx' ? parsed.document : undefined;
         void disposeDocumentSession(docxDocumentRef.current);
@@ -898,64 +901,19 @@ function OfficeFileViewerContent({
   useEffect(() => () => void resourceStore.dispose(), [resourceStore]);
 
   useEffect(() => {
-    if (!presentationPreviewSource) return undefined;
-    setPresentationPreviewSummary(presentationPreviewSource.getSnapshot());
-    return presentationPreviewSource.subscribe(() => {
-      setPresentationPreviewSummary(presentationPreviewSource.getSnapshot());
-    });
-  }, [presentationPreviewSource]);
-
-  useEffect(() => {
-    if (!spreadsheetPreviewSource) return undefined;
-    setSpreadsheetPreviewSummary(spreadsheetPreviewSource.getSnapshot());
-    return spreadsheetPreviewSource.subscribe(() => {
-      setSpreadsheetPreviewSummary(spreadsheetPreviewSource.getSnapshot());
-    });
-  }, [spreadsheetPreviewSource]);
-
-  useEffect(() => {
-    if (!previewKind || !isWordPreviewKind(previewKind)) {
-      setHasWordOutline(false);
-      setShowWordOutline(false);
-      return undefined;
-    }
-
-    const outlineProvider =
-      previewKind === 'docx'
-        ? docxPreviewSource?.outline
-        : docPreviewSource?.outline;
-    const materializedOutlineCount =
-      previewKind === 'docx'
-        ? docxDocument?.outline?.length ?? 0
-        : docDocument?.outline?.length ?? 0;
-    // 渐进解析只向根层同步“大纲是否可用”，避免标题批次增长带动整个预览器刷新。
-    const syncOutlineAvailability = () => {
-      const available = outlineProvider
-        ? outlineProvider.getSnapshot().count > 0
-        : materializedOutlineCount > 0;
-      setHasWordOutline(available);
-      if (!available) setShowWordOutline(false);
-    };
-
-    syncOutlineAvailability();
-    return outlineProvider?.subscribe(syncOutlineAvailability);
-  }, [
-    docDocument?.outline,
-    docPreviewSource,
-    docxDocument?.outline,
-    docxPreviewSource,
-    previewKind,
-  ]);
+    // 切换文件或渐进解析确认无大纲时，收起已打开的空侧栏。
+    if (!hasWordOutline) setShowWordOutline(false);
+  }, [hasWordOutline]);
 
   const presentationSlideCount =
     presentationPreviewSummary?.slideCount ?? pptxDocument?.slides.length ?? 0;
   const hasDocument = useMemo(() => {
     // 工具栏的格式操作只依赖当前已识别文件的可渲染内容。
-    if (!previewKind) return false;
-    if (isPresentationPreviewKind(previewKind)) {
+    if (!previewKind || !previewFamily) return false;
+    if (previewFamily === 'presentation') {
       return presentationSlideCount > 0;
     }
-    if (isSpreadsheetPreviewKind(previewKind)) {
+    if (previewFamily === 'spreadsheet') {
       return Boolean(
         spreadsheetWorkbook?.sheets.length ||
           spreadsheetPreviewSummary?.sheets.length,
@@ -975,19 +933,18 @@ function OfficeFileViewerContent({
     docxPreviewSummary,
     pptxDocument,
     presentationSlideCount,
+    previewFamily,
     previewKind,
     spreadsheetWorkbook,
     spreadsheetPreviewSummary,
   ]);
 
   const canGoPreviousSlide =
-    previewKind !== undefined &&
-    isPresentationPreviewKind(previewKind) &&
+    previewFamily === 'presentation' &&
     presentationSlideCount > 1 &&
     activeIndex > 0;
   const canGoNextSlide =
-    previewKind !== undefined &&
-    isPresentationPreviewKind(previewKind) &&
+    previewFamily === 'presentation' &&
     presentationSlideCount > 1 &&
     activeIndex < presentationSlideCount - 1;
 
@@ -1158,7 +1115,7 @@ function OfficeFileViewerContent({
 function OfficeFileViewerComponent({
   locale = 'zh-CN',
   ...props
-}: OfficeFileViewerProps) {
+}: OfficeFileViewerProps): ReactElement {
   return (
     <OfficeFileViewerLocaleProvider locale={locale}>
       <OfficeFileViewerContent {...props} />

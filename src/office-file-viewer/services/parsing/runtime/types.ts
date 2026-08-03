@@ -54,3 +54,8 @@ export function createParseAbortError() {
   error.name = 'AbortError';
   return error;
 }
+
+/** 在格式入口边界统一阻止已取消的解析任务继续执行。 */
+export function throwIfParseAborted(signal: AbortSignal) {
+  if (signal.aborted) throw createParseAbortError();
+}
