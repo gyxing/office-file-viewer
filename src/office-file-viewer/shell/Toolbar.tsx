@@ -284,10 +284,15 @@ function OfficeToolbarComponent({
   onSelectFile,
 }: OfficeToolbarProps) {
   const messages = useOfficeFileViewerMessages();
-  const zoomOptions = useMemo(
-    () => OFFICE_ZOOM_LEVELS.map((value) => ({ value, label: `${value}%` })),
-    [],
-  );
+  const zoomOptions = useMemo(() => {
+    // 缩放按钮会产生非预设档位，补入当前值后 Select 才能持续显示百分号标签。
+    const levels = OFFICE_ZOOM_LEVELS.includes(zoomControls.value)
+      ? OFFICE_ZOOM_LEVELS
+      : [...OFFICE_ZOOM_LEVELS, zoomControls.value].sort(
+          (left, right) => left - right,
+        );
+    return levels.map((value) => ({ value, label: `${value}%` }));
+  }, [zoomControls.value]);
 
   return (
     <div className="office-file-toolbar">

@@ -12,8 +12,6 @@ type MemoryEntry<TMeta, TValue> = {
   record: OfficeContentRecord<TMeta, TValue>;
   /** 当前数据占用的空间大小。 */
   size: number;
-  /** 当前内存条目的最近访问序号。 */
-  lastAccess: number;
 };
 
 /** 以内存字节预算管理热内容，并保留轻量 revision 元数据。 */
@@ -21,8 +19,9 @@ export class MemoryContentStore<TMeta, TValue>
   implements OfficeContentStore<TMeta, TValue>
 {
   private readonly entries = new Map<string, MemoryEntry<TMeta, TValue>>();
+  /** 仅记录仍驻留内存的内容，并利用 Map 插入顺序维护 LRU。 */
+  private readonly residentKeys = new Map<string, undefined>();
   private readonly pinCounts = new Map<string, number>();
-  private accessSequence = 0;
   private usedBytes = 0;
   private disposed = false;
   private disposePromise: Promise<void> | undefined;
@@ -45,23 +44,19 @@ export class MemoryContentStore<TMeta, TValue>
 
   private evictIfNeeded() {
     while (this.usedBytes > this.options.maxBytes) {
-      let candidate: [string, MemoryEntry<TMeta, TValue>] | undefined;
-      for (const entry of this.entries) {
-        if (
-          entry[1].record.value === undefined ||
-          (this.pinCounts.get(entry[0]) ?? 0) > 0
-        ) {
-          continue;
-        }
-        if (!candidate || entry[1].lastAccess < candidate[1].lastAccess) {
-          candidate = entry;
-        }
+      let candidateKey: string | undefined;
+      for (const key of this.residentKeys.keys()) {
+        if ((this.pinCounts.get(key) ?? 0) > 0) continue;
+        candidateKey = key;
+        break;
       }
-      if (!candidate) return;
+      if (candidateKey === undefined) return;
 
-      const [key, entry] = candidate;
+      this.residentKeys.delete(candidateKey);
+      const entry = this.entries.get(candidateKey);
+      if (!entry || entry.record.value === undefined) continue;
       this.usedBytes -= entry.size;
-      this.entries.set(key, {
+      this.entries.set(candidateKey, {
         record: {
           key: entry.record.key,
           revision: entry.record.revision,
@@ -69,9 +64,14 @@ export class MemoryContentStore<TMeta, TValue>
           updatedAt: entry.record.updatedAt,
         },
         size: 0,
-        lastAccess: entry.lastAccess,
       });
     }
+  }
+
+  /** 把最近访问的驻留内容移动到 LRU 队尾。 */
+  private markResidentUsed(key: string) {
+    this.residentKeys.delete(key);
+    this.residentKeys.set(key, undefined);
   }
 
   getMeta(key: string): OfficeContentMetaRecord<TMeta> | undefined {
@@ -91,7 +91,7 @@ export class MemoryContentStore<TMeta, TValue>
     const entry = this.entries.get(key);
     if (!entry) return undefined;
     if (entry.record.value !== undefined) {
-      entry.lastAccess = ++this.accessSequence;
+      this.markResidentUsed(key);
     }
     return { ...entry.record };
   }
@@ -113,13 +113,16 @@ export class MemoryContentStore<TMeta, TValue>
     if (!Number.isFinite(size)) {
       throw new RangeError('ContentStore 内容大小估算必须是有限数');
     }
-    if (current) this.usedBytes -= current.size;
+    if (current) {
+      this.usedBytes -= current.size;
+      this.residentKeys.delete(record.key);
+    }
     this.usedBytes += size;
     this.entries.set(record.key, {
       record: { ...record },
       size,
-      lastAccess: ++this.accessSequence,
     });
+    if (record.value !== undefined) this.markResidentUsed(record.key);
     this.evictIfNeeded();
   }
 
@@ -147,8 +150,8 @@ export class MemoryContentStore<TMeta, TValue>
     }
     current.record = { ...record };
     current.size = size;
-    current.lastAccess = ++this.accessSequence;
     this.usedBytes += size;
+    if (record.value !== undefined) this.markResidentUsed(record.key);
     this.evictIfNeeded();
   }
 
@@ -176,6 +179,7 @@ export class MemoryContentStore<TMeta, TValue>
     const entry = this.entries.get(key);
     if (entry) this.usedBytes -= entry.size;
     this.entries.delete(key);
+    this.residentKeys.delete(key);
     this.pinCounts.delete(key);
   }
 
@@ -183,6 +187,7 @@ export class MemoryContentStore<TMeta, TValue>
     if (this.disposePromise) return this.disposePromise;
     this.disposed = true;
     this.entries.clear();
+    this.residentKeys.clear();
     this.pinCounts.clear();
     this.usedBytes = 0;
     this.disposePromise = Promise.resolve();

@@ -15,6 +15,15 @@ const RECORD_STORE = 'records';
 const SESSION_STORE = 'sessions';
 /** 解析会话缓存的有效期，单位为毫秒。 */
 const SESSION_TTL = 24 * 60 * 60 * 1000;
+/** 活跃会话写回访问时间的最小间隔，避免连续读取放大 IndexedDB 写入。 */
+const SESSION_TOUCH_INTERVAL = 60 * 1000;
+/** 过期会话全表扫描的最小间隔；会话有效期较长，无需为每个 Store 重复清理。 */
+const SESSION_CLEANUP_INTERVAL = 5 * 60 * 1000;
+
+/** 同一页面生命周期内最近一次成功完成过期清理的时间。 */
+let lastSessionCleanupAt = 0;
+/** 复用并发 Store 初始化触发的过期会话清理任务。 */
+let sessionCleanupPromise: Promise<void> | undefined;
 
 /** IndexedDB 中持久化的内容记录。 */
 type StoredRecord<TMeta, TValue> = OfficeContentRecord<TMeta, TValue> & {
@@ -66,6 +75,46 @@ function sessionRange(sessionId: string, namespace: string) {
   );
 }
 
+/** 按固定间隔清理所有命名空间中的过期会话，避免多格式 Store 重复全表扫描。 */
+function cleanupExpiredSessions(database: IDBDatabase) {
+  const now = Date.now();
+  if (now - lastSessionCleanupAt < SESSION_CLEANUP_INTERVAL) {
+    return Promise.resolve();
+  }
+  if (sessionCleanupPromise) return sessionCleanupPromise;
+
+  const cleanup = (async () => {
+    const transaction = database.transaction(
+      [RECORD_STORE, SESSION_STORE],
+      'readwrite',
+    );
+    const records = transaction.objectStore(RECORD_STORE);
+    const sessions = transaction.objectStore(SESSION_STORE);
+    const existingSessions = await requestResult(
+      sessions.getAll() as IDBRequest<StoredSession[]>,
+    );
+    existingSessions.forEach((session) => {
+      if (now - session.lastAccessAt <= SESSION_TTL) return;
+      records.delete(sessionRange(session.sessionId, session.namespace));
+      sessions.delete([session.sessionId, session.namespace]);
+    });
+    await transactionComplete(transaction);
+    lastSessionCleanupAt = now;
+  })();
+  sessionCleanupPromise = cleanup.finally(() => {
+    sessionCleanupPromise = undefined;
+  });
+  return sessionCleanupPromise;
+}
+
+/** 一次内容事务可选择携带的会话访问时间写回凭证。 */
+type SessionTouchReservation = {
+  /** 区分并发事务的递增标识。 */
+  sequence: number;
+  /** 本次访问发生的时间。 */
+  touchedAt: number;
+};
+
 /** 使用会话隔离的 IndexedDB 保存可 structured-clone 的冷内容。 */
 export class IndexedDbContentStore<TMeta, TValue>
   implements OfficeContentStore<TMeta, TValue>
@@ -76,6 +125,12 @@ export class IndexedDbContentStore<TMeta, TValue>
   >();
   private readonly createdAt = Date.now();
   private readonly databasePromise: Promise<IDBDatabase>;
+  /** 最近一次成功写回当前会话访问时间的时间戳。 */
+  private lastTouchedAt = 0;
+  /** 区分并发会话写回事务的递增序号。 */
+  private touchSequence = 0;
+  /** 尚未完成的会话写回事务序号。 */
+  private pendingTouchSequence: number | undefined;
   private disposed = false;
   private disposePromise: Promise<void> | undefined;
 
@@ -118,42 +173,62 @@ export class IndexedDbContentStore<TMeta, TValue>
       }
     });
     const database = await requestResult(request);
-    await this.cleanupAndTouchSession(database);
+    await cleanupExpiredSessions(database);
+    await this.initializeSession(database);
     return database;
   }
 
-  private async cleanupAndTouchSession(database: IDBDatabase) {
-    const transaction = database.transaction(
-      [RECORD_STORE, SESSION_STORE],
-      'readwrite',
-    );
-    const records = transaction.objectStore(RECORD_STORE);
-    const sessions = transaction.objectStore(SESSION_STORE);
-    const existingSessions = await requestResult(
-      sessions.getAll() as IDBRequest<StoredSession[]>,
-    );
+  /** 初始化当前命名空间的会话记录，并建立后续访问时间节流基线。 */
+  private async initializeSession(database: IDBDatabase) {
+    const transaction = database.transaction(SESSION_STORE, 'readwrite');
     const now = Date.now();
-    existingSessions.forEach((session) => {
-      if (now - session.lastAccessAt <= SESSION_TTL) return;
-      records.delete(sessionRange(session.sessionId, session.namespace));
-      sessions.delete([session.sessionId, session.namespace]);
-    });
-    sessions.put({
+    transaction.objectStore(SESSION_STORE).put({
       sessionId: this.sessionId,
       namespace: this.namespace,
       createdAt: this.createdAt,
       lastAccessAt: now,
     } satisfies StoredSession);
     await transactionComplete(transaction);
+    this.lastTouchedAt = now;
   }
 
-  private async touchSession(transaction: IDBTransaction) {
+  /** 只允许一个并发内容事务携带到期的会话访问时间写回。 */
+  private reserveSessionTouch(): SessionTouchReservation | undefined {
+    const touchedAt = Date.now();
+    if (
+      this.pendingTouchSequence !== undefined ||
+      touchedAt - this.lastTouchedAt < SESSION_TOUCH_INTERVAL
+    ) {
+      return undefined;
+    }
+    const sequence = ++this.touchSequence;
+    this.pendingTouchSequence = sequence;
+    return { sequence, touchedAt };
+  }
+
+  /** 把访问时间写入已经包含会话仓库的内容事务。 */
+  private writeSessionTouch(
+    transaction: IDBTransaction,
+    reservation: SessionTouchReservation,
+  ) {
     transaction.objectStore(SESSION_STORE).put({
       sessionId: this.sessionId,
       namespace: this.namespace,
       createdAt: this.createdAt,
-      lastAccessAt: Date.now(),
+      lastAccessAt: reservation.touchedAt,
     } satisfies StoredSession);
+  }
+
+  /** 根据事务结果提交或释放访问时间写回凭证。 */
+  private settleSessionTouch(
+    reservation: SessionTouchReservation | undefined,
+    completed: boolean,
+  ) {
+    if (!reservation || this.pendingTouchSequence !== reservation.sequence) {
+      return;
+    }
+    if (completed) this.lastTouchedAt = reservation.touchedAt;
+    this.pendingTouchSequence = undefined;
   }
 
   getMeta(key: string) {
@@ -165,19 +240,27 @@ export class IndexedDbContentStore<TMeta, TValue>
     this.ensureAvailable(signal);
     const database = await this.databasePromise;
     this.ensureAvailable(signal);
-    const transaction = database.transaction(
-      [RECORD_STORE, SESSION_STORE],
-      'readwrite',
-    );
-    const stored = await requestResult(
-      transaction
-        .objectStore(RECORD_STORE)
-        .get([this.sessionId, this.namespace, key]) as IDBRequest<
-        StoredRecord<TMeta, TValue> | undefined
-      >,
-    );
-    await this.touchSession(transaction);
-    await transactionComplete(transaction);
+    const sessionTouch = this.reserveSessionTouch();
+    let stored: StoredRecord<TMeta, TValue> | undefined;
+    try {
+      const transaction = database.transaction(
+        sessionTouch ? [RECORD_STORE, SESSION_STORE] : RECORD_STORE,
+        sessionTouch ? 'readwrite' : 'readonly',
+      );
+      stored = await requestResult(
+        transaction
+          .objectStore(RECORD_STORE)
+          .get([this.sessionId, this.namespace, key]) as IDBRequest<
+          StoredRecord<TMeta, TValue> | undefined
+        >,
+      );
+      if (sessionTouch) this.writeSessionTouch(transaction, sessionTouch);
+      await transactionComplete(transaction);
+      this.settleSessionTouch(sessionTouch, true);
+    } catch (error) {
+      this.settleSessionTouch(sessionTouch, false);
+      throw error;
+    }
     this.ensureAvailable(signal);
     if (!stored) return undefined;
     const record: OfficeContentRecord<TMeta, TValue> = {
@@ -205,23 +288,26 @@ export class IndexedDbContentStore<TMeta, TValue>
         `内容 ${record.key} 的 revision 必须递增`,
       );
     }
-    if (typeof structuredClone !== 'function') {
-      throw new Error('当前环境不支持 structuredClone');
-    }
-    const cloned = structuredClone(record);
     const database = await this.databasePromise;
     this.ensureAvailable();
-    const transaction = database.transaction(
-      [RECORD_STORE, SESSION_STORE],
-      'readwrite',
-    );
-    transaction.objectStore(RECORD_STORE).put({
-      ...cloned,
-      sessionId: this.sessionId,
-      namespace: this.namespace,
-    } satisfies StoredRecord<TMeta, TValue>);
-    await this.touchSession(transaction);
-    await transactionComplete(transaction);
+    const sessionTouch = this.reserveSessionTouch();
+    try {
+      const transaction = database.transaction(
+        sessionTouch ? [RECORD_STORE, SESSION_STORE] : RECORD_STORE,
+        'readwrite',
+      );
+      transaction.objectStore(RECORD_STORE).put({
+        ...record,
+        sessionId: this.sessionId,
+        namespace: this.namespace,
+      } satisfies StoredRecord<TMeta, TValue>);
+      if (sessionTouch) this.writeSessionTouch(transaction, sessionTouch);
+      await transactionComplete(transaction);
+      this.settleSessionTouch(sessionTouch, true);
+    } catch (error) {
+      this.settleSessionTouch(sessionTouch, false);
+      throw error;
+    }
     this.metaRecords.set(record.key, {
       key: record.key,
       revision: record.revision,
@@ -238,15 +324,23 @@ export class IndexedDbContentStore<TMeta, TValue>
   async delete(key: string) {
     this.ensureAvailable();
     const database = await this.databasePromise;
-    const transaction = database.transaction(
-      [RECORD_STORE, SESSION_STORE],
-      'readwrite',
-    );
-    transaction
-      .objectStore(RECORD_STORE)
-      .delete([this.sessionId, this.namespace, key]);
-    await this.touchSession(transaction);
-    await transactionComplete(transaction);
+    this.ensureAvailable();
+    const sessionTouch = this.reserveSessionTouch();
+    try {
+      const transaction = database.transaction(
+        sessionTouch ? [RECORD_STORE, SESSION_STORE] : RECORD_STORE,
+        'readwrite',
+      );
+      transaction
+        .objectStore(RECORD_STORE)
+        .delete([this.sessionId, this.namespace, key]);
+      if (sessionTouch) this.writeSessionTouch(transaction, sessionTouch);
+      await transactionComplete(transaction);
+      this.settleSessionTouch(sessionTouch, true);
+    } catch (error) {
+      this.settleSessionTouch(sessionTouch, false);
+      throw error;
+    }
     this.metaRecords.delete(key);
   }
 

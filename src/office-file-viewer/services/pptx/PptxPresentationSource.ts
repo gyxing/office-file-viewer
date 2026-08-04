@@ -60,7 +60,7 @@ function waitForSharedResult<T>(
 /** 提供 PPTX 当前页优先、邻近预取和可重试缓存能力。 */
 export class PptxPresentationSource implements PresentationSource {
   private readonly listeners = new Set<() => void>();
-  private readonly descriptors: PptxSlideDescriptor[];
+  private descriptors: PptxSlideDescriptor[];
   private readonly slideStore: OfficeContentStore<SlideStoreMeta, SlideModel>;
   private readonly slideRequests = new Map<number, Promise<SlideModel>>();
   private readonly notesRequests = new Map<
@@ -117,7 +117,7 @@ export class PptxPresentationSource implements PresentationSource {
       height: this.context.height,
       theme: this.context.theme,
       slideCount: this.descriptors.length,
-      slides: this.descriptors.map((descriptor) => ({ ...descriptor })),
+      slides: this.descriptors,
       performance: { ...this.performance },
     };
   }
@@ -126,11 +126,15 @@ export class PptxPresentationSource implements PresentationSource {
     index: number,
     patch: Partial<PresentationSlideDescriptor>,
   ) {
-    this.descriptors[index] = {
-      ...this.descriptors[index],
+    const current = this.descriptors[index];
+    const nextDescriptors = this.descriptors.slice();
+    nextDescriptors[index] = {
+      ...current,
       ...patch,
-      revision: this.descriptors[index].revision + 1,
+      revision: current.revision + 1,
     };
+    // 已发布快照继续复用旧数组，新修订只复制描述符索引，保持快照不可变。
+    this.descriptors = nextDescriptors;
     this.publish();
   }
 

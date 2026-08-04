@@ -279,10 +279,25 @@ async function loadXlsChartSheet(
   ] satisfies SpreadsheetChart[];
 }
 
+/** 将二进制 XLS 内部定位信息转换为公共 Sheet 描述符。 */
+function createSnapshotDescriptor(
+  descriptor: XlsSheetDescriptor,
+): SpreadsheetSheetDescriptor {
+  const { endOffset, streamOffset, performance, type, visibility, ...item } =
+    descriptor;
+  return {
+    ...item,
+    path: `/Workbook/${item.name}`,
+    kind: type === 'chart' ? 'chart' : 'worksheet',
+  };
+}
+
 /** 提供 XLS 的 CFB 随机访问和按 Sheet 解析。 */
 export class XlsSpreadsheetSource implements SpreadsheetSource {
   private readonly listeners = new Set<() => void>();
   private readonly descriptors: XlsSheetDescriptor[];
+  /** 与内部描述符同步、可安全暴露给订阅者的不可变数组。 */
+  private snapshotDescriptors: SpreadsheetSheetDescriptor[];
   private readonly profiles = new Map<string, SpreadsheetPerformanceProfile>();
   private readonly stores = new Map<string, SpreadsheetSheetStore>();
   private readonly requests = new Map<string, Promise<void>>();
@@ -303,6 +318,7 @@ export class XlsSpreadsheetSource implements SpreadsheetSource {
     this.descriptors.forEach((descriptor) =>
       this.profiles.set(descriptor.id, descriptor.performance),
     );
+    this.snapshotDescriptors = this.descriptors.map(createSnapshotDescriptor);
     this.snapshot = this.createSnapshot();
   }
 
@@ -340,20 +356,7 @@ export class XlsSpreadsheetSource implements SpreadsheetSource {
   private createSnapshot(): SpreadsheetSourceSnapshot {
     return {
       revision: this.revision,
-      sheets: this.descriptors.map(
-        ({
-          endOffset,
-          streamOffset,
-          performance,
-          type,
-          visibility,
-          ...item
-        }) => ({
-          ...item,
-          path: `/Workbook/${item.name}`,
-          kind: type === 'chart' ? 'chart' : 'worksheet',
-        }),
-      ),
+      sheets: this.snapshotDescriptors,
     };
   }
 
@@ -368,6 +371,11 @@ export class XlsSpreadsheetSource implements SpreadsheetSource {
       ...patch,
       revision: current.revision + 1,
     };
+    const nextSnapshotDescriptors = this.snapshotDescriptors.slice();
+    nextSnapshotDescriptors[index] = createSnapshotDescriptor(
+      this.descriptors[index],
+    );
+    this.snapshotDescriptors = nextSnapshotDescriptors;
     this.revision += 1;
     this.snapshot = this.createSnapshot();
     this.listeners.forEach((listener) => listener());

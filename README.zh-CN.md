@@ -296,7 +296,7 @@ export function disposeParsedFile(parsed: ParsedOfficeFile) {
 - 缩放范围为 `25%` 至 `300%`，工具栏快捷档位为 `50%`、`75%`、`100%`、`125%`、`150%`、`200%`。
 - PPT/PPTX 支持幻灯片翻页和缩略图导航。
 - XLS/XLSX 支持工作表标签切换。
-- DOC/DOCX/WPS 不显示额外文档标题栏；旧格式解析警告会显示在原标题栏位置。
+- DOC/DOCX/WPS 不显示额外文档标题栏，为文档正文保留更多垂直空间。
 - 全屏依赖浏览器 Fullscreen API；不支持时按钮会禁用，按 `Esc` 退出后状态会自动同步。
 - 地图图表可能需要加载外部 GeoJSON；网络失败时优先显示文档快照，否则显示加载失败状态。
 

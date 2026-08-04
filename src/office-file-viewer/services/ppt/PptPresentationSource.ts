@@ -58,7 +58,7 @@ function waitForPptResult<T>(promise: Promise<T>, signal?: AbortSignal) {
 /** 为二进制 PPT 提供当前页优先的按需解析和备注读取。 */
 export class PptPresentationSource implements PresentationSource {
   private readonly listeners = new Set<() => void>();
-  private readonly descriptors: PresentationSlideDescriptor[];
+  private descriptors: PresentationSlideDescriptor[];
   private readonly store: OfficeContentStore<SlideStoreMeta, SlideModel>;
   private readonly requests = new Map<number, Promise<SlideModel>>();
   private readonly noteRequests = new Map<
@@ -120,7 +120,7 @@ export class PptPresentationSource implements PresentationSource {
       height: this.structure.height,
       theme: this.structure.theme,
       slideCount: this.descriptors.length,
-      slides: this.descriptors.map((descriptor) => ({ ...descriptor })),
+      slides: this.descriptors,
       warnings: this.structure.warnings,
       performance: { ...this.performance },
     };
@@ -136,11 +136,15 @@ export class PptPresentationSource implements PresentationSource {
     index: number,
     patch: Partial<PresentationSlideDescriptor>,
   ) {
-    this.descriptors[index] = {
-      ...this.descriptors[index],
+    const current = this.descriptors[index];
+    const nextDescriptors = this.descriptors.slice();
+    nextDescriptors[index] = {
+      ...current,
       ...patch,
-      revision: this.descriptors[index].revision + 1,
+      revision: current.revision + 1,
     };
+    // 已发布快照继续复用旧数组，新修订只复制描述符索引，保持快照不可变。
+    this.descriptors = nextDescriptors;
     this.publish();
   }
 
