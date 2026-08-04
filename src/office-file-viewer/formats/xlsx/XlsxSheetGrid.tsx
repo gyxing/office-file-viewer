@@ -28,6 +28,9 @@ type XlsxSheetViewportSize = {
 /** 电子表格网格尚未测量时使用的零尺寸。 */
 const EMPTY_VIEWPORT_SIZE: XlsxSheetViewportSize = { width: 0, height: 0 };
 
+/** 必须与滚动网格样式中的内边距保持一致，供缩放画布补偿固定标题位置。 */
+const XLSX_SHEET_GRID_PADDING = 16;
+
 /** 将 CSS 尺寸文本转换为可参与边框盒计算的像素值。 */
 function readCssPixelValue(value: string) {
   const parsed = Number.parseFloat(value);
@@ -58,6 +61,8 @@ function readGridViewportSize(grid: HTMLDivElement): XlsxSheetViewportSize {
 /** 渲染支持大数据窗口化的工作表网格。 */
 function XlsxSheetGridComponent({ sheet, zoom }: XlsxSheetGridProps) {
   const scale = zoom / 100;
+  // 内边距属于未缩放的滚动容器，固定层位于缩放画布内，因此需要换算回逻辑像素。
+  const stickyInset = -XLSX_SHEET_GRID_PADDING / Math.max(scale, 0.01);
   const gridRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLTableElement>(null);
   const [viewportSize, setViewportSize] =
@@ -129,12 +134,19 @@ function XlsxSheetGridComponent({ sheet, zoom }: XlsxSheetGridProps) {
   return (
     <div ref={gridRef} className="office-file-xlsx-sheet-grid">
       <div className="office-file-xlsx-sheet-grid__canvas" style={canvasStyle}>
-        <XlsxSheetFiller sheet={sheet} metrics={metrics} />
+        <XlsxSheetFiller
+          sheet={sheet}
+          metrics={metrics}
+          stickyInset={stickyInset}
+        />
         <XlsxSheetTable
           sheet={sheet}
           tableWidth={sourceMetrics.tableWidth}
           visibleColumnWidths={sourceMetrics.visibleColumnWidths}
           visibleRowHeights={sourceMetrics.visibleRowHeights}
+          renderedColumnHeaderHeight={metrics.columnHeaderHeight}
+          renderedRowHeaderHeights={metrics.visibleRowHeights}
+          stickyInset={stickyInset}
           tableRef={tableRef}
         />
         <XlsxFloatingImages sheet={sheet} metrics={metrics} />

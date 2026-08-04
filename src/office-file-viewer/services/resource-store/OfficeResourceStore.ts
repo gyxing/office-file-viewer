@@ -24,8 +24,6 @@ type ResourceEntry = {
   references: number;
   /** 当前数据占用的空间大小。 */
   size: number;
-  /** 资源最近一次被访问时的递增序号。 */
-  lastUsed: number;
   /** 完成按需读取后缓存的二进制对象。 */
   blob?: Blob;
   /** 资源访问地址。 */
@@ -75,9 +73,10 @@ function waitForResource(
 export class ManagedOfficeResourceStore implements OfficeResourceStore {
   private readonly entries = new Map<string, ResourceEntry>();
   private readonly inFlight = new Set<Promise<string>>();
+  /** 仅保存未引用且已物化的资源，并利用 Map 插入顺序维护 LRU。 */
+  private readonly unusedEntries = new Map<string, ResourceEntry>();
   private readonly maxUnusedBytes: number;
   private unusedBytes = 0;
-  private accessSequence = 0;
   private disposed = false;
   private disposePromise: Promise<void> | undefined;
 
@@ -109,33 +108,46 @@ export class ManagedOfficeResourceStore implements OfficeResourceStore {
 
   private evictIfNeeded() {
     while (this.unusedBytes > this.maxUnusedBytes) {
-      let candidate: ResourceEntry | undefined;
-      for (const entry of this.entries.values()) {
-        if (entry.references > 0 || !entry.url || entry.loading) continue;
-        if (!candidate || entry.lastUsed < candidate.lastUsed) {
-          candidate = entry;
-        }
-      }
-      if (!candidate) return;
-      this.unusedBytes -= candidate.size;
-      this.entries.delete(candidate.source.id);
-      this.revoke(candidate);
+      const candidate = this.unusedEntries.entries().next();
+      if (candidate.done) return;
+      const [id, entry] = candidate.value;
+      this.unusedEntries.delete(id);
+      this.unusedBytes -= entry.size;
+      if (this.entries.get(id) === entry) this.entries.delete(id);
+      this.revoke(entry);
     }
+  }
+
+  /** 资源再次被引用时同步移出未使用 LRU。 */
+  private removeUnusedEntry(entry: ResourceEntry) {
+    if (!this.unusedEntries.delete(entry.source.id)) return;
+    this.unusedBytes -= entry.size;
+  }
+
+  /** 资源引用归零后加入未使用 LRU，并按预算即时回收。 */
+  private addUnusedEntry(entry: ResourceEntry) {
+    if (
+      entry.references > 0 ||
+      entry.loading ||
+      !entry.url ||
+      this.unusedEntries.has(entry.source.id)
+    ) {
+      return;
+    }
+    this.unusedEntries.set(entry.source.id, entry);
+    this.unusedBytes += entry.size;
+    this.evictIfNeeded();
   }
 
   private releaseEntry(entry: ResourceEntry) {
     if (entry.references <= 0) return;
     entry.references -= 1;
     if (entry.references > 0) return;
-    entry.lastUsed = ++this.accessSequence;
     if (entry.loading) {
       entry.controller?.abort();
       return;
     }
-    if (entry.url) {
-      this.unusedBytes += entry.size;
-      this.evictIfNeeded();
-    }
+    this.addUnusedEntry(entry);
   }
 
   private startLoading(entry: ResourceEntry) {
@@ -170,9 +182,7 @@ export class ManagedOfficeResourceStore implements OfficeResourceStore {
           return;
         }
         if (entry.references === 0) {
-          entry.lastUsed = ++this.accessSequence;
-          this.unusedBytes += entry.size;
-          this.evictIfNeeded();
+          this.addUnusedEntry(entry);
         }
       });
     return loading;
@@ -188,14 +198,12 @@ export class ManagedOfficeResourceStore implements OfficeResourceStore {
         source,
         references: 0,
         size: 0,
-        lastUsed: ++this.accessSequence,
       };
       this.entries.set(source.id, entry);
     } else if (entry.references === 0 && entry.url) {
-      this.unusedBytes -= entry.size;
+      this.removeUnusedEntry(entry);
     }
     entry.references += 1;
-    entry.lastUsed = ++this.accessSequence;
     if (entry.url) return entry.url;
 
     const loading = entry.loading ?? this.startLoading(entry);
@@ -225,6 +233,7 @@ export class ManagedOfficeResourceStore implements OfficeResourceStore {
       this.entries.forEach((entry) => this.revoke(entry));
       this.entries.clear();
       this.inFlight.clear();
+      this.unusedEntries.clear();
       this.unusedBytes = 0;
     })();
     return this.disposePromise;

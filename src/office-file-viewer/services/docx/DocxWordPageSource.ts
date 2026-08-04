@@ -168,20 +168,25 @@ export class DocxWordPageSource
     if (this.disposed || this.measurementQueue[0]?.id !== batch.id) return;
     const pending = this.pendingPages.get(batch.sourcePage.id);
     if (!pending) return;
-    const nextMeasurements = [...pending.measurements, ...measurements];
+    const previousMeasurementCount = pending.measurements.length;
+    pending.measurements.push(...measurements);
     if (durationMs >= OFFICE_LARGE_FILE_THRESHOLDS.slowTaskMilliseconds) {
       this.stats.reportSlowPagination();
     }
     if (batch.endOfSourcePage) {
-      const pages = paginateMeasuredDocxPage(
-        pending.sourcePage,
-        nextMeasurements,
-      );
-      await this.replaceBatchesWithPages(pending.batches, pages);
+      try {
+        const pages = paginateMeasuredDocxPage(
+          pending.sourcePage,
+          pending.measurements,
+        );
+        await this.replaceBatchesWithPages(pending.batches, pages);
+      } catch (error) {
+        // 末批分页或持久化失败时恢复队列状态，避免同一测量结果在重试时重复追加。
+        pending.measurements.length = previousMeasurementCount;
+        throw error;
+      }
       this.pendingPages.delete(batch.sourcePage.id);
       pending.batches.forEach((item) => this.batchById.delete(item.id));
-    } else {
-      pending.measurements = nextMeasurements;
     }
     this.measurementQueue.shift();
     this.tryComplete();
@@ -360,7 +365,11 @@ export class DocxWordPageSource
       revision: this.snapshot.revision + 1,
       pages: [...this.snapshot.pages, ...metas],
     };
-    this.rebuildBlockIndex();
+    metas.forEach((meta) => {
+      meta.sourceBlockIds.forEach((id) =>
+        this.blockPageIndex.set(id, meta.index),
+      );
+    });
     this.emitChange();
   }
 

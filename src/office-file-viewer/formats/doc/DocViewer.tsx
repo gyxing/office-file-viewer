@@ -218,11 +218,6 @@ function DocViewerComponent({
       className="office-file-doc-viewer"
       data-word-source-mode={source ? 'progressive' : 'materialized'}
     >
-      {documentMetadata.warnings.length ? (
-        <div className="office-file-doc-viewer__notice" role="alert">
-          {documentMetadata.warnings.join(' ')}
-        </div>
-      ) : null}
       <div className="office-file-doc-viewer__body">
         {showOutline ? (
           <WordOutlineSidebar

@@ -18,10 +18,7 @@ import type {
   OfficeFileViewerPreviewHandle,
   OfficeFileViewerPreviewState,
 } from '../../services/parsing/internalTypes';
-import type {
-  PresentationSource,
-  PresentationSourceSnapshot,
-} from '../../services/presentation/PresentationSource';
+import type { PresentationSource } from '../../services/presentation/PresentationSource';
 import {
   detectPreviewKind,
   getPreviewFamily,
@@ -38,12 +35,12 @@ import {
   createOfficeDocumentSession,
   type OfficeDocumentSession,
 } from '../../services/session';
+import type { SpreadsheetSource } from '../../services/spreadsheet/SpreadsheetSource';
 import type {
-  SpreadsheetSource,
-  SpreadsheetSourceSnapshot,
-} from '../../services/spreadsheet/SpreadsheetSource';
-import type { WordOutlineProvider } from '../../services/word/WordOutlineProvider';
-import { useExternalStoreSnapshot } from '../../shared/react/useExternalStoreSnapshot';
+  WordOutlineProvider,
+  WordOutlineProviderSnapshot,
+} from '../../services/word/WordOutlineProvider';
+import { useExternalStoreSelector } from '../../shared/react/useExternalStoreSnapshot';
 import {
   OFFICE_MAX_ZOOM,
   OFFICE_MIN_ZOOM,
@@ -263,17 +260,36 @@ function getMaterializedWordOutlineCount(
   return 0;
 }
 
+/** 只读取控制器导航能力依赖的幻灯片数量。 */
+function selectPresentationSlideCount(
+  snapshot: ReturnType<PresentationSource['getSnapshot']>,
+) {
+  return snapshot.slideCount;
+}
+
+/** 只读取控制器空状态判断依赖的工作表数量。 */
+function selectSpreadsheetSheetCount(
+  snapshot: ReturnType<SpreadsheetSource['getSnapshot']>,
+) {
+  return snapshot.sheets.length;
+}
+
+/** 只读取工具栏显隐依赖的大纲数量。 */
+function selectWordOutlineCount(snapshot: WordOutlineProviderSnapshot) {
+  return snapshot.count;
+}
+
 /** 计算演示文稿当前可导航的幻灯片数量。 */
 function getPresentationSlideCount(
   preview: OfficeFileViewerPreviewState | undefined,
-  sourceSnapshot: PresentationSourceSnapshot | undefined,
+  sourceSlideCount: number,
 ): number {
   if (!preview) return 0;
   if (
     preview.mode === 'source' &&
     isPresentationPreviewKind(preview.previewKind)
   ) {
-    return sourceSnapshot?.slideCount ?? preview.summary.slideCount;
+    return sourceSlideCount;
   }
   if (
     preview.mode === 'materialized' &&
@@ -287,18 +303,16 @@ function getPresentationSlideCount(
 /** 判断当前快照是否已有格式查看器可以渲染的内容。 */
 function getHasRenderableContent(
   preview: OfficeFileViewerPreviewState | undefined,
-  presentationSnapshot: PresentationSourceSnapshot | undefined,
-  spreadsheetSnapshot: SpreadsheetSourceSnapshot | undefined,
+  presentationSlideCount: number,
+  spreadsheetSheetCount: number,
 ): boolean {
   if (!preview) return false;
   if (preview.mode === 'source') {
     if (isPresentationPreviewKind(preview.previewKind)) {
-      return (
-        (presentationSnapshot?.slideCount ?? preview.summary.slideCount) > 0
-      );
+      return presentationSlideCount > 0;
     }
     if (isSpreadsheetPreviewKind(preview.previewKind)) {
-      return (spreadsheetSnapshot?.sheets ?? preview.summary.sheets).length > 0;
+      return spreadsheetSheetCount > 0;
     }
     if (preview.previewKind === 'docx') return true;
     return preview.source.getSnapshot().pages.length > 0;
@@ -344,21 +358,32 @@ export function useOfficeViewerController(
   const presentationSource = getPresentationSource(preview);
   const spreadsheetSource = getSpreadsheetSource(preview);
   const wordOutlineProvider = getWordOutlineProvider(preview);
-  const presentationSnapshot = useExternalStoreSnapshot(presentationSource);
-  const spreadsheetSnapshot = useExternalStoreSnapshot(spreadsheetSource);
-  const wordOutlineSnapshot = useExternalStoreSnapshot(wordOutlineProvider);
+  const sourcePresentationSlideCount = useExternalStoreSelector(
+    presentationSource,
+    selectPresentationSlideCount,
+    0,
+  );
+  const sourceSpreadsheetSheetCount = useExternalStoreSelector(
+    spreadsheetSource,
+    selectSpreadsheetSheetCount,
+    0,
+  );
+  const sourceWordOutlineCount = useExternalStoreSelector(
+    wordOutlineProvider,
+    selectWordOutlineCount,
+    0,
+  );
   const presentationSlideCount = getPresentationSlideCount(
     preview,
-    presentationSnapshot,
+    sourcePresentationSlideCount,
   );
   const hasRenderableContent = getHasRenderableContent(
     preview,
-    presentationSnapshot,
-    spreadsheetSnapshot,
+    sourcePresentationSlideCount,
+    sourceSpreadsheetSheetCount,
   );
   const hasWordOutline =
-    (wordOutlineSnapshot?.count ?? getMaterializedWordOutlineCount(preview)) >
-    0;
+    (sourceWordOutlineCount || getMaterializedWordOutlineCount(preview)) > 0;
   const presentationSlideCountRef = useLatestRef(presentationSlideCount);
   const hasWordOutlineRef = useLatestRef(hasWordOutline);
 

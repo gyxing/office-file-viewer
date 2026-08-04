@@ -1,7 +1,7 @@
 // OfficeFileViewer 是组件库对外主入口，负责组合本地化、控制器、工具栏和格式预览舞台。
-import { Layout } from 'antd';
+import { ConfigProvider, Layout } from 'antd';
 import type { CSSProperties, ReactElement } from 'react';
-import React, { memo, useMemo } from 'react';
+import React, { memo, useCallback, useMemo } from 'react';
 import './index.less';
 import {
   OfficeFileViewerLocaleProvider,
@@ -104,6 +104,11 @@ function OfficeFileViewerContent({
       onParseProgress,
       messages,
     });
+  const getPopupContainer = useCallback(
+    (triggerNode?: HTMLElement) =>
+      viewerRef.current ?? triggerNode?.parentElement ?? document.body,
+    [viewerRef],
+  );
   const { document: documentState, view } = state;
   const preview = meta.preview;
   const loading =
@@ -245,32 +250,37 @@ function OfficeFileViewerContent({
       className={['office-file-viewer', className].filter(Boolean).join(' ')}
       style={viewerStyle}
     >
-      <Layout className="office-file-viewer__layout">
-        <OfficeToolbar
-          fileName={displayedFileName}
-          previewKind={meta.previewKind}
-          formatControls={formatControls}
-          zoomControls={zoomControls}
-          fullscreenControls={fullscreenControls}
-          onSelectFile={actions.selectFile}
-        />
-        <Content className="office-file-viewer__content">
-          <OfficeResourceStoreProvider store={resourceStore}>
-            <OfficePreviewStage
-              state={previewStageState}
-              onCloseWordOutline={actions.closeWordOutline}
-              onSelectSlide={actions.selectSlide}
-              onSelectSheet={actions.selectSheet}
-            />
-          </OfficeResourceStoreProvider>
-          <OfficeParseStatus
-            progress={
-              loading && meta.hasRenderableContent ? parseProgress : undefined
-            }
-            warning={partialWarning}
+      <ConfigProvider
+        // 浏览器全屏只保留预览器根节点，弹层也必须挂载到当前实例内部。
+        getPopupContainer={getPopupContainer}
+      >
+        <Layout className="office-file-viewer__layout">
+          <OfficeToolbar
+            fileName={displayedFileName}
+            previewKind={meta.previewKind}
+            formatControls={formatControls}
+            zoomControls={zoomControls}
+            fullscreenControls={fullscreenControls}
+            onSelectFile={actions.selectFile}
           />
-        </Content>
-      </Layout>
+          <Content className="office-file-viewer__content">
+            <OfficeResourceStoreProvider store={resourceStore}>
+              <OfficePreviewStage
+                state={previewStageState}
+                onCloseWordOutline={actions.closeWordOutline}
+                onSelectSlide={actions.selectSlide}
+                onSelectSheet={actions.selectSheet}
+              />
+            </OfficeResourceStoreProvider>
+            <OfficeParseStatus
+              progress={
+                loading && meta.hasRenderableContent ? parseProgress : undefined
+              }
+              warning={partialWarning}
+            />
+          </Content>
+        </Layout>
+      </ConfigProvider>
     </div>
   );
 }

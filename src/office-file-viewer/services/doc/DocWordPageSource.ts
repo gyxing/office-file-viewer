@@ -120,6 +120,7 @@ export class DocWordPageSource
       );
     }
     const budget = createTimeBudget();
+    const readyPages: PaginatedDocPage[] = [];
     for (const block of blocks) {
       resolveDocBlockResources(block, this.resources);
       this.stats.addDocBlocks([block]);
@@ -137,15 +138,15 @@ export class DocWordPageSource
           },
         ]);
       }
-      for (const page of this.pagination.append([block])) {
-        await this.publishPage(page);
-      }
+      readyPages.push(...this.pagination.append([block]));
       this.expectedBlockIndex += 1;
       if (budget.shouldYield()) {
+        await this.publishPages(readyPages.splice(0));
         await yieldToMainThread(this.signal);
         budget.reset();
       }
     }
+    await this.publishPages(readyPages);
   }
 
   async complete(warnings?: string[]) {
@@ -156,9 +157,7 @@ export class DocWordPageSource
     if (warnings?.length) {
       this.summary = { ...this.summary, warnings: [...warnings] };
     }
-    for (const page of this.pagination.append([], true)) {
-      await this.publishPage(page);
-    }
+    await this.publishPages(this.pagination.append([], true));
     this.completed = true;
     this.writableOutline.complete();
     this.stats.setEstimatedPageCount(this.snapshot.pages.length);
@@ -242,31 +241,50 @@ export class DocWordPageSource
     return this.disposePromise;
   }
 
-  private async publishPage(page: PaginatedDocPage) {
-    const index = this.snapshot.pages.length;
-    const sourceBlockIds = [
-      ...new Set(
-        page.blocks.flatMap((block) => [
-          block.id,
-          ...(block.sourceBlockId ? [block.sourceBlockId] : []),
-        ]),
-      ),
-    ];
-    const meta: WordPageMeta = {
-      id: page.id,
-      index,
-      revision: 1,
-      status: 'ready',
-      estimatedContentHeight: this.summary?.page.minHeight ?? 1123,
-      sourceBlockIds,
-    };
-    await this.pageStore.put(meta, page);
-    sourceBlockIds.forEach((blockId) =>
-      this.blockPageIndex.set(blockId, index),
-    );
+  private async publishPages(pages: readonly PaginatedDocPage[]) {
+    if (!pages.length) return;
+    const metas: WordPageMeta[] = [];
+    for (const page of pages) {
+      const index = this.snapshot.pages.length + metas.length;
+      const sourceBlockIds = [
+        ...new Set(
+          page.blocks.flatMap((block) => [
+            block.id,
+            ...(block.sourceBlockId ? [block.sourceBlockId] : []),
+          ]),
+        ),
+      ];
+      const meta: WordPageMeta = {
+        id: page.id,
+        index,
+        revision: 1,
+        status: 'ready',
+        estimatedContentHeight: this.summary?.page.minHeight ?? 1123,
+        sourceBlockIds,
+      };
+      try {
+        await this.pageStore.put(meta, page);
+      } catch (error) {
+        // 前序页面已经成功持久化时先发布其元数据，避免失败恢复后重复写入相同 revision。
+        this.commitPublishedPages(metas);
+        throw error;
+      }
+      metas.push(meta);
+    }
+    this.commitPublishedPages(metas);
+  }
+
+  /** 一次性发布已经成功写入页面 Store 的元数据和块索引。 */
+  private commitPublishedPages(metas: readonly WordPageMeta[]) {
+    if (!metas.length) return;
+    metas.forEach((meta) => {
+      meta.sourceBlockIds.forEach((blockId) =>
+        this.blockPageIndex.set(blockId, meta.index),
+      );
+    });
     this.snapshot = {
       revision: this.snapshot.revision + 1,
-      pages: [...this.snapshot.pages, meta],
+      pages: [...this.snapshot.pages, ...metas],
     };
     this.emitChange();
   }

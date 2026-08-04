@@ -296,7 +296,7 @@ Progress stages include `reading`, `container`, `structure`, `content`, `resourc
 - The zoom range is `25%` to `300%`, with toolbar presets at `50%`, `75%`, `100%`, `125%`, `150%`, and `200%`.
 - PPT/PPTX supports slide navigation and thumbnail navigation.
 - XLS/XLSX supports switching between worksheet tabs.
-- DOC/DOCX/WPS does not display an additional document title bar; legacy-format parsing warnings appear where the original title bar would be.
+- DOC/DOCX/WPS does not display an additional document title bar, leaving more vertical space for document content.
 - Fullscreen mode depends on the browser Fullscreen API. The button is disabled when unsupported, and the state synchronizes automatically after exiting with `Esc`.
 - Map charts may need to load external GeoJSON data. If the network request fails, the viewer uses a document snapshot when available; otherwise, it displays a failure state.
 

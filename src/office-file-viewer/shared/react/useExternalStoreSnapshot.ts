@@ -24,6 +24,25 @@ type ExternalStore<TSnapshot> = {
   subscribe(listener: StoreChangeListener): () => void;
 };
 
+/** 选择器缓存同一语义结果，避免无关快照修订触发组件更新。 */
+type ExternalStoreSelectionCache<TSnapshot, TSelection> =
+  | {
+      /** 标识当前尚未保存任何选择结果。 */
+      initialized: false;
+    }
+  | {
+      /** 标识当前已经保存选择结果。 */
+      initialized: true;
+      /** 生成当前缓存结果的数据源。 */
+      source: ExternalStore<TSnapshot> | undefined;
+      /** 计算当前结果时读取的源快照。 */
+      snapshot: TSnapshot | undefined;
+      /** 计算当前结果时使用的选择器。 */
+      selector: (snapshot: TSnapshot) => TSelection;
+      /** 对外保持引用稳定的选择结果。 */
+      selection: TSelection;
+    };
+
 /** React 16.9/17 fallback 保存的最近一次渲染快照。 */
 type FallbackStoreState<TSnapshot> = {
   /** 最近一次提交给 React 渲染的快照。 */
@@ -115,4 +134,67 @@ export function useExternalStoreSnapshot<TSnapshot>(
   );
 
   return useSyncExternalStoreCompat(subscribe, getSnapshot, getSnapshot);
+}
+
+/** 只订阅外部快照中实际使用的派生值，兼容 React 16.9 至 React 18。 */
+export function useExternalStoreSelector<TSnapshot, TSelection>(
+  source: ExternalStore<TSnapshot> | undefined,
+  selector: (snapshot: TSnapshot) => TSelection,
+  fallbackSelection: TSelection,
+  isEqual: (current: TSelection, next: TSelection) => boolean = Object.is,
+) {
+  const selectorRef = React.useRef(selector);
+  const fallbackSelectionRef = React.useRef(fallbackSelection);
+  const isEqualRef = React.useRef(isEqual);
+  const cacheRef = React.useRef<
+    ExternalStoreSelectionCache<TSnapshot, TSelection>
+  >({ initialized: false });
+  selectorRef.current = selector;
+  fallbackSelectionRef.current = fallbackSelection;
+  isEqualRef.current = isEqual;
+
+  const subscribe = React.useCallback(
+    (listener: StoreChangeListener) =>
+      source === undefined ? EMPTY_UNSUBSCRIBE : source.subscribe(listener),
+    [source],
+  );
+  const getSelection = React.useCallback(() => {
+    const currentSelector = selectorRef.current;
+    let snapshot: TSnapshot | undefined;
+    let nextSelection: TSelection;
+    if (source === undefined) {
+      nextSelection = fallbackSelectionRef.current;
+    } else {
+      snapshot = source.getSnapshot();
+      nextSelection = currentSelector(snapshot);
+    }
+    const cached = cacheRef.current;
+
+    if (
+      cached.initialized &&
+      source !== undefined &&
+      cached.source === source &&
+      cached.selector === currentSelector &&
+      Object.is(cached.snapshot, snapshot)
+    ) {
+      return cached.selection;
+    }
+
+    const selection =
+      cached.initialized &&
+      cached.source === source &&
+      isEqualRef.current(cached.selection, nextSelection)
+        ? cached.selection
+        : nextSelection;
+    cacheRef.current = {
+      initialized: true,
+      source,
+      snapshot,
+      selector: currentSelector,
+      selection,
+    };
+    return selection;
+  }, [source]);
+
+  return useSyncExternalStoreCompat(subscribe, getSelection, getSelection);
 }

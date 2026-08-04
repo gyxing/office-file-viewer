@@ -1,6 +1,18 @@
 import { defineConfig } from 'dumi';
 import { resolve as resolvePath } from 'node:path';
 
+// 烟测工作台只在本地开发环境注册，避免样例文件进入 Pages 构建产物。
+const developmentRoutes =
+  process.env.NODE_ENV === 'development'
+    ? [
+        {
+          path: '/dev/smoke-test',
+          component: resolvePath(__dirname, 'docs/dev/smoke-test.md'),
+          layout: false,
+        },
+      ]
+    : [];
+
 export default defineConfig({
   base: '/office-file-viewer/',
   publicPath: '/office-file-viewer/',
@@ -21,6 +33,7 @@ export default defineConfig({
       component: resolvePath(__dirname, 'docs/dev/index.zh-CN.md'),
       layout: false,
     },
+    ...developmentRoutes,
   ],
   themeConfig: {
     name: 'Office File Viewer',

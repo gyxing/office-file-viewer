@@ -63,10 +63,21 @@ function createEmptyCell(row: number, column: number): SpreadsheetCell {
   };
 }
 
+/** 移除仅供 XLSX 按需读取使用的内部字段，生成公共 Sheet 描述符。 */
+function createSnapshotDescriptor(
+  descriptor: XlsxSheetDescriptor,
+): SpreadsheetSheetDescriptor {
+  const { sheetBytes, relsPath, performance, ...snapshotDescriptor } =
+    descriptor;
+  return snapshotDescriptor;
+}
+
 /** 提供 XLSX 按 Sheet 解析、稀疏范围读取和可重试状态。 */
 export class XlsxSpreadsheetSource implements SpreadsheetSource {
   private readonly listeners = new Set<() => void>();
   private readonly descriptors: XlsxSheetDescriptor[];
+  /** 与内部描述符同步、可安全暴露给订阅者的不可变数组。 */
+  private snapshotDescriptors: SpreadsheetSheetDescriptor[];
   private readonly profiles = new Map<string, SpreadsheetPerformanceProfile>();
   private readonly stores = new Map<string, SpreadsheetSheetStore>();
   private readonly requests = new Map<string, Promise<void>>();
@@ -84,6 +95,7 @@ export class XlsxSpreadsheetSource implements SpreadsheetSource {
     this.descriptors.forEach((descriptor) => {
       this.profiles.set(descriptor.id, descriptor.performance);
     });
+    this.snapshotDescriptors = this.descriptors.map(createSnapshotDescriptor);
     this.snapshot = this.createSnapshot();
   }
 
@@ -105,11 +117,7 @@ export class XlsxSpreadsheetSource implements SpreadsheetSource {
   private createSnapshot(): SpreadsheetSourceSnapshot {
     return {
       revision: this.revision,
-      sheets: this.descriptors.map(
-        ({ sheetBytes, relsPath, performance, ...descriptor }) => ({
-          ...descriptor,
-        }),
-      ),
+      sheets: this.snapshotDescriptors,
     };
   }
 
@@ -132,6 +140,11 @@ export class XlsxSpreadsheetSource implements SpreadsheetSource {
       ...patch,
       revision: current.revision + 1,
     };
+    const nextSnapshotDescriptors = this.snapshotDescriptors.slice();
+    nextSnapshotDescriptors[index] = createSnapshotDescriptor(
+      this.descriptors[index],
+    );
+    this.snapshotDescriptors = nextSnapshotDescriptors;
     this.publish();
   }
 

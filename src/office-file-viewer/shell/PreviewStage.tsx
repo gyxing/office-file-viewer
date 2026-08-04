@@ -128,6 +128,7 @@ function OfficePreviewStageComponent({
     case 'presentation':
       content = (
         <LazyPptxViewer
+          key={state.preview.sessionId}
           preview={state.preview}
           activeIndex={state.activeIndex}
           zoom={state.zoom}
@@ -139,6 +140,7 @@ function OfficePreviewStageComponent({
     case 'spreadsheet':
       content = (
         <LazyXlsxViewer
+          key={state.preview.sessionId}
           preview={state.preview}
           activeSheetId={state.activeSheetId}
           zoom={state.zoom}
@@ -149,6 +151,7 @@ function OfficePreviewStageComponent({
     case 'docx':
       content = (
         <LazyDocxViewer
+          key={state.preview.sessionId}
           preview={state.preview}
           zoom={state.zoom}
           showOutline={state.showOutline}
@@ -159,6 +162,7 @@ function OfficePreviewStageComponent({
     case 'doc':
       content = (
         <LazyDocViewer
+          key={state.preview.sessionId}
           preview={state.preview}
           zoom={state.zoom}
           showOutline={state.showOutline}

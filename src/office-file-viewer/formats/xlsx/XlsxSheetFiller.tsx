@@ -14,6 +14,8 @@ type XlsxSheetFillerProps = {
   sheet: XlsxSheet;
   /** 当前视口、缩放比例和工作表共同计算出的渲染尺寸。 */
   metrics: XlsxSheetMetrics;
+  /** 抵消未缩放滚动容器内边距的逻辑像素偏移。 */
+  stickyInset: number;
 };
 
 /** 将一组尺寸转换为每个区域末端相对起点的累计偏移。 */
@@ -26,7 +28,11 @@ function buildBoundaryOffsets(sizes: number[]) {
 }
 
 /** 渲染不承载数据的工作表空白行列。 */
-function XlsxSheetFillerComponent({ sheet, metrics }: XlsxSheetFillerProps) {
+function XlsxSheetFillerComponent({
+  sheet,
+  metrics,
+  stickyInset,
+}: XlsxSheetFillerProps) {
   const fillerWidth = Math.max(
     0,
     metrics.renderedTableWidth - metrics.tableWidth,
@@ -97,7 +103,10 @@ function XlsxSheetFillerComponent({ sheet, metrics }: XlsxSheetFillerProps) {
         >
           <div
             className="office-file-xlsx-sheet-filler__column-headers"
-            style={{ height: metrics.columnHeaderHeight }}
+            style={{
+              top: stickyInset,
+              height: metrics.columnHeaderHeight,
+            }}
           >
             <div className="office-file-xlsx-sheet-filler__column-header-clip">
               {fillerColumns.map((column) => (
@@ -153,7 +162,10 @@ function XlsxSheetFillerComponent({ sheet, metrics }: XlsxSheetFillerProps) {
             height: fillerHeight,
           }}
         >
-          <div className="office-file-xlsx-sheet-filler__row-headers">
+          <div
+            className="office-file-xlsx-sheet-filler__row-headers"
+            style={{ left: stickyInset }}
+          >
             <div className="office-file-xlsx-sheet-filler__row-header-clip">
               {fillerRows.map((rowIndex) => (
                 <div
