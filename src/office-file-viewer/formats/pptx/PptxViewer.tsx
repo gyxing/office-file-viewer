@@ -1,10 +1,7 @@
 // PptxViewer 负责 PPTX 预览整体布局，组合左侧缩略图栏和右侧幻灯片视口。
 import React, { memo, useMemo } from 'react';
+import type { OfficeFileViewerPreviewState } from '../../services/parsing/internalTypes';
 import { getPresentationSource } from '../../services/presentation/presentationSourceRegistry';
-import type {
-  PresentationDocument,
-  PresentationSource,
-} from '../../services/presentation/types';
 import { OfficeEmpty } from '../../shell/Empty';
 import './index.less';
 import { PptxSlideViewport } from './PptxSlideViewport';
@@ -12,12 +9,16 @@ import { PptxSpeakerNotes } from './PptxSpeakerNotes';
 import { PptxThumbnailPane } from './PptxThumbnailPane';
 import { usePresentationSource } from './usePresentationSource';
 
+/** 演示文稿 Viewer 可以消费的物化或按需预览。 */
+type PresentationPreview = Extract<
+  OfficeFileViewerPreviewState,
+  { previewKind: 'ppt' | 'pptx' }
+>;
+
 /** PPTX预览器组件属性。 */
 type PptxViewerProps = {
-  /** 当前处理的标准化文档模型。 */
-  document?: PresentationDocument;
-  /** 大型演示文稿使用的按页读取数据源。 */
-  source?: PresentationSource;
+  /** 当前演示文稿的物化或按需预览。 */
+  preview: PresentationPreview;
   /** 当前选中项在所属集合中的索引。 */
   activeIndex: number;
   /** 当前预览缩放比例。 */
@@ -30,16 +31,18 @@ type PptxViewerProps = {
 
 /** 渲染PPTX预览器。 */
 function PptxViewerComponent({
-  document,
-  source,
+  preview,
   activeIndex,
   zoom,
   showSpeakerNotes,
   onSelectSlide,
 }: PptxViewerProps) {
   const resolvedSource = useMemo(
-    () => source ?? (document ? getPresentationSource(document) : undefined),
-    [document, source],
+    () =>
+      preview.mode === 'source'
+        ? preview.source
+        : getPresentationSource(preview.model.document),
+    [preview],
   );
   const {
     snapshot,
@@ -51,7 +54,7 @@ function PptxViewerComponent({
   } = usePresentationSource(resolvedSource, activeIndex, showSpeakerNotes);
 
   if (!resolvedSource || !snapshot.slideCount) {
-    return <OfficeEmpty kind="pptx" />;
+    return <OfficeEmpty kind={preview.previewKind} />;
   }
 
   return (

@@ -10,14 +10,10 @@ import React, {
   useState,
 } from 'react';
 import type {
-  DocxWordPageSource,
-  DocxWordPreviewSummary,
-} from '../../services/docx/DocxWordPageSource';
-import type {
-  DocxDocument,
   DocxPageContent,
   DocxPageRegionVariants,
 } from '../../services/docx/types';
+import type { OfficeFileViewerPreviewState } from '../../services/parsing/internalTypes';
 import { collectWordPerformanceStats } from '../../services/word/collectWordPerformanceStats';
 import { createMaterializedWordPageSource } from '../../services/word/createMaterializedWordPageSource';
 import { createMemoryWordOutlineProvider } from '../../services/word/createMemoryWordOutlineProvider';
@@ -45,22 +41,22 @@ const LazyDocxMeasureHost = lazy(() =>
   })),
 );
 
+/** DOCX Viewer 可以消费的物化或按需预览。 */
+type DocxPreview = Extract<
+  OfficeFileViewerPreviewState,
+  { previewKind: 'docx' }
+>;
+
 /** DOCX预览器组件属性。 */
 type DocxViewerProps = {
-  /** 当前处理的标准化文档模型。 */
-  document?: DocxDocument;
-  /** 大文件路径直接消费的 DOCX 页面 Source。 */
-  source?: DocxWordPageSource;
-  /** 大文件 Source 不复制 blocks/pages 的轻量文档摘要。 */
-  summary?: DocxWordPreviewSummary;
+  /** 当前 DOCX 的物化或按需预览。 */
+  preview: DocxPreview;
   /** 当前预览缩放比例。 */
   zoom: number;
   /** 文档大纲当前是否展开。 */
   showOutline: boolean;
   /** 关闭文档大纲。 */
   onCloseOutline: () => void;
-  /** 当前文件解析 Session，用于隔离性能升级状态。 */
-  documentSessionId: string;
 };
 
 /** 按物理页序号选择首页、偶数页或默认页眉页脚。 */
@@ -150,14 +146,16 @@ function useMeasuredDocxPages(
 // DocxViewer 负责 DOCX 页面内容的缩放渲染和滚动布局。
 /** 协调 DOCX 页面、大纲和按需内容加载。 */
 function DocxViewerComponent({
-  document,
-  source,
-  summary,
+  preview,
   zoom,
   showOutline,
   onCloseOutline,
-  documentSessionId,
 }: DocxViewerProps) {
+  const document =
+    preview.mode === 'materialized' ? preview.model.document : undefined;
+  const source = preview.mode === 'source' ? preview.source : undefined;
+  const summary = preview.mode === 'source' ? preview.summary : undefined;
+  const documentSessionId = preview.sessionId;
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const materializedSourcePages = useMemo<DocxPageContent[]>(
     () =>

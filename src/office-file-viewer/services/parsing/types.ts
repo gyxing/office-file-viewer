@@ -26,6 +26,14 @@ export type ParseProgress = {
   message: string;
 };
 
+/** 描述预览首屏已经可以使用时的数据形态。 */
+export type OfficePreviewReadyInfo = {
+  /** 当前文件对应的预览格式类别。 */
+  previewKind: PreviewKind;
+  /** 当前预览使用完整模型或按需数据源。 */
+  mode: 'materialized' | 'source';
+};
+
 /** 定义解析会话的可选配置。 */
 export type OfficeParseOptions = {
   /** 控制解析任务使用 Worker、主线程或自动降级的策略。 */

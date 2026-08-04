@@ -16,6 +16,7 @@ import { detectPreviewKind } from './detectPreviewKind';
 import { tryDetectPreviewKind, type PreviewKind } from './formatDefinitions';
 import { loadOfficeSourcePreviewFactory } from './formatParserRegistry';
 import type {
+  MaterializedPreviewState,
   OfficeFileViewerParseSession,
   OfficeFileViewerPreviewHandle,
   OfficeFileViewerPreviewState,
@@ -70,14 +71,15 @@ function createParseSession(
   let partialResult: OfficeFileViewerPreviewState | undefined;
   let ownershipTransferred = false;
 
-  const createMaterializedState = (
-    parsed: ParsedOfficeFile,
-  ): OfficeFileViewerPreviewState => ({
-    sessionId: documentSession.id,
-    previewKind: parsed.kind,
-    mode: 'materialized',
-    model: parsed,
-  });
+  const createMaterializedState = <Parsed extends ParsedOfficeFile>(
+    parsed: Parsed,
+  ): Extract<MaterializedPreviewState, { previewKind: Parsed['kind'] }> =>
+    ({
+      sessionId: documentSession.id,
+      previewKind: parsed.kind,
+      mode: 'materialized',
+      model: parsed,
+    } as Extract<MaterializedPreviewState, { previewKind: Parsed['kind'] }>);
 
   const createDocSourceState = (): OfficeFileViewerPreviewState => {
     if (!docPageSource) throw new Error('DOC PageSource 尚未创建');
