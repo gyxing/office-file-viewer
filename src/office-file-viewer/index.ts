@@ -12,6 +12,7 @@ export type {
   OfficeParseOptions,
   OfficeParseSession,
   OfficeParseSessionStatus,
+  OfficePreviewReadyInfo,
   ParseProgress,
   ParseStage,
   WorkerMode,

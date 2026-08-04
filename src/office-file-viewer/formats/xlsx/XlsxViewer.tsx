@@ -1,8 +1,8 @@
 // XlsxViewer 负责 XLSX 工作簿预览的整体布局，包括工作表选择和当前工作表内容区。
 import React, { memo, useMemo } from 'react';
+import type { OfficeFileViewerPreviewState } from '../../services/parsing/internalTypes';
 import type { SpreadsheetSource } from '../../services/spreadsheet/SpreadsheetSource';
 import { getSpreadsheetSource } from '../../services/spreadsheet/spreadsheetSourceRegistry';
-import type { XlsxWorkbook } from '../../services/xlsx/types';
 import { OfficeEmpty } from '../../shell/Empty';
 import './index.less';
 import { SpreadsheetSheetState } from './SpreadsheetSheetState';
@@ -12,14 +12,16 @@ import { XlsxChartSheet } from './XlsxChartSheet';
 import { XlsxSheetGrid } from './XlsxSheetGrid';
 import { XlsxSheetTabs } from './XlsxSheetTabs';
 
+/** 电子表格 Viewer 可以消费的物化或按需预览。 */
+type SpreadsheetPreview = Extract<
+  OfficeFileViewerPreviewState,
+  { previewKind: 'xls' | 'xlsx' }
+>;
+
 /** Excel预览器组件属性。 */
 type XlsxViewerProps = {
-  /** 当前处理的标准化工作簿。 */
-  workbook?: XlsxWorkbook;
-  /** 大型 XLS/XLSX 使用的按 Sheet 数据源。 */
-  source?: SpreadsheetSource;
-  /** 当前模型对应的 Office 内容类型。 */
-  kind?: 'xlsx' | 'xls';
+  /** 当前电子表格的物化或按需预览。 */
+  preview: SpreadsheetPreview;
   /** 当前激活工作表的稳定标识。 */
   activeSheetId?: string;
   /** 当前预览缩放比例。 */
@@ -30,26 +32,27 @@ type XlsxViewerProps = {
 
 /** 渲染Excel预览器。 */
 function XlsxViewerComponent({
-  workbook,
-  source,
-  kind = 'xlsx',
+  preview,
   activeSheetId,
   zoom,
   onSelectSheet,
 }: XlsxViewerProps) {
   const resolvedSource = useMemo(
-    () => source ?? (workbook ? getSpreadsheetSource(workbook) : undefined),
-    [source, workbook],
+    () =>
+      preview.mode === 'source'
+        ? preview.source
+        : getSpreadsheetSource(preview.model.workbook),
+    [preview],
   );
 
   if (!resolvedSource) {
-    return <OfficeEmpty kind={kind} />;
+    return <OfficeEmpty kind={preview.previewKind} />;
   }
 
   return (
     <XlsxSourceViewer
       source={resolvedSource}
-      kind={kind}
+      kind={preview.previewKind}
       activeSheetId={activeSheetId}
       zoom={zoom}
       onSelectSheet={onSelectSheet}

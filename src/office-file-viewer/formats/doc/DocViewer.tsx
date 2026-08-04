@@ -1,9 +1,6 @@
 import React, { memo, useEffect, useMemo, useRef } from 'react';
-import type {
-  DocWordPageSource,
-  DocWordPreviewSummary,
-} from '../../services/doc/DocWordPageSource';
 import type { DocDocument } from '../../services/doc/types';
+import type { OfficeFileViewerPreviewState } from '../../services/parsing/internalTypes';
 import { collectWordPerformanceStats } from '../../services/word/collectWordPerformanceStats';
 import { createMaterializedWordPageSource } from '../../services/word/createMaterializedWordPageSource';
 import { createMemoryWordOutlineProvider } from '../../services/word/createMemoryWordOutlineProvider';
@@ -20,26 +17,23 @@ import { DocPageFrame } from './DocPageFrame';
 import { paginateDocBlocks, type PaginatedDocPage } from './docRenderUtils';
 import './index.less';
 
+/** DOC/WPS Viewer 可以消费的物化或按需预览。 */
+type DocPreview = Extract<OfficeFileViewerPreviewState, { previewKind: 'doc' }>;
+
 /** DOC预览器组件属性。 */
 type DocViewerProps = {
-  /** 当前处理的标准化文档模型。 */
-  document?: DocDocument;
-  /** 当前预览使用的按需加载数据源。 */
-  source?: DocWordPageSource;
-  /** 当前预览内容的摘要信息。 */
-  summary?: DocWordPreviewSummary;
+  /** 当前 DOC/WPS 的物化或按需预览。 */
+  preview: DocPreview;
   /** 当前预览缩放比例，100 表示原始大小。 */
   zoom: number;
   /** 文档大纲当前是否展开。 */
   showOutline: boolean;
   /** 关闭文档大纲。 */
   onCloseOutline: () => void;
-  /** 当前文档解析会话的标识。 */
-  documentSessionId: string;
 };
 
 /** 收集普通 DOC 模型中已锚定的图片，避免尾页 Gallery 重复显示。 */
-function collectAnchoredImageIds(document?: DocDocument) {
+function collectAnchoredImageIds(document: DocDocument | undefined) {
   const ids = new Set<string>();
   if (document?.headerImage) ids.add(document.headerImage.id);
   document?.blocks.forEach((block) => {
@@ -83,14 +77,16 @@ function resolveFooterPageNumberStartIndex(pages: PaginatedDocPage[]) {
 
 /** 渲染普通 DOC 模型或大文件渐进 PageSource。 */
 function DocViewerComponent({
-  document,
-  source,
-  summary,
+  preview,
   zoom,
   showOutline,
   onCloseOutline,
-  documentSessionId,
 }: DocViewerProps) {
+  const document =
+    preview.mode === 'materialized' ? preview.model.document : undefined;
+  const source = preview.mode === 'source' ? preview.source : undefined;
+  const summary = preview.mode === 'source' ? preview.summary : undefined;
+  const documentSessionId = preview.sessionId;
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const documentMetadata = summary ?? document;
   const page = documentMetadata?.page;

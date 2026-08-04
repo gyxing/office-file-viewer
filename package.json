@@ -37,13 +37,32 @@
     "name": "gyxing",
     "url": "https://github.com/gyxing"
   },
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "father build",
+    "build": "yarn run build:modules && yarn run build:styles",
+    "build:modules": "father build",
+    "build:styles": "node scripts/build-package-styles.mjs",
+    "check": "yarn run check:types && yarn run check:lint && yarn run check:styles && yarn run check:build",
+    "check:build": "yarn run build && yarn run docs:build",
+    "check:lint": "eslint src/office-file-viewer --ext .ts,.tsx",
+    "check:styles": "stylelint \"src/office-file-viewer/**/*.less\"",
+    "check:types": "tsc --noEmit",
     "docs:build": "dumi build",
     "prepare": "husky install && dumi setup",
     "prepublishOnly": "father doctor && yarn build",
@@ -72,6 +91,7 @@
     ]
   },
   "dependencies": {
+    "@babel/runtime": "^7.29.7",
     "@zip.js/zip.js": "^2.8.34",
     "echarts": "^5.6.0",
     "emf-converter": "^2.0.2",
@@ -88,6 +108,7 @@
     "eslint": "^8.23.0",
     "father": "^4.1.0",
     "husky": "^8.0.1",
+    "less": "^4.1.3",
     "lint-staged": "^13.0.3",
     "prettier": "^2.7.1",
     "prettier-plugin-organize-imports": "^3.0.0",

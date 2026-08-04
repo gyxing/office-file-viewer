@@ -1,26 +1,7 @@
-// OfficePreviewStage 根据当前文件格式切换到对应预览组件，并统一处理加载和错误态。
+// OfficePreviewStage 根据显式舞台状态切换预览组件，并统一处理加载和错误态。
+import type { ReactElement } from 'react';
 import React, { lazy, memo, Suspense } from 'react';
-import type {
-  DocWordPageSource,
-  DocWordPreviewSummary,
-} from '../services/doc/DocWordPageSource';
-import type { DocDocument } from '../services/doc/types';
-import type {
-  DocxWordPageSource,
-  DocxWordPreviewSummary,
-} from '../services/docx/DocxWordPageSource';
-import type { DocxDocument } from '../services/docx/types';
-import type {
-  PresentationDocument,
-  PresentationSource,
-} from '../services/presentation/types';
-import {
-  getPreviewFamily,
-  isSpreadsheetPreviewKind,
-  type PreviewKind,
-} from '../services/preview';
-import type { SpreadsheetSource } from '../services/spreadsheet/SpreadsheetSource';
-import type { SpreadsheetWorkbook } from '../services/spreadsheet/types';
+import type { OfficeFileViewerPreviewState } from '../services/parsing/internalTypes';
 import { OfficeEmpty } from './Empty';
 import { OfficeError } from './Error';
 import { OfficeLoading } from './Loading';
@@ -46,140 +27,148 @@ const LazyDocViewer = lazy(() =>
   })),
 );
 
-/** 按文件格式选择具体预览器的舞台组件属性。 */
+/** 演示文稿 Viewer 可以消费的物化或按需预览。 */
+type PresentationPreview = Extract<
+  OfficeFileViewerPreviewState,
+  { previewKind: 'ppt' | 'pptx' }
+>;
+
+/** 电子表格 Viewer 可以消费的物化或按需预览。 */
+type SpreadsheetPreview = Extract<
+  OfficeFileViewerPreviewState,
+  { previewKind: 'xls' | 'xlsx' }
+>;
+
+/** DOCX Viewer 可以消费的物化或按需预览。 */
+type DocxPreview = Extract<
+  OfficeFileViewerPreviewState,
+  { previewKind: 'docx' }
+>;
+
+/** DOC/WPS Viewer 可以消费的物化或按需预览。 */
+type DocPreview = Extract<OfficeFileViewerPreviewState, { previewKind: 'doc' }>;
+
+/** 预览舞台所有互斥的可渲染分支。 */
+export type OfficePreviewStageState =
+  | { kind: 'empty' }
+  | {
+      kind: 'loading';
+      /** 当前解析阶段对应的提示。 */
+      tip?: string;
+    }
+  | {
+      kind: 'error';
+      /** 阻止继续预览的错误说明。 */
+      message: string;
+    }
+  | {
+      kind: 'presentation';
+      /** 当前演示文稿预览。 */
+      preview: PresentationPreview;
+      /** 当前选中的幻灯片索引。 */
+      activeIndex: number;
+      /** 当前预览缩放比例。 */
+      zoom: number;
+      /** 演讲者备注面板是否展开。 */
+      showSpeakerNotes: boolean;
+    }
+  | {
+      kind: 'spreadsheet';
+      /** 当前电子表格预览。 */
+      preview: SpreadsheetPreview;
+      /** 当前选中的工作表标识。 */
+      activeSheetId?: string;
+      /** 当前预览缩放比例。 */
+      zoom: number;
+    }
+  | {
+      kind: 'docx';
+      /** 当前 DOCX 预览。 */
+      preview: DocxPreview;
+      /** 当前预览缩放比例。 */
+      zoom: number;
+      /** 文档大纲是否展开。 */
+      showOutline: boolean;
+    }
+  | {
+      kind: 'doc';
+      /** 当前 DOC/WPS 预览。 */
+      preview: DocPreview;
+      /** 当前预览缩放比例。 */
+      zoom: number;
+      /** 文档大纲是否展开。 */
+      showOutline: boolean;
+    };
+
+/** 预览舞台属性。 */
 type OfficePreviewStageProps = {
-  /** 文件当前是否仍在加载或解析。 */
-  loading: boolean;
-  /** 解析期间展示的阶段提示文字。 */
-  loadingTip?: string;
-  /** 当前是否已有可交付渲染器显示的内容。 */
-  hasRenderableContent: boolean;
-  /** 阻止继续预览的错误说明。 */
-  error?: string;
-  /** 当前文件识别出的预览格式；尚未选择文件时为空。 */
-  previewKind?: PreviewKind;
-  /** 当前文件解析 Session，用于隔离格式内部的渐进状态。 */
-  documentSessionId?: string;
-  /** 已标准化的 PPTX 演示文稿模型。 */
-  pptxDocument?: PresentationDocument;
-  /** 大型 PPT/PPTX 使用的按页读取数据源。 */
-  presentationPreviewSource?: PresentationSource;
-  /** 已标准化的 XLS/XLSX 工作簿模型。 */
-  spreadsheetWorkbook?: SpreadsheetWorkbook;
-  /** 大型 XLS/XLSX 使用的按 Sheet 数据源。 */
-  spreadsheetPreviewSource?: SpreadsheetSource;
-  /** 已标准化的 DOCX 文档模型。 */
-  docxDocument?: DocxDocument;
-  /** 大型 DOCX 使用的流式页面来源。 */
-  docxPreviewSource?: DocxWordPageSource;
-  /** 大型 DOCX 不含完整 blocks/pages 的轻量摘要。 */
-  docxPreviewSummary?: DocxWordPreviewSummary;
-  /** 已标准化的 DOC/WPS 文档模型。 */
-  docDocument?: DocDocument;
-  /** 大型 DOC/WPS 使用的渐进页面来源。 */
-  docPreviewSource?: DocWordPageSource;
-  /** 大型 DOC/WPS 不含完整正文的轻量摘要。 */
-  docPreviewSummary?: DocWordPreviewSummary;
-  /** 当前选中项在所属集合中的索引。 */
-  activeIndex: number;
-  /** 当前选中工作表的稳定标识。 */
-  activeSheetId?: string;
-  /** 当前预览缩放比例。 */
-  zoom: number;
-  /** 演讲者备注面板当前是否展开。 */
-  showSpeakerNotes: boolean;
-  /** 文字文档大纲当前是否展开。 */
-  showWordOutline: boolean;
+  /** 当前互斥舞台状态。 */
+  state: OfficePreviewStageState;
   /** 关闭文字文档大纲。 */
   onCloseWordOutline: () => void;
-  /** 在 SelectSlide 事件发生时调用的回调函数。 */
+  /** 选择指定幻灯片。 */
   onSelectSlide: (index: number) => void;
-  /** 在 SelectSheet 事件发生时调用的回调函数。 */
+  /** 选择指定工作表。 */
   onSelectSheet: (sheetId: string) => void;
 };
 
-/** 根据文件格式切换具体预览器，并统一处理加载态和错误态。 */
+/** 根据显式分支选择具体预览器，并保留各格式的懒加载边界。 */
 function OfficePreviewStageComponent({
-  loading,
-  loadingTip,
-  hasRenderableContent,
-  error,
-  previewKind,
-  documentSessionId,
-  pptxDocument,
-  presentationPreviewSource,
-  spreadsheetWorkbook,
-  spreadsheetPreviewSource,
-  docxDocument,
-  docxPreviewSource,
-  docxPreviewSummary,
-  docDocument,
-  docPreviewSource,
-  docPreviewSummary,
-  activeIndex,
-  activeSheetId,
-  zoom,
-  showSpeakerNotes,
-  showWordOutline,
+  state,
   onCloseWordOutline,
   onSelectSlide,
   onSelectSheet,
 }: OfficePreviewStageProps) {
-  if (error) return <OfficeError message={error} />;
-  if (loading && !hasRenderableContent) {
-    return <OfficeLoading tip={loadingTip} />;
-  }
-  if (!previewKind) return <OfficeEmpty />;
-  const previewFamily = getPreviewFamily(previewKind);
-  const spreadsheetPreviewKind =
-    previewFamily === 'spreadsheet' && isSpreadsheetPreviewKind(previewKind)
-      ? previewKind
-      : undefined;
+  if (state.kind === 'empty') return <OfficeEmpty />;
+  if (state.kind === 'loading') return <OfficeLoading tip={state.tip} />;
+  if (state.kind === 'error') return <OfficeError message={state.message} />;
 
-  // 格式 viewer 是真正的重渲染模块，按文件类型懒加载，避免首屏一次性拉取所有预览实现。
-  return (
-    <Suspense fallback={<OfficeLoading />}>
-      {spreadsheetPreviewKind ? (
-        <LazyXlsxViewer
-          workbook={spreadsheetWorkbook}
-          source={spreadsheetPreviewSource}
-          kind={spreadsheetPreviewKind}
-          activeSheetId={activeSheetId}
-          zoom={zoom}
-          onSelectSheet={onSelectSheet}
-        />
-      ) : previewKind === 'docx' ? (
-        <LazyDocxViewer
-          document={docxDocument}
-          source={docxPreviewSource}
-          summary={docxPreviewSummary}
-          zoom={zoom}
-          showOutline={showWordOutline}
-          onCloseOutline={onCloseWordOutline}
-          documentSessionId={documentSessionId ?? 'word-unloaded'}
-        />
-      ) : previewKind === 'doc' ? (
-        <LazyDocViewer
-          document={docDocument}
-          source={docPreviewSource}
-          summary={docPreviewSummary}
-          zoom={zoom}
-          showOutline={showWordOutline}
-          onCloseOutline={onCloseWordOutline}
-          documentSessionId={documentSessionId ?? 'word-unloaded'}
-        />
-      ) : (
+  let content: ReactElement;
+  switch (state.kind) {
+    case 'presentation':
+      content = (
         <LazyPptxViewer
-          document={pptxDocument}
-          source={presentationPreviewSource}
-          activeIndex={activeIndex}
-          zoom={zoom}
-          showSpeakerNotes={showSpeakerNotes}
+          preview={state.preview}
+          activeIndex={state.activeIndex}
+          zoom={state.zoom}
+          showSpeakerNotes={state.showSpeakerNotes}
           onSelectSlide={onSelectSlide}
         />
-      )}
-    </Suspense>
-  );
+      );
+      break;
+    case 'spreadsheet':
+      content = (
+        <LazyXlsxViewer
+          preview={state.preview}
+          activeSheetId={state.activeSheetId}
+          zoom={state.zoom}
+          onSelectSheet={onSelectSheet}
+        />
+      );
+      break;
+    case 'docx':
+      content = (
+        <LazyDocxViewer
+          preview={state.preview}
+          zoom={state.zoom}
+          showOutline={state.showOutline}
+          onCloseOutline={onCloseWordOutline}
+        />
+      );
+      break;
+    case 'doc':
+      content = (
+        <LazyDocViewer
+          preview={state.preview}
+          zoom={state.zoom}
+          showOutline={state.showOutline}
+          onCloseOutline={onCloseWordOutline}
+        />
+      );
+      break;
+  }
+
+  return <Suspense fallback={<OfficeLoading />}>{content}</Suspense>;
 }
 
 export const OfficePreviewStage = memo(OfficePreviewStageComponent);

@@ -3,9 +3,9 @@ import { Empty, Spin } from 'antd';
 import type { CSSProperties } from 'react';
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useOfficeFileViewerMessages } from '../../locale';
-import type { OfficeChartModel } from '../../shared/ooxml/charts';
-import { buildOfficeChartOption } from '../../shared/ooxml/charts';
+import { buildOfficeChartOption } from './buildOfficeChartOption';
 import './index.less';
+import type { OfficeChartModel } from './officeChartTypes';
 
 /** Office图表视图组件属性。 */
 type OfficeChartViewProps = {
@@ -31,8 +31,7 @@ function OfficeChartViewComponent({
 }: OfficeChartViewProps) {
   const messages = useOfficeFileViewerMessages();
   const hostRef = useRef<HTMLDivElement | null>(null);
-  const chartRef = useRef<import('echarts').EChartsType | null>(null);
-  const echartsRef = useRef<typeof import('echarts') | null>(null);
+  const chartRef = useRef<import('echarts/core').EChartsType | null>(null);
   const [ready, setReady] = useState(false);
   const [visible, setVisible] = useState(false);
   const [mapFailed, setMapFailed] = useState(false);
@@ -93,8 +92,12 @@ function OfficeChartViewComponent({
       }
 
       try {
-        const echarts = echartsRef.current ?? (await import('echarts'));
-        echartsRef.current = echarts;
+        const { ensureOfficeEChartsRuntime } = await import(
+          './runtime/loadOfficeEChartsRuntime'
+        );
+        if (disposed || !hostRef.current) return;
+        const echarts = await ensureOfficeEChartsRuntime(chart);
+        if (disposed || !hostRef.current) return;
         if (chart.type === 'map') {
           const mapName = chart.mapName ?? 'china';
           if (!registeredMaps.has(mapName)) {
@@ -108,10 +111,11 @@ function OfficeChartViewComponent({
               const response = await fetch(chart.mapGeoJsonUrl, {
                 signal: requestController?.signal,
               });
+              if (disposed || requestController?.signal.aborted) return;
               if (!response.ok)
                 throw new Error(`Map data request failed: ${response.status}`);
               const geoJson = await response.json();
-              if (disposed) return;
+              if (disposed || requestController?.signal.aborted) return;
               echarts.registerMap(mapName, geoJson);
               registeredMaps.add(mapName);
               setMapFailed(false);

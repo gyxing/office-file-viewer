@@ -17,22 +17,27 @@ import type {
 } from '../spreadsheet/SpreadsheetSource';
 import type { OfficeParseSession } from './types';
 
+/** 按格式判别字段关联物化模型，避免预览类别与模型类型失配。 */
+export type MaterializedPreviewState = {
+  [Kind in ParsedOfficeFile['kind']]: {
+    /** 当前解析或预览会话的标识。 */
+    sessionId: string;
+    /** 当前文件使用的预览格式类别。 */
+    previewKind: Kind;
+    /** 当前数据源或渲染器采用的工作模式。 */
+    mode: 'materialized';
+    /** 当前格式对应的完整解析模型。 */
+    model: Extract<ParsedOfficeFile, { kind: Kind }>;
+    /** 物化预览不使用按需加载数据源。 */
+    source?: undefined;
+    /** 物化预览不需要额外摘要。 */
+    summary?: undefined;
+  };
+}[ParsedOfficeFile['kind']];
+
 /** OfficeFileViewer 内部可订阅的非拥有型预览快照。 */
 export type OfficeFileViewerPreviewState =
-  | {
-      /** 当前解析或预览会话的标识。 */
-      sessionId: string;
-      /** 当前文件使用的预览格式类别。 */
-      previewKind: ParsedOfficeFile['kind'];
-      /** 当前数据源或渲染器采用的工作模式。 */
-      mode: 'materialized';
-      /** 模型。 */
-      model: ParsedOfficeFile;
-      /** 当前预览使用的按需加载数据源。 */
-      source?: undefined;
-      /** 当前预览内容的摘要信息。 */
-      summary?: undefined;
-    }
+  | MaterializedPreviewState
   | {
       /** 当前解析或预览会话的标识。 */
       sessionId: string;
@@ -101,7 +106,7 @@ export type OfficeFileViewerParseSession = Omit<
   OfficeParseSession<OfficeFileViewerPreviewHandle>,
   'result'
 > & {
-  /** DOC 域计算结果的文本片段。 */
+  /** 解析会话最终交付的预览句柄。 */
   readonly result: Promise<OfficeFileViewerPreviewHandle>;
   /** 解析尚未完成时可立即展示的最新预览快照。 */
   readonly partialResult: OfficeFileViewerPreviewState | undefined;

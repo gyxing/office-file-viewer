@@ -1,6 +1,6 @@
 # Office File Viewer
 
-[English](./README.md) | 简体中文 | [在线示例](https://gyxing.github.io/office-file-viewer/)
+[English](./README.md) | 简体中文 | <a href="https://gyxing.github.io/office-file-viewer/" target="_blank" rel="noopener noreferrer">在线示例</a>
 
 > A browser-based React component for offline preview of DOC/DOCX/WPS, XLS/XLSX, and PPT/PPTX files.
 
@@ -35,9 +35,9 @@ npm install office-file-viewer antd react react-dom
 yarn add office-file-viewer antd react react-dom
 ```
 
-`react`、`react-dom` 和 `antd` 由宿主项目提供；`echarts` 与 `jszip` 是组件自身的运行时依赖。
+`react`、`react-dom` 和 `antd` 由宿主项目提供；`echarts`、`@zip.js/zip.js`、`emf-converter`、`saxes` 和 `@babel/runtime` 由组件包作为运行时依赖安装。
 
-宿主构建工具需要支持 `.less` 文件，因为组件样式会随模块一起导入。
+组件包仅发布 ESM，宿主的浏览器构建工具必须能够处理 ESM。组件样式已编译为 CSS 并自动加载，宿主不需要 Less loader。公开 API 只从 `office-file-viewer` 根入口导入，不要使用未文档化的 `dist` 深层路径。
 
 ## 版本兼容
 
