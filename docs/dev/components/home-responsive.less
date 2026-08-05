@@ -1,13 +1,4 @@
 @media (max-width: 1080px) {
-  .office-viewer-site-nav {
-    gap: 14px;
-  }
-
-  .office-viewer-site-nav-links a,
-  .office-viewer-site-nav-actions a {
-    padding: 0 9px;
-  }
-
   .office-viewer-site-hero {
     min-height: auto;
     padding-top: 68px;
@@ -26,25 +17,9 @@
 }
 
 @media (max-width: 900px) {
-  .office-viewer-site-nav {
-    width: calc(100% - 32px);
-    min-height: 64px;
-  }
-
-  .office-viewer-site-nav-links {
-    display: none;
-  }
-
-  .office-viewer-site-mobile-demo {
-    display: inline-flex !important;
-    color: var(--site-primary-hover) !important;
-    background: var(--site-primary-soft);
-  }
-
   .office-viewer-site-hero,
   .office-viewer-site-section,
-  .office-viewer-site-final-cta,
-  .office-viewer-site-footer {
+  .office-viewer-site-final-cta {
     width: calc(100% - 32px);
   }
 
@@ -78,10 +53,6 @@
 }
 
 @media (max-width: 700px) {
-  .office-viewer-site-npm-link {
-    display: none !important;
-  }
-
   .office-viewer-site-highlight-grid {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -132,39 +103,9 @@
 }
 
 @media (max-width: 600px) {
-  .office-viewer-site-nav {
-    width: calc(100% - 24px);
-    gap: 8px;
-  }
-
-  .office-viewer-site-header .office-viewer-site-brand > span:last-child {
-    display: none;
-  }
-
-  .office-viewer-site-brand-mark {
-    width: 32px;
-    height: 32px;
-  }
-
-  .office-viewer-site-nav-actions {
-    gap: 2px;
-  }
-
-  .office-viewer-site-nav-actions a {
-    padding: 0 8px;
-    font-size: 12px;
-    gap: 5px;
-  }
-
-  .office-viewer-site-nav-action-icon {
-    width: 16px;
-    height: 16px;
-  }
-
   .office-viewer-site-hero,
   .office-viewer-site-section,
-  .office-viewer-site-final-cta,
-  .office-viewer-site-footer {
+  .office-viewer-site-final-cta {
     width: calc(100% - 32px);
   }
 
@@ -285,46 +226,14 @@
   .office-viewer-site-final-cta .office-viewer-site-button {
     width: 100%;
   }
-
-  .office-viewer-site-footer {
-    display: flex;
-    padding: 26px 0;
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .office-viewer-site-footer p {
-    margin: 0;
-  }
-
-  .office-viewer-site-footer > div {
-    display: flex;
-    flex-wrap: wrap;
-  }
 }
 
 @media (max-width: 390px) {
-  .office-viewer-site-nav-actions a {
-    padding: 0 7px;
-  }
-
   .office-viewer-site-flow-stages li {
     padding: 11px;
   }
 
   .office-viewer-site-flow-privacy {
     padding: 12px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .office-viewer-site *,
-  .office-viewer-site *::before,
-  .office-viewer-site *::after {
-    scroll-behavior: auto !important;
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
   }
 }

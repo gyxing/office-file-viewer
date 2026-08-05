@@ -48,15 +48,27 @@ export type WebsiteContent = {
   htmlLang: WebsiteLocale;
   languageLabel: string;
   languageHref: string;
+  /** 当前语言的完整文档入口。 */
+  docsHref: string;
   skipToContent: string;
   navigation: {
     ariaLabel: string;
+    /** 完整文档入口使用的本地化文案。 */
+    docs: string;
     overview: string;
     demo: string;
     highlights: string;
     formats: string;
     github: string;
     npm: string;
+  };
+  documentation: {
+    /** 桌面目录卡片使用的标题。 */
+    tocTitle: string;
+    /** 移动端打开目录的操作文案。 */
+    openToc: string;
+    /** 移动端关闭目录的无障碍文案。 */
+    closeToc: string;
   };
   hero: {
     eyebrow: string;
@@ -149,15 +161,22 @@ const WEBSITE_CONTENT: Record<WebsiteLocale, WebsiteContent> = {
     htmlLang: 'en-US',
     languageLabel: '简体中文',
     languageHref: `${SITE_ROOT}zh-CN/`,
+    docsHref: `${SITE_ROOT}docs`,
     skipToContent: 'Skip to main content',
     navigation: {
       ariaLabel: 'Primary navigation',
+      docs: 'Docs',
       overview: 'Product',
       demo: 'Live demo',
       highlights: 'Highlights',
       formats: 'Formats',
       github: 'GitHub',
       npm: 'npm',
+    },
+    documentation: {
+      tocTitle: 'On this page',
+      openToc: 'On this page',
+      closeToc: 'Close table of contents',
     },
     hero: {
       eyebrow: 'Open-source React Office viewer',
@@ -385,15 +404,22 @@ export function Preview({ file }: { file: File }) {
     htmlLang: 'zh-CN',
     languageLabel: 'English',
     languageHref: SITE_ROOT,
+    docsHref: `${SITE_ROOT}zh-CN/docs`,
     skipToContent: '跳转到主要内容',
     navigation: {
       ariaLabel: '主导航',
+      docs: '开发文档',
       overview: '产品介绍',
       demo: '在线体验',
       highlights: '优点亮点',
       formats: '支持格式',
       github: 'GitHub',
       npm: 'npm',
+    },
+    documentation: {
+      tocTitle: '本页目录',
+      openToc: '本页目录',
+      closeToc: '关闭本页目录',
     },
     hero: {
       eyebrow: '开源 React Office 预览组件',

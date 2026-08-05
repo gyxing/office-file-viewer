@@ -1,0 +1,70 @@
+// 官网与文档页共享同一组设计 Token，作用域限制在站点外壳内。
+.office-viewer-site,
+.office-viewer-docs {
+  --site-primary: #4f46e5;
+  --site-primary-hover: #4338ca;
+  --site-primary-soft: #eef2ff;
+  --site-cyan: #0e7490;
+  --site-violet: #7c3aed;
+  --site-green: #15803d;
+  --site-text: #172033;
+  --site-text-soft: #5f6b7d;
+  --site-text-muted: #8490a3;
+  --site-background: #f7f8fb;
+  --site-surface: #fff;
+  --site-surface-soft: #f1f3f7;
+  --site-border: #dde2eb;
+  --site-border-strong: #c9d0dd;
+  --site-shadow: 0 18px 48px rgba(30, 41, 59, 10%);
+  --site-shadow-soft: 0 8px 24px rgba(30, 41, 59, 6%);
+
+  color: var(--site-text);
+  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont,
+    'Segoe UI', sans-serif;
+  color-scheme: light;
+}
+
+.office-viewer-site,
+.office-viewer-site *,
+.office-viewer-docs,
+.office-viewer-docs * {
+  box-sizing: border-box;
+}
+
+.office-viewer-site a,
+.office-viewer-docs a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.office-viewer-site button,
+.office-viewer-site a,
+.office-viewer-docs button,
+.office-viewer-docs a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.office-viewer-site button,
+.office-viewer-docs button {
+  font: inherit;
+}
+
+.office-viewer-site :focus-visible,
+.office-viewer-docs :focus-visible {
+  outline: 3px solid rgba(79, 70, 229, 38%);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .office-viewer-site *,
+  .office-viewer-site *::before,
+  .office-viewer-site *::after,
+  .office-viewer-docs *,
+  .office-viewer-docs *::before,
+  .office-viewer-docs *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

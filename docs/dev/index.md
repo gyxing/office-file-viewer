@@ -1,5 +1,6 @@
 ---
 title: Office File Viewer
+siteLayout: home
 ---
 
 ```tsx

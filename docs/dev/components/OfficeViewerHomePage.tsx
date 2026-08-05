@@ -7,7 +7,6 @@ import {
   getWebsiteContent,
   GITHUB_URL,
   NPM_URL,
-  SITE_ROOT,
   type PackageManager,
   type WebsiteLocale,
 } from './home-content';
@@ -19,6 +18,7 @@ import {
   SupportedFormatsSection,
 } from './HomeProductSections';
 import './OfficeViewerHomePage.less';
+import { SiteFooter } from './SiteFooter';
 
 type OfficeViewerHomePageProps = {
   /** 当前公开官网使用的语言。 */
@@ -395,21 +395,7 @@ export function OfficeViewerHomePage({ locale }: OfficeViewerHomePageProps) {
         </section>
       </main>
 
-      <footer className="office-viewer-site-footer">
-        <a className="office-viewer-site-brand" href={SITE_ROOT}>
-          <span className="office-viewer-site-brand-mark" aria-hidden="true">
-            <i />
-            <i />
-            <i />
-          </span>
-          <span>Office File Viewer</span>
-        </a>
-        <p>{content.footer.description}</p>
-        <div>
-          <span>{content.footer.license}</span>
-          <span>{content.footer.builtWith}</span>
-        </div>
-      </footer>
+      <SiteFooter content={content} />
     </div>
   );
 }
