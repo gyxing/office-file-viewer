@@ -1,5 +1,4 @@
 .office-viewer-site-overview {
-  padding-top: 52px;
   border-top: 1px solid var(--site-border);
 }
 
@@ -119,8 +118,21 @@
   font-weight: 650;
 }
 
-.office-viewer-site-demo {
-  padding-top: 64px;
+.office-viewer-site-architecture {
+  width: 100%;
+  margin: 24px 0 0;
+  overflow-x: auto;
+  border: 1px solid var(--site-border-strong);
+  background: var(--site-surface);
+  border-radius: 20px;
+  box-shadow: var(--site-shadow-soft);
+}
+
+.office-viewer-site-architecture img {
+  display: block;
+  width: 100%;
+  height: auto;
+  user-select: none;
 }
 
 .office-viewer-site-local-note {
@@ -159,10 +171,6 @@
 .office-viewer-site-demo-frame .office-file-viewer {
   height: 100%;
   border-radius: 14px;
-}
-
-.office-viewer-site-highlights {
-  padding-top: 64px;
 }
 
 .office-viewer-site-highlight-grid {
@@ -255,10 +263,6 @@
   color: var(--site-text-soft);
   font-size: 14px;
   line-height: 1.7;
-}
-
-.office-viewer-site-formats {
-  padding-top: 64px;
 }
 
 .office-viewer-site-format-grid {
@@ -572,7 +576,7 @@
 .office-viewer-site-final-cta {
   display: flex;
   width: min(1180px, calc(100% - 48px));
-  margin: 40px auto 56px;
+  margin: 24px auto 40px;
   padding: 36px;
   align-items: center;
   justify-content: space-between;

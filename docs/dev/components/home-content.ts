@@ -99,6 +99,12 @@ export type WebsiteContent = {
     useCasesLabel: string;
     useCases: string[];
     facts: ProductFactContent[];
+    architecture: {
+      /** 当前语言对应的架构图静态资源地址。 */
+      imageSrc: string;
+      /** 架构图的无障碍替代文本。 */
+      imageAlt: string;
+    };
   };
   demo: {
     eyebrow: string;
@@ -255,6 +261,11 @@ const WEBSITE_CONTENT: Record<WebsiteLocale, WebsiteContent> = {
         { value: '3', label: 'document families' },
         { value: '1 API', label: 'shared React component' },
       ],
+      architecture: {
+        imageSrc: `${SITE_ROOT}assets/office-viewer-architecture-flow.en-us.svg`,
+        imageAlt:
+          'Architecture flow showing how Office File Viewer routes and parses Office files before rendering Word, Excel, or PowerPoint previews.',
+      },
     },
     demo: {
       eyebrow: 'Live demo',
@@ -492,6 +503,11 @@ export function Preview({ file }: { file: File }) {
         { value: '3', label: '类 Office 内容' },
         { value: '1 个 API', label: '统一 React 组件' },
       ],
+      architecture: {
+        imageSrc: `${SITE_ROOT}assets/office-viewer-architecture-flow.zh-cn.svg`,
+        imageAlt:
+          'Office File Viewer 从文件输入、格式路由和解析执行到 Word、Excel、PowerPoint 预览渲染的架构流程图。',
+      },
     },
     demo: {
       eyebrow: '在线体验',

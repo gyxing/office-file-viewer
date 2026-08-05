@@ -2,10 +2,11 @@ import React from 'react';
 import type { WebsiteContent } from './home-content';
 
 type HomeProductSectionProps = {
+  /** 当前语言的首页文案。 */
   content: WebsiteContent;
 };
 
-/** 说明组件定位、适用场景与能够直接验证的产品事实。 */
+/** 说明组件定位、适用场景、产品事实与内部解析架构。 */
 export function ProductOverviewSection({ content }: HomeProductSectionProps) {
   return (
     <section
@@ -53,6 +54,15 @@ export function ProductOverviewSection({ content }: HomeProductSectionProps) {
           </div>
         ))}
       </div>
+
+      <figure className="office-viewer-site-architecture">
+        <img
+          src={content.overview.architecture.imageSrc}
+          alt={content.overview.architecture.imageAlt}
+          loading="lazy"
+          decoding="async"
+        />
+      </figure>
     </section>
   );
 }
