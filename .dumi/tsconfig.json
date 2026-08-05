@@ -1,0 +1,7 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": ["dumi/theme-modules"]
+  },
+  "include": ["**/*"]
+}

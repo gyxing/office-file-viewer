@@ -62,7 +62,7 @@
     "check:build": "yarn run build && yarn run docs:build",
     "check:lint": "eslint src/office-file-viewer --ext .ts,.tsx",
     "check:styles": "stylelint \"src/office-file-viewer/**/*.less\"",
-    "check:types": "tsc --noEmit",
+    "check:types": "tsc --noEmit && tsc --noEmit -p .dumi/tsconfig.json",
     "docs:build": "dumi build",
     "prepare": "husky install && dumi setup",
     "prepublishOnly": "father doctor && yarn build",
