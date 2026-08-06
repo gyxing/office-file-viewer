@@ -192,14 +192,18 @@ function FullscreenControl({ controls, messages }: FullscreenControlProps) {
     : messages.toolbar.fullscreen;
 
   return (
-    <Button
-      aria-label={label}
-      icon={<FullscreenIcon />}
-      disabled={controls.disabled}
-      onClick={controls.toggle}
-    >
-      {label}
-    </Button>
+    <Tooltip title={label}>
+      <span className="office-file-toolbar__tooltip-anchor">
+        <Button
+          aria-label={label}
+          icon={<FullscreenIcon />}
+          disabled={controls.disabled}
+          onClick={controls.toggle}
+        >
+          {label}
+        </Button>
+      </span>
+    </Tooltip>
   );
 }
 
@@ -230,18 +234,25 @@ function OfficeToolbarComponent({
         </Typography.Text>
       </div>
       <Space size={8} wrap>
-        <Upload
-          accept={OFFICE_FILE_ACCEPT}
-          showUploadList={false}
-          beforeUpload={(file) => {
-            void onSelectFile(file);
-            return false;
-          }}
-        >
-          <Button icon={<FolderOpenIcon />}>
-            {messages.toolbar.selectFile}
-          </Button>
-        </Upload>
+        <Tooltip title={messages.toolbar.selectFile}>
+          <span className="office-file-toolbar__tooltip-anchor">
+            <Upload
+              accept={OFFICE_FILE_ACCEPT}
+              showUploadList={false}
+              beforeUpload={(file) => {
+                void onSelectFile(file);
+                return false;
+              }}
+            >
+              <Button
+                aria-label={messages.toolbar.selectFile}
+                icon={<FolderOpenIcon />}
+              >
+                {messages.toolbar.selectFile}
+              </Button>
+            </Upload>
+          </span>
+        </Tooltip>
         {formatControls.kind === 'presentation'
           ? renderPresentationControls({ controls: formatControls, messages })
           : null}

@@ -56,13 +56,23 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .office-viewer-site *,
-  .office-viewer-site *::before,
-  .office-viewer-site *::after,
-  .office-viewer-docs *,
-  .office-viewer-docs *::before,
-  .office-viewer-docs *::after {
+  .office-viewer-site,
+  .office-viewer-docs {
     scroll-behavior: auto !important;
+  }
+
+  // 只缩短站点自身的动效，避免覆盖嵌入式预览器及其 Ant Design 弹层。
+  .office-viewer-site-skip,
+  .office-viewer-site-nav-links a,
+  .office-viewer-site-nav-actions a,
+  .office-viewer-site-button,
+  .office-viewer-site-command button,
+  .office-viewer-site-code-body button,
+  .office-viewer-site-flow,
+  .office-viewer-docs__toc .dumi-default-toc > li > a,
+  .office-viewer-docs__quick-links a,
+  .office-viewer-docs__toc,
+  .office-viewer-docs__toc-backdrop {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
