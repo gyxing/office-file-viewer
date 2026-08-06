@@ -19,6 +19,7 @@ import { createMaterializedWordPageSource } from '../../services/word/createMate
 import { createMemoryWordOutlineProvider } from '../../services/word/createMemoryWordOutlineProvider';
 import { useExternalStoreSnapshot } from '../../shared/react/useExternalStoreSnapshot';
 import { OfficeEmpty } from '../../shell/Empty';
+import { useWordOutlinePresence } from '../word-outline/useWordOutlinePresence';
 import { WordOutlineSidebar } from '../word-outline/WordOutlineSidebar';
 import type { WordPageNavigationController } from '../word-pages/types';
 import { VirtualWordPageList } from '../word-pages/VirtualWordPageList';
@@ -156,6 +157,10 @@ function DocxViewerComponent({
   const source = preview.mode === 'source' ? preview.source : undefined;
   const summary = preview.mode === 'source' ? preview.summary : undefined;
   const documentSessionId = preview.sessionId;
+  const shouldRenderOutline = useWordOutlinePresence(
+    showOutline,
+    documentSessionId,
+  );
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const materializedSourcePages = useMemo<DocxPageContent[]>(
     () =>
@@ -184,8 +189,8 @@ function DocxViewerComponent({
     characterSpacingControl === 'compressPunctuation' ||
     characterSpacingControl === 'compressPunctuationAndJapaneseKana';
   const materializedOutlineItems = useMemo(
-    () => (source || !showOutline ? [] : document?.outline ?? []),
-    [document?.outline, showOutline, source],
+    () => (source || !shouldRenderOutline ? [] : document?.outline ?? []),
+    [document?.outline, shouldRenderOutline, source],
   );
   const materializedOutlineProvider = useMemo(
     () => createMemoryWordOutlineProvider(materializedOutlineItems),
@@ -237,12 +242,17 @@ function DocxViewerComponent({
   const pageSnapshot = useExternalStoreSnapshot(pageSource);
   const outlineItems = useMemo(
     () =>
-      showOutline
+      shouldRenderOutline
         ? source
           ? source.getOutlineItems()
           : materializedOutlineItems
         : [],
-    [materializedOutlineItems, pageSnapshot.revision, showOutline, source],
+    [
+      materializedOutlineItems,
+      pageSnapshot.revision,
+      shouldRenderOutline,
+      source,
+    ],
   );
   const outlineProvider = source?.outline ?? materializedOutlineProvider;
   const profile = source?.getPerformanceProfile() ?? materializedProfile;
@@ -392,21 +402,21 @@ function DocxViewerComponent({
           </div>
         ) : null}
         <div className="office-file-docx-viewer__body">
-          {showOutline ? (
-            <WordOutlineSidebar
-              items={outlineItems}
-              provider={outlineProvider}
-              outlineMode={profile.outlineMode}
-              pageMode={profile.pageMode}
-              pageSource={pageSource}
-              blockPageIndex={blockPageIndex}
-              pageNavigationControllerRef={pageNavigationControllerRef}
-              scrollContainerRef={scrollContainerRef}
-              documentSessionId={documentSessionId}
-              layoutKey={layoutKey}
-              onClose={onCloseOutline}
-            />
-          ) : null}
+          <WordOutlineSidebar
+            visible={showOutline}
+            activated={shouldRenderOutline}
+            items={outlineItems}
+            provider={outlineProvider}
+            outlineMode={profile.outlineMode}
+            pageMode={profile.pageMode}
+            pageSource={pageSource}
+            blockPageIndex={blockPageIndex}
+            pageNavigationControllerRef={pageNavigationControllerRef}
+            scrollContainerRef={scrollContainerRef}
+            documentSessionId={documentSessionId}
+            layoutKey={layoutKey}
+            onClose={onCloseOutline}
+          />
           <div
             ref={scrollContainerRef}
             className="office-file-docx-viewer__scroller"

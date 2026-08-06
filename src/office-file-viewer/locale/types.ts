@@ -43,6 +43,8 @@ export type OfficeFileViewerMessages = {
     hideSpeakerNotes: string;
     /** 演讲者备注标题文案。 */
     speakerNotes: string;
+    /** 缩放比例输入框的无障碍名称。 */
+    zoomLevel: string;
     /** 缩小预览按钮文案。 */
     zoomOut: string;
     /** 放大预览按钮文案。 */

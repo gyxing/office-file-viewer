@@ -1,17 +1,11 @@
 // OfficeToolbar 提供打开文件、翻页、缩放、全屏等 OfficeFileViewer 顶部通用操作。
-import { Button, Select, Space, Tooltip, Typography, Upload } from 'antd';
-import React, { memo, useMemo } from 'react';
+import { Button, Space, Tooltip, Typography, Upload } from 'antd';
+import React, { memo } from 'react';
 import {
   useOfficeFileViewerMessages,
   type OfficeFileViewerMessages,
 } from '../locale';
 import type { PreviewKind } from '../services/preview';
-import {
-  OFFICE_DEFAULT_ZOOM,
-  OFFICE_MAX_ZOOM,
-  OFFICE_MIN_ZOOM,
-  OFFICE_ZOOM_LEVELS,
-} from './constants';
 import { OfficeFileTypeIcon } from './FileTypeIcon';
 import {
   ChevronLeftIcon,
@@ -20,9 +14,10 @@ import {
   FullscreenIcon,
   NotesIcon,
   OutlineIcon,
-  ZoomInIcon,
-  ZoomOutIcon,
 } from './icons';
+import { ZoomControl, type ZoomControls } from './ZoomControl';
+
+export type { ZoomControls } from './ZoomControl';
 /** 文件选择器允许选择的 Office 扩展名列表。 */
 const OFFICE_FILE_ACCEPT = '.pptx,.ppt,.xlsx,.xls,.docx,.doc,.wps';
 
@@ -63,22 +58,6 @@ export type OfficeToolbarFormatControls =
       };
     }
   | { kind: 'spreadsheet' };
-
-/** 工具栏通用缩放能力。 */
-export type ZoomControls = {
-  /** 当前预览缩放比例。 */
-  value: number;
-  /** 当前是否已有可执行增减和复位操作的文档。 */
-  hasDocument: boolean;
-  /** 减小预览比例。 */
-  zoomOut(): void;
-  /** 放大预览比例。 */
-  zoomIn(): void;
-  /** 设置指定预览比例。 */
-  change(value: number): void;
-  /** 恢复默认预览比例。 */
-  reset(): void;
-};
 
 /** 工具栏通用全屏能力。 */
 export type FullscreenControls = {
@@ -127,16 +106,6 @@ type WordControlProps = {
   controls: WordControls;
   /** 当前语言环境对应的界面文案。 */
   messages: OfficeFileViewerMessages;
-};
-
-/** 缩放操作块所需的数据。 */
-type ZoomControlGroupProps = {
-  /** 当前可用的缩放能力。 */
-  controls: ZoomControls;
-  /** 当前语言环境对应的界面文案。 */
-  messages: OfficeFileViewerMessages;
-  /** 可选缩放比例。 */
-  options: Array<{ value: number; label: string }>;
 };
 
 /** 全屏操作块所需的数据。 */
@@ -216,46 +185,6 @@ function WordControl({ controls, messages }: WordControlProps) {
   );
 }
 
-/** 按 Space 的直接子项结构渲染通用缩放操作。 */
-function renderZoomControls({
-  controls,
-  messages,
-  options,
-}: ZoomControlGroupProps) {
-  return [
-    <Select
-      key="zoom-select"
-      value={controls.value}
-      className="office-file-toolbar__zoom"
-      onChange={controls.change}
-      options={options}
-    />,
-    <Tooltip key="zoom-out" title={messages.toolbar.zoomOut}>
-      <Button
-        aria-label={messages.toolbar.zoomOut}
-        icon={<ZoomOutIcon />}
-        disabled={!controls.hasDocument || controls.value <= OFFICE_MIN_ZOOM}
-        onClick={controls.zoomOut}
-      />
-    </Tooltip>,
-    <Tooltip key="zoom-in" title={messages.toolbar.zoomIn}>
-      <Button
-        aria-label={messages.toolbar.zoomIn}
-        icon={<ZoomInIcon />}
-        disabled={!controls.hasDocument || controls.value >= OFFICE_MAX_ZOOM}
-        onClick={controls.zoomIn}
-      />
-    </Tooltip>,
-    <Button
-      key="zoom-reset"
-      disabled={!controls.hasDocument}
-      onClick={controls.reset}
-    >
-      {OFFICE_DEFAULT_ZOOM}%
-    </Button>,
-  ];
-}
-
 /** 渲染所有格式共享的全屏操作。 */
 function FullscreenControl({ controls, messages }: FullscreenControlProps) {
   const label = controls.active
@@ -284,15 +213,6 @@ function OfficeToolbarComponent({
   onSelectFile,
 }: OfficeToolbarProps) {
   const messages = useOfficeFileViewerMessages();
-  const zoomOptions = useMemo(() => {
-    // 缩放按钮会产生非预设档位，补入当前值后 Select 才能持续显示百分号标签。
-    const levels = OFFICE_ZOOM_LEVELS.includes(zoomControls.value)
-      ? OFFICE_ZOOM_LEVELS
-      : [...OFFICE_ZOOM_LEVELS, zoomControls.value].sort(
-          (left, right) => left - right,
-        );
-    return levels.map((value) => ({ value, label: `${value}%` }));
-  }, [zoomControls.value]);
 
   return (
     <div className="office-file-toolbar">
@@ -328,11 +248,7 @@ function OfficeToolbarComponent({
         {formatControls.kind === 'word' ? (
           <WordControl controls={formatControls} messages={messages} />
         ) : null}
-        {renderZoomControls({
-          controls: zoomControls,
-          messages,
-          options: zoomOptions,
-        })}
+        <ZoomControl controls={zoomControls} />
         <FullscreenControl controls={fullscreenControls} messages={messages} />
       </Space>
     </div>

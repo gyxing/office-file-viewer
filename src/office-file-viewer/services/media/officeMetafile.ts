@@ -3,6 +3,7 @@ import { createMediaStore, imageMimeType } from '../../shared/ooxml/media';
 import { parseEmf } from '../xls/drawing/metafile/parseEmf';
 import { parseWmf } from '../xls/drawing/metafile/parseWmf';
 import { vectorSceneToSvg } from '../xls/drawing/metafile/vectorSceneToSvg';
+import { normalizeEmfForConverter } from './emfCompatibility';
 
 /** 当前支持转换的 Office 图元文件格式。 */
 type OfficeMetafileFormat = 'emf' | 'wmf';
@@ -59,9 +60,11 @@ export async function convertOfficeImageBlob(path: string, blob: Blob) {
     const { convertEmfToDataUrl, convertWmfToDataUrl } = await import(
       'emf-converter'
     );
-    const buffer = bytes.buffer.slice(
-      bytes.byteOffset,
-      bytes.byteOffset + bytes.byteLength,
+    const converterBytes =
+      format === 'emf' ? normalizeEmfForConverter(bytes) : bytes;
+    const buffer = converterBytes.buffer.slice(
+      converterBytes.byteOffset,
+      converterBytes.byteOffset + converterBytes.byteLength,
     ) as ArrayBuffer;
     const convert =
       format === 'emf' ? convertEmfToDataUrl : convertWmfToDataUrl;

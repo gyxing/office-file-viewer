@@ -6,6 +6,7 @@ import { createMaterializedWordPageSource } from '../../services/word/createMate
 import { createMemoryWordOutlineProvider } from '../../services/word/createMemoryWordOutlineProvider';
 import { useExternalStoreSnapshot } from '../../shared/react/useExternalStoreSnapshot';
 import { OfficeEmpty } from '../../shell/Empty';
+import { useWordOutlinePresence } from '../word-outline/useWordOutlinePresence';
 import { WordOutlineSidebar } from '../word-outline/WordOutlineSidebar';
 import type { WordPageNavigationController } from '../word-pages/types';
 import { VirtualWordPageList } from '../word-pages/VirtualWordPageList';
@@ -87,6 +88,10 @@ function DocViewerComponent({
   const source = preview.mode === 'source' ? preview.source : undefined;
   const summary = preview.mode === 'source' ? preview.summary : undefined;
   const documentSessionId = preview.sessionId;
+  const shouldRenderOutline = useWordOutlinePresence(
+    showOutline,
+    documentSessionId,
+  );
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const documentMetadata = summary ?? document;
   const page = documentMetadata?.page;
@@ -136,8 +141,10 @@ function DocViewerComponent({
   const pageNavigationControllerRef = useRef<WordPageNavigationController>();
   const outlineItems = useMemo(
     () =>
-      showOutline ? source?.getOutlineItems() ?? document?.outline ?? [] : [],
-    [document?.outline, pageSnapshot.revision, showOutline, source],
+      shouldRenderOutline
+        ? source?.getOutlineItems() ?? document?.outline ?? []
+        : [],
+    [document?.outline, pageSnapshot.revision, shouldRenderOutline, source],
   );
   const memoryOutlineProvider = useMemo(
     () => createMemoryWordOutlineProvider(outlineItems),
@@ -219,21 +226,21 @@ function DocViewerComponent({
       data-word-source-mode={source ? 'progressive' : 'materialized'}
     >
       <div className="office-file-doc-viewer__body">
-        {showOutline ? (
-          <WordOutlineSidebar
-            items={outlineItems}
-            provider={outlineProvider}
-            outlineMode={profile.outlineMode}
-            pageMode={profile.pageMode}
-            pageSource={pageSource}
-            blockPageIndex={blockPageIndex}
-            pageNavigationControllerRef={pageNavigationControllerRef}
-            scrollContainerRef={scrollContainerRef}
-            documentSessionId={documentSessionId}
-            layoutKey={layoutKey}
-            onClose={onCloseOutline}
-          />
-        ) : null}
+        <WordOutlineSidebar
+          visible={showOutline}
+          activated={shouldRenderOutline}
+          items={outlineItems}
+          provider={outlineProvider}
+          outlineMode={profile.outlineMode}
+          pageMode={profile.pageMode}
+          pageSource={pageSource}
+          blockPageIndex={blockPageIndex}
+          pageNavigationControllerRef={pageNavigationControllerRef}
+          scrollContainerRef={scrollContainerRef}
+          documentSessionId={documentSessionId}
+          layoutKey={layoutKey}
+          onClose={onCloseOutline}
+        />
         <div
           ref={scrollContainerRef}
           className="office-file-doc-viewer__scroller"

@@ -39,6 +39,15 @@ type OutlineTarget = {
   element: HTMLElement;
 };
 
+/** 正文定位时保留少量顶部间距，避免标题紧贴容器边缘。 */
+const OUTLINE_TARGET_TOP_OFFSET = 20;
+/** 连续稳定两帧后再恢复滚动跟随，避免延迟回调覆盖用户点击项。 */
+const PROGRAMMATIC_SCROLL_STABLE_FRAME_COUNT = 2;
+/** 浏览器滚动异常时仍需解除高亮锁，避免后续手动滚动失效。 */
+const PROGRAMMATIC_SCROLL_MAX_FRAME_COUNT = 120;
+/** 亚像素滚动会产生小数误差，位置差异在该范围内视为稳定。 */
+const PROGRAMMATIC_SCROLL_POSITION_TOLERANCE = 0.5;
+
 /** 使用二分查找定位滚动标记线之前最后一个大纲条目。 */
 function findActiveTarget(targets: OutlineTarget[], marker: number) {
   let low = 0;
@@ -83,6 +92,7 @@ export function useWordOutlineNavigation({
   const targetsRef = useRef<OutlineTarget[]>([]);
   const frameRef = useRef<number>();
   const navigationAbortRef = useRef<AbortController>();
+  const navigationSettleFrameRef = useRef<number>();
   const usesInternalScrollRef = useRef(true);
   const programmaticNavigationRef = useRef(false);
 
@@ -109,6 +119,68 @@ export function useWordOutlineNavigation({
       syncFromScroll();
     });
   }, [syncFromScroll]);
+
+  const cancelNavigationSettle = useCallback(() => {
+    if (navigationSettleFrameRef.current === undefined) return;
+    cancelAnimationFrame(navigationSettleFrameRef.current);
+    navigationSettleFrameRef.current = undefined;
+  }, []);
+
+  const settleProgrammaticNavigation = useCallback(
+    (element: HTMLElement, expectedPosition: number) => {
+      // 平滑滚动完成前保留用户点击项，避免异步滚动回调抢占高亮。
+      cancelNavigationSettle();
+      const scroller = scrollContainerRef.current;
+      if (!scroller) {
+        programmaticNavigationRef.current = false;
+        return;
+      }
+      const readPosition = () =>
+        usesInternalScrollRef.current ? scroller.scrollTop : window.scrollY;
+      const initialPosition = readPosition();
+      let previousPosition: number | undefined;
+      let stableFrameCount = 0;
+      let frameCount = 0;
+      let hasMoved = false;
+
+      const checkPosition = () => {
+        const currentPosition = readPosition();
+        hasMoved ||=
+          Math.abs(currentPosition - initialPosition) >
+          PROGRAMMATIC_SCROLL_POSITION_TOLERANCE;
+        stableFrameCount =
+          previousPosition !== undefined &&
+          Math.abs(currentPosition - previousPosition) <=
+            PROGRAMMATIC_SCROLL_POSITION_TOLERANCE
+            ? stableFrameCount + 1
+            : 0;
+        previousPosition = currentPosition;
+        frameCount += 1;
+        const reachedExpectedPosition =
+          Math.abs(currentPosition - expectedPosition) <=
+          PROGRAMMATIC_SCROLL_POSITION_TOLERANCE;
+        const hasSettled =
+          stableFrameCount >= PROGRAMMATIC_SCROLL_STABLE_FRAME_COUNT &&
+          (hasMoved || reachedExpectedPosition);
+
+        if (hasSettled || frameCount >= PROGRAMMATIC_SCROLL_MAX_FRAME_COUNT) {
+          navigationSettleFrameRef.current = undefined;
+          if (element.isConnected) {
+            element.tabIndex = -1;
+            element.focus({ preventScroll: true });
+          }
+          programmaticNavigationRef.current = false;
+          // 底部无法贴顶属于合法落点，只有滚动中断时才按当前位置校正。
+          if (!reachedExpectedPosition) scheduleScrollSync();
+          return;
+        }
+        navigationSettleFrameRef.current = requestAnimationFrame(checkPosition);
+      };
+
+      navigationSettleFrameRef.current = requestAnimationFrame(checkPosition);
+    },
+    [cancelNavigationSettle, scheduleScrollSync, scrollContainerRef],
+  );
 
   useEffect(() => {
     const scroller = scrollContainerRef.current;
@@ -169,20 +241,8 @@ export function useWordOutlineNavigation({
       typeof IntersectionObserver === 'undefined'
         ? undefined
         : new IntersectionObserver(
-            (entries) => {
-              if (programmaticNavigationRef.current) return;
-              const visible = entries
-                .filter((entry) => entry.isIntersecting)
-                .sort(
-                  (left, right) =>
-                    Math.abs(left.boundingClientRect.top) -
-                    Math.abs(right.boundingClientRect.top),
-                )[0];
-              const targetId = (visible?.target as HTMLElement | undefined)
-                ?.dataset.officeWordOutlineTarget;
-              const item = targetId ? itemByTargetId.get(targetId) : undefined;
-              if (item) commitActiveKey(item.id);
-            },
+            // 观察器回调只表示可见范围发生变化，最终高亮必须基于完整目标列表计算。
+            scheduleScrollSync,
             {
               root: usesInternalScroll ? scroller : null,
               rootMargin: '0px 0px -70% 0px',
@@ -225,45 +285,58 @@ export function useWordOutlineNavigation({
     () => () => {
       navigationAbortRef.current?.abort();
       navigationAbortRef.current = undefined;
+      cancelNavigationSettle();
       programmaticNavigationRef.current = false;
     },
-    [documentSessionId, enabled],
+    [cancelNavigationSettle, documentSessionId, enabled],
   );
 
   const scrollToElement = useCallback(
     (element: HTMLElement, item: WordOutlineItem) => {
       const scroller = scrollContainerRef.current;
-      if (!scroller) return;
+      if (!scroller) {
+        programmaticNavigationRef.current = false;
+        return;
+      }
       const behavior = window.matchMedia?.('(prefers-reduced-motion: reduce)')
         .matches
         ? 'auto'
         : 'smooth';
+      let expectedPosition: number;
       if (usesInternalScrollRef.current) {
         const scrollerRect = scroller.getBoundingClientRect();
         const targetTop =
           scroller.scrollTop +
           element.getBoundingClientRect().top -
           scrollerRect.top;
+        expectedPosition = Math.min(
+          Math.max(0, targetTop - OUTLINE_TARGET_TOP_OFFSET),
+          Math.max(0, scroller.scrollHeight - scroller.clientHeight),
+        );
         scroller.scrollTo({
-          top: Math.max(0, targetTop - 20),
+          top: expectedPosition,
           behavior,
         });
       } else {
+        expectedPosition = Math.min(
+          Math.max(0, window.scrollY + element.getBoundingClientRect().top),
+          Math.max(
+            0,
+            document.documentElement.scrollHeight - window.innerHeight,
+          ),
+        );
         element.scrollIntoView({ behavior, block: 'start' });
       }
       commitActiveKey(item.id);
-      element.tabIndex = -1;
-      requestAnimationFrame(() => {
-        element.focus({ preventScroll: true });
-        programmaticNavigationRef.current = false;
-      });
+      settleProgrammaticNavigation(element, expectedPosition);
     },
-    [commitActiveKey, scrollContainerRef],
+    [commitActiveKey, scrollContainerRef, settleProgrammaticNavigation],
   );
 
   const selectTarget = useCallback(
     (item: WordOutlineItem) => {
       navigationAbortRef.current?.abort();
+      cancelNavigationSettle();
       const controller = new AbortController();
       navigationAbortRef.current = controller;
       programmaticNavigationRef.current = true;
@@ -304,6 +377,14 @@ export function useWordOutlineNavigation({
             }
           }
 
+          const scroller = scrollContainerRef.current;
+          const direct = scroller
+            ? findOutlineElement(scroller, item.targetBlockId)
+            : undefined;
+          if (direct) {
+            scrollToElement(direct, item);
+            return;
+          }
           const cached = targetsRef.current.find(
             (candidate) => candidate.key === item.id,
           );
@@ -318,10 +399,12 @@ export function useWordOutlineNavigation({
     },
     [
       blockPageIndex,
+      cancelNavigationSettle,
       commitActiveKey,
       pageMode,
       pageNavigationControllerRef,
       pageSource,
+      scrollContainerRef,
       scrollToElement,
     ],
   );
