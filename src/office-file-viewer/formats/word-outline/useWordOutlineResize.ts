@@ -141,6 +141,7 @@ export function useWordOutlineResize(
 
     return () => {
       observer?.disconnect();
+      panelRef.current?.removeAttribute('data-resizing');
       if (
         animationFrameRef.current !== undefined &&
         typeof cancelAnimationFrame !== 'undefined'
@@ -169,6 +170,7 @@ export function useWordOutlineResize(
         startX: event.clientX,
         startWidth,
       };
+      panelRef.current?.setAttribute('data-resizing', 'true');
       event.currentTarget.setPointerCapture(event.pointerId);
       event.preventDefault();
     },
@@ -191,6 +193,7 @@ export function useWordOutlineResize(
       if (!drag || drag.pointerId !== event.pointerId) return;
       const nextWidth = flushScheduledWidth();
       dragRef.current = undefined;
+      panelRef.current?.removeAttribute('data-resizing');
       setWidth((current) => (current === nextWidth ? current : nextWidth));
       if (event.currentTarget.hasPointerCapture(event.pointerId)) {
         event.currentTarget.releasePointerCapture(event.pointerId);

@@ -106,8 +106,6 @@ export type OfficeViewerActions = {
   zoomIn(): void;
   /** 设置指定预览比例。 */
   changeZoom(zoom: number): void;
-  /** 恢复调用方当前提供的默认比例。 */
-  resetZoom(): void;
   /** 切换演讲者备注面板。 */
   toggleSpeakerNotes(): void;
   /** 切换 Word 大纲侧栏。 */
@@ -766,13 +764,6 @@ export function useOfficeViewerController(
     dispatch({ type: 'zoom-changed', zoom });
   }, []);
 
-  const resetZoom = useCallback(() => {
-    dispatch({
-      type: 'zoom-changed',
-      zoom: optionsRef.current.defaultZoom,
-    });
-  }, [optionsRef]);
-
   const toggleSpeakerNotes = useCallback(() => {
     const currentOptions = optionsRef.current;
     const nextVisible = !(
@@ -876,7 +867,6 @@ export function useOfficeViewerController(
       zoomOut,
       zoomIn,
       changeZoom,
-      resetZoom,
       toggleSpeakerNotes,
       toggleWordOutline,
       closeWordOutline,
@@ -887,7 +877,6 @@ export function useOfficeViewerController(
       closeWordOutline,
       nextSlide,
       previousSlide,
-      resetZoom,
       selectFile,
       selectSheet,
       selectSlide,

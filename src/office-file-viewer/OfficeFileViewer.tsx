@@ -180,11 +180,9 @@ function OfficeFileViewerContent({
       zoomOut: actions.zoomOut,
       zoomIn: actions.zoomIn,
       change: actions.changeZoom,
-      reset: actions.resetZoom,
     }),
     [
       actions.changeZoom,
-      actions.resetZoom,
       actions.zoomIn,
       actions.zoomOut,
       meta.hasRenderableContent,

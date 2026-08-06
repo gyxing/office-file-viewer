@@ -5,7 +5,7 @@ export const OFFICE_FILE_VIEWER_HEADER_HEIGHT = 56;
 /** 缩放菜单提供的常用百分比档位。 */
 export const OFFICE_ZOOM_LEVELS = [50, 75, 100, 125, 150, 200];
 /** 工具栏单次缩放调整的百分比步长。 */
-export const OFFICE_ZOOM_STEP = 25;
+export const OFFICE_ZOOM_STEP = 10;
 /** 文件预览器允许的最小缩放百分比。 */
 export const OFFICE_MIN_ZOOM = 25;
 /** 文件预览器允许的最大缩放百分比。 */

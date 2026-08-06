@@ -25,6 +25,7 @@ export const enUS: OfficeFileViewerMessages = {
     showSpeakerNotes: 'Show speaker notes',
     hideSpeakerNotes: 'Hide speaker notes',
     speakerNotes: 'Notes',
+    zoomLevel: 'Zoom level',
     zoomOut: 'Zoom out',
     zoomIn: 'Zoom in',
     fullscreen: 'Fullscreen',

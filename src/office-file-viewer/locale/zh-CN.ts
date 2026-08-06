@@ -25,6 +25,7 @@ export const zhCN: OfficeFileViewerMessages = {
     showSpeakerNotes: '显示演讲者备注',
     hideSpeakerNotes: '隐藏演讲者备注',
     speakerNotes: '备注',
+    zoomLevel: '缩放比例',
     zoomOut: '缩小',
     zoomIn: '放大',
     fullscreen: '全屏',
