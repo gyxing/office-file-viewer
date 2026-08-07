@@ -1,6 +1,3 @@
-import { ConfigProvider } from 'antd';
-import enUS from 'antd/locale/en_US';
-import zhCN from 'antd/locale/zh_CN';
 import { OfficeFileViewer } from 'office-file-viewer';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -165,7 +162,6 @@ export function OfficeViewerHomePage({ locale }: OfficeViewerHomePageProps) {
   const heroCopy = useCopyFeedback();
   const developerCopy = useCopyFeedback();
   const installCommand = content.developer.commands[packageManager];
-  const antdLocale = locale === 'zh-CN' ? zhCN : enUS;
 
   useEffect(() => {
     // Dumi 仍会生成文档外壳，用页面标记将官网样式限制在两个公开首页。
@@ -250,9 +246,7 @@ export function OfficeViewerHomePage({ locale }: OfficeViewerHomePageProps) {
             </div>
           </div>
           <div className="office-viewer-site-demo-frame">
-            <ConfigProvider locale={antdLocale}>
-              <OfficeFileViewer locale={locale} height="100%" />
-            </ConfigProvider>
+            <OfficeFileViewer locale={locale} height="100%" />
           </div>
         </section>
 

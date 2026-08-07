@@ -228,7 +228,7 @@ export async function readPptStructure(
       signal,
     );
     if (!record) continue;
-    const master = readPptMaster(
+    const master = await readPptMaster(
       record.bytes,
       createLocalPptEditChain(editChain, descriptor.persistId),
       descriptor,

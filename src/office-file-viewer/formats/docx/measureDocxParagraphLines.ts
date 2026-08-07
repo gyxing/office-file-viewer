@@ -1,5 +1,5 @@
-import type { DocxMeasuredBlock } from './docxPagination';
-import { canSplitMeasuredParagraph } from './docxPagination';
+import type { DocxMeasuredBlock } from '../../services/docx/docxPagination';
+import { canSplitMeasuredParagraph } from '../../services/docx/docxPagination';
 
 /** 读取纯文本段落的浏览器换行位置，供小文件物化分页精确拆行。 */
 export function measureDocxParagraphLines(

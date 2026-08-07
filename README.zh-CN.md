@@ -6,7 +6,7 @@
 
 `office-file-viewer` 在浏览器内完成 Office 文件下载、解析和渲染，不需要配套的文档转换服务，也不会主动上传本地文件。
 
-组件使用统一界面预览 Word 文档、Excel 表格和 PowerPoint 演示文稿，包含文件选择、远程加载、解析进度、缩放、全屏、文档大纲、工作表标签、幻灯片导航和演讲者备注。
+组件使用统一界面预览 Word 文档、Excel 表格和 PowerPoint 演示文稿，包含文件选择、远程加载、解析进度、缩放、全屏、文档大纲、电子表格显示模式、工作表标签、幻灯片导航和演讲者备注。
 
 > 这是独立实现的解析与渲染引擎，并非 Microsoft Office 或 WPS Office 的原生排版引擎。复杂文档可能与桌面应用存在差异，使用前请阅读[完整限制说明](https://gyxing.github.io/office-file-viewer/zh-CN/docs#limitations)。
 
@@ -19,46 +19,36 @@
 - **渐进预览**：受支持格式可以在解析继续进行时提前展示已完成内容。
 - **Worker 支持**：旧格式 DOC/WPS、XLS 和 PPT 可以在 Web Worker 中解析。
 - **资源管理**：组件负责取消任务、订阅、Worker 和 Blob URL 的生命周期。
-- **宿主集成**：兼容 antd v4、v5 和 v6，并继承宿主 `ConfigProvider`。
+- **内置预览界面**：提供作用域隔离的文件选择、导航、缩放和全屏控件及样式。
 
 ## 安装
 
 ```bash
-npm install office-file-viewer antd react react-dom
+npm install office-file-viewer
 ```
 
 使用 Yarn：
 
 ```bash
-yarn add office-file-viewer antd react react-dom
+yarn add office-file-viewer
 ```
 
-`react`、`react-dom` 和 `antd` 是由宿主提供的 peer dependency。当前包仅发布 ESM，组件样式已构建为 CSS，公共 API 只能从 `office-file-viewer` 根入口导入。
+`react` 和 `react-dom` 是由宿主提供的 peer dependency。当前包仅发布 ESM，组件样式已构建为作用域隔离的 CSS，公共 API 只能从 `office-file-viewer` 根入口导入。
 
 ## 版本兼容
 
-| antd 版本           | React / ReactDOM | 支持状态 | 说明                              |
-| ------------------- | ---------------- | -------- | --------------------------------- |
-| `4.24.x`            | `>=16.9.0`       | 支持     | 宿主入口必须加载 antd v4 全局样式 |
-| `5.x`               | `>=16.9.0`       | 支持     | 使用 antd v5 样式系统             |
-| `6.x`               | `>=18.0.0`       | 支持     | React 要求来自 antd v6            |
-| `6.x` + React 16/17 | -                | 不支持   | 不满足 antd v6 自身要求           |
+| 项目     | 要求       | 说明                          |
+| -------- | ---------- | ----------------------------- |
+| React    | `>=16.9.0` | 支持 Hooks 的 React 版本      |
+| ReactDOM | `>=16.9.0` | 建议与 React 保持相同主版本   |
+| 模块格式 | 仅 ESM     | 使用支持 ESM 的浏览器构建工具 |
 
 当前 peer dependency 范围：
 
 ```text
-antd: >=4.24.0 <7.0.0
 react: >=16.9.0
 react-dom: >=16.9.0
 ```
-
-使用 antd v4 时，在宿主入口加载全局样式：
-
-```tsx
-import 'antd/dist/antd.css';
-```
-
-antd v5 和 v6 不需要加载上述样式。
 
 ## 快速接入
 
@@ -76,11 +66,11 @@ export default function OfficePreview() {
 
 ## 支持格式
 
-| 分类       | 扩展名                  | 主要能力                                                     |
-| ---------- | ----------------------- | ------------------------------------------------------------ |
-| Word       | `.doc`、`.docx`、`.wps` | 文本、格式、列表、表格、图片、图表、形状、链接和文档大纲     |
-| Excel      | `.xls`、`.xlsx`         | 工作表、值、样式、合并单元格、尺寸、图片、图表和工作表标签   |
-| PowerPoint | `.ppt`、`.pptx`         | 幻灯片、母版、文本、形状、图片、表格、图表、导航和演讲者备注 |
+| 分类       | 扩展名                  | 主要能力                                                                  |
+| ---------- | ----------------------- | ------------------------------------------------------------------------- |
+| Word       | `.doc`、`.docx`、`.wps` | 文本、格式、列表、表格、图片、图表、形状、链接和文档大纲                  |
+| Excel      | `.xls`、`.xlsx`         | 工作表、值、样式、合并单元格、尺寸、图片、图表、工作表标签和原始/阅读模式 |
+| PowerPoint | `.ppt`、`.pptx`         | 幻灯片、母版、文本、形状、图片、表格、图表、导航和演讲者备注              |
 
 支持范围不代表可以完整还原所有 Office 版本、厂商扩展、宏、嵌入对象、动画或复杂布局。
 

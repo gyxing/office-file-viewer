@@ -3,8 +3,8 @@ import {
   createTimeBudget,
   throwIfAborted,
   yieldToMainThread,
-} from '../word-pages/scheduler';
-import { DocPaginationState, type PaginatedDocPage } from './docRenderUtils';
+} from '../../services/performance/mainThreadScheduler';
+import { DocPaginationState, type PaginatedDocPage } from '../../services/doc/docPagination';
 
 /** 按页面批次组织的 DOC 内容块集合。 */
 type DocBlockBatches = AsyncIterable<DocBlock[]> | Iterable<DocBlock[]>;

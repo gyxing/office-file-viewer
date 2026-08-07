@@ -12,7 +12,7 @@ export type WordOutlineItem = {
 
 /** Word 大纲侧栏使用的树节点。 */
 export type WordOutlineTreeNode = WordOutlineItem & {
-  /** Ant Design Tree 使用的稳定键。 */
+  /** 大纲树用于识别节点的稳定键。 */
   key: string;
   /** 当前条目的直接子级。 */
   children?: WordOutlineTreeNode[];

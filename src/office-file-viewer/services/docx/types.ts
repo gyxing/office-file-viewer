@@ -33,6 +33,8 @@ export type DocxPageContent = {
   id: string;
   /** 当前关联的页面模型。 */
   page: DocxPage;
+  /** 是否保留源文档已定义的整页画布，避免测量分页再次拆开。 */
+  preservePhysicalPage?: boolean;
   /** 按源文档顺序排列的内容块。 */
   blocks: DocxBlock[];
   /** 页眉在首页、偶数页和默认页上的内容变体。 */

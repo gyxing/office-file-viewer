@@ -6,7 +6,7 @@ import {
   DOC_IMAGE_ROW_GAP,
   getDocImageRenderWidth,
   imageRows,
-} from './docRenderUtils';
+} from '../../services/doc/docPagination';
 
 /** DOC图片布局组件属性。 */
 type DocImageLayoutProps = {

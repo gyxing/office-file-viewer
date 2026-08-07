@@ -13,9 +13,42 @@ type DocPageFrameProps = {
   children: ReactNode;
   /** 当前物理页需要显示的页眉徽标。 */
   headerImage?: DocImage;
+  /** 按源文档层级叠放在当前物理页上的 OfficeArt 画布。 */
+  pageDrawings?: DocImage[];
   /** 当前物理页需要显示的页脚页码文本。 */
   footerText?: string;
 };
+
+/** 渲染位于正文上方或下方的页级 OfficeArt 画布。 */
+function renderPageDrawingLayer(
+  images: DocImage[],
+  layer: NonNullable<DocImage['pageDrawingLayer']>,
+) {
+  const layerImages = images.filter(
+    (image) => image.pageDrawingLayer === layer,
+  );
+  if (!layerImages.length) return null;
+  const layerModifier =
+    layer === 'behindText' ? 'behind-text' : 'in-front-of-text';
+  return (
+    <div
+      className={`office-file-doc-page-frame__drawing-layer office-file-doc-page-frame__drawing-layer--${layerModifier}`}
+      data-doc-page-drawing-layer={layer}
+      aria-hidden="true"
+    >
+      {layerImages.map((image) => (
+        <img
+          key={image.id}
+          className="office-file-doc-page-frame__drawing-image"
+          src={image.src}
+          alt=""
+          loading="lazy"
+          decoding="async"
+        />
+      ))}
+    </div>
+  );
+}
 
 /** 渲染DOC页面框架。 */
 function DocPageFrameComponent({
@@ -23,6 +56,7 @@ function DocPageFrameComponent({
   zoom,
   children,
   headerImage,
+  pageDrawings = [],
   footerText,
 }: DocPageFrameProps) {
   const scale = zoom / 100;
@@ -58,6 +92,8 @@ function DocPageFrameComponent({
         className="office-file-doc-page-frame__article"
         style={articleStyle}
       >
+        {renderPageDrawingLayer(pageDrawings, 'behindText')}
+        {renderPageDrawingLayer(pageDrawings, 'inFrontOfText')}
         {headerImage ? (
           <img
             className="office-file-doc-page-frame__header-image"

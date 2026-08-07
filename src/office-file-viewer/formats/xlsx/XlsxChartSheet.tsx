@@ -2,7 +2,7 @@
 import React, { memo } from 'react';
 import type { XlsxSheet } from '../../services/xlsx/types';
 import { OfficeChartView } from '../../shared/chart/OfficeChartView';
-import { OfficeEmpty } from '../../shell/Empty';
+import { OfficePreviewEmpty } from '../common/OfficePreviewEmpty';
 
 /** Excel图表工作表组件属性。 */
 type XlsxChartSheetProps = {
@@ -15,7 +15,7 @@ type XlsxChartSheetProps = {
 /** 渲染Excel图表工作表。 */
 function XlsxChartSheetComponent({ sheet, zoom }: XlsxChartSheetProps) {
   const chart = sheet.charts[0];
-  if (!chart) return <OfficeEmpty kind="xls" />;
+  if (!chart) return <OfficePreviewEmpty kind="xls" />;
   return (
     <div className="office-file-xlsx-chart-sheet">
       <OfficeChartView

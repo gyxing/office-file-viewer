@@ -48,27 +48,54 @@ export async function loadXlsxDrawingObjects(
   drawingRelationshipId: string | undefined,
   signal?: AbortSignal,
 ): Promise<{
+  /** 当前工作表中的浮动图片。 */
   images: SpreadsheetImage[];
+  /** 当前工作表中的浮动图表。 */
   charts: SpreadsheetChart[];
+  /** 浮动对象锚点覆盖到的最大行数。 */
+  rowCount: number;
+  /** 浮动对象锚点覆盖到的最大列数。 */
+  columnCount: number;
 }> {
   const drawingPath = drawingRelationshipId
     ? context.relationships[descriptor.relsPath]?.[drawingRelationshipId]
         ?.target
     : undefined;
   if (!drawingPath || !context.reader.has(drawingPath)) {
-    return { images: [], charts: [] };
+    return {
+      images: [],
+      charts: [],
+      rowCount: 1,
+      columnCount: 1,
+    };
   }
   const xml = await context.reader.readText(drawingPath, signal);
   const document = parseXml(xml);
   const drawingRels =
     context.relationships[drawingRelationshipPath(drawingPath)] ?? {};
+  const anchors = childrenByLocalName(
+    document.documentElement,
+    'twoCellAnchor',
+  ).map((anchorNode) => ({
+    anchorNode,
+    from: readAnchorPoint(childByLocalName(anchorNode, 'from')),
+    to: readAnchorPoint(childByLocalName(anchorNode, 'to')),
+  }));
+  const rowCount = Math.max(
+    1,
+    ...anchors.flatMap(({ from, to }) => [from.row, to.row]),
+  );
+  const columnCount = Math.max(
+    1,
+    ...anchors.flatMap(({ from, to }) => [from.column, to.column]),
+  );
   const rowAxis = createSpreadsheetAxisIndex(
-    layout.rowCount,
+    Math.max(layout.rowCount, rowCount),
     layout.defaultRowHeight,
     layout.rows,
   );
   const columnAxis = createSpreadsheetAxisIndex(
-    layout.columnCount,
+    Math.max(layout.columnCount, columnCount),
     layout.defaultColumnWidth,
     layout.columns,
   );
@@ -76,64 +103,60 @@ export async function loadXlsxDrawingObjects(
   const charts: SpreadsheetChart[] = [];
   const chartTasks: Promise<void>[] = [];
 
-  childrenByLocalName(document.documentElement, 'twoCellAnchor').forEach(
-    (anchorNode, index) => {
-      const from = readAnchorPoint(childByLocalName(anchorNode, 'from'));
-      const to = readAnchorPoint(childByLocalName(anchorNode, 'to'));
-      const x = columnAxis.offsetAt(from.column) + from.columnOffset;
-      const y = rowAxis.offsetAt(from.row) + from.rowOffset;
-      const right = columnAxis.offsetAt(to.column) + to.columnOffset;
-      const bottom = rowAxis.offsetAt(to.row) + to.rowOffset;
-      const name = attr(descendantByLocalName(anchorNode, 'cNvPr'), 'name');
-      const blip = descendantByLocalName(anchorNode, 'blip');
-      const imageRelationshipId = attr(blip, 'r:embed') ?? attr(blip, 'embed');
-      const imagePath = imageRelationshipId
-        ? drawingRels[imageRelationshipId]?.target
-        : undefined;
-      if (imagePath && context.reader.has(imagePath)) {
-        const source = createXlsxImageResource(context, imagePath);
-        if (!source) return;
-        images.push({
-          id: `${drawingPath}-image-${index + 1}`,
-          name,
-          alt: name,
-          src: source,
-          from,
-          to,
-          x,
-          y,
-          width: Math.max(1, right - x),
-          height: Math.max(1, bottom - y),
-        });
-      }
+  anchors.forEach(({ anchorNode, from, to }, index) => {
+    const x = columnAxis.offsetAt(from.column) + from.columnOffset;
+    const y = rowAxis.offsetAt(from.row) + from.rowOffset;
+    const right = columnAxis.offsetAt(to.column) + to.columnOffset;
+    const bottom = rowAxis.offsetAt(to.row) + to.rowOffset;
+    const name = attr(descendantByLocalName(anchorNode, 'cNvPr'), 'name');
+    const blip = descendantByLocalName(anchorNode, 'blip');
+    const imageRelationshipId = attr(blip, 'r:embed') ?? attr(blip, 'embed');
+    const imagePath = imageRelationshipId
+      ? drawingRels[imageRelationshipId]?.target
+      : undefined;
+    if (imagePath && context.reader.has(imagePath)) {
+      const source = createXlsxImageResource(context, imagePath);
+      if (!source) return;
+      images.push({
+        id: `${drawingPath}-image-${index + 1}`,
+        name,
+        alt: name,
+        src: source,
+        from,
+        to,
+        x,
+        y,
+        width: Math.max(1, right - x),
+        height: Math.max(1, bottom - y),
+      });
+    }
 
-      const chartNode = descendantByLocalName(anchorNode, 'chart');
-      const chartRelationshipId =
-        attr(chartNode, 'r:id') ?? attr(chartNode, 'id');
-      const chartPath = chartRelationshipId
-        ? drawingRels[chartRelationshipId]?.target
-        : undefined;
-      if (chartPath && context.reader.has(chartPath)) {
-        charts.push({
-          id: `${drawingPath}-chart-${index + 1}`,
-          title: name,
-          chart: { type: 'bar', categories: [], series: [] },
-          from,
-          to,
-          x,
-          y,
-          width: Math.max(1, right - x),
-          height: Math.max(1, bottom - y),
-        });
-        const target = charts[charts.length - 1];
-        chartTasks.push(
-          context.reader.readText(chartPath, signal).then((chartXml) => {
-            target.chart = parseOfficeChartXml(chartXml, context.theme);
-          }),
-        );
-      }
-    },
-  );
+    const chartNode = descendantByLocalName(anchorNode, 'chart');
+    const chartRelationshipId =
+      attr(chartNode, 'r:id') ?? attr(chartNode, 'id');
+    const chartPath = chartRelationshipId
+      ? drawingRels[chartRelationshipId]?.target
+      : undefined;
+    if (chartPath && context.reader.has(chartPath)) {
+      charts.push({
+        id: `${drawingPath}-chart-${index + 1}`,
+        title: name,
+        chart: { type: 'bar', categories: [], series: [] },
+        from,
+        to,
+        x,
+        y,
+        width: Math.max(1, right - x),
+        height: Math.max(1, bottom - y),
+      });
+      const target = charts[charts.length - 1];
+      chartTasks.push(
+        context.reader.readText(chartPath, signal).then((chartXml) => {
+          target.chart = parseOfficeChartXml(chartXml, context.theme);
+        }),
+      );
+    }
+  });
   await Promise.all(chartTasks);
-  return { images, charts };
+  return { images, charts, rowCount, columnCount };
 }

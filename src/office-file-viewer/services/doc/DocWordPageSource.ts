@@ -1,12 +1,12 @@
 import {
   DocPaginationState,
   type PaginatedDocPage,
-} from '../../formats/doc/docRenderUtils';
+} from './docPagination';
 import {
   createTimeBudget,
   throwIfAborted,
   yieldToMainThread,
-} from '../../formats/word-pages/scheduler';
+} from '../performance/mainThreadScheduler';
 import {
   resolveDocBlockResources,
   resolveDocMetadataResources,

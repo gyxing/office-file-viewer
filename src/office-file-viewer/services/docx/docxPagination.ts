@@ -3,7 +3,7 @@ import type {
   DocxPageContent,
   DocxParagraphBlock,
   DocxTableBlock,
-} from '../../services/docx/types';
+} from './types';
 
 /** 单个 DOCX 测量批次允许包含的普通内容块上限。 */
 export const DOCX_MEASURE_BLOCK_LIMIT = 100;
@@ -134,6 +134,9 @@ export function createDocxMeasurementBatches(
   sourcePage: DocxPageContent,
   firstRevision: number,
 ): DocxMeasurementBatch[] {
+  // 整页定位画布已对应源文档物理页，交给流式测量会把画布内部内容误拆成多页。
+  if (sourcePage.preservePhysicalPage) return [];
+
   const batches: DocxMeasurementBatch[] = [];
   let blocks: DocxBlock[] = [];
   let rowCount = 0;
@@ -208,6 +211,9 @@ export function paginateMeasuredDocxPage(
   sourcePage: DocxPageContent,
   measuredBlocks: readonly DocxMeasuredBlock[],
 ) {
+  // 同时保护同步测量路径，确保整页画布在不同数据规模下都保持一个物理页。
+  if (sourcePage.preservePhysicalPage) return [sourcePage];
+
   const contentHeight =
     sourcePage.page.minHeight -
     sourcePage.page.marginTop -

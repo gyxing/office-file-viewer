@@ -16,8 +16,11 @@
 }
 
 .office-file-viewer__layout {
+  display: flex;
+  min-width: 0;
   height: 100%;
   min-height: 0;
+  flex-direction: column;
   background: #eef1f6;
 }
 
@@ -65,37 +68,173 @@
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
+  line-height: 1.4;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
-.office-file-toolbar .ant-btn-icon {
-  line-height: 0;
+.office-file-toolbar__actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
-.office-file-toolbar .office-file-icon {
-  font-size: 16px;
+.office-file-toolbar__file-input {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
 }
 
-.office-file-toolbar__tooltip-anchor {
+.office-file-spreadsheet-view-mode {
+  box-sizing: border-box;
+  height: 32px;
+  padding: 0 8px;
+  color: #1f2937;
+  font: inherit;
+  background: #fff;
+  border: 1px solid var(--office-file-control-border);
+  border-radius: 6px;
+  outline: 0;
+  cursor: pointer;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.office-file-spreadsheet-view-mode:hover:not(:disabled) {
+  border-color: var(--office-file-control-hover);
+}
+
+.office-file-spreadsheet-view-mode:focus-visible {
+  border-color: var(--office-file-control-hover);
+  box-shadow: 0 0 0 2px rgb(22 119 255 / 12%);
+}
+
+.office-file-spreadsheet-view-mode:disabled {
+  color: #94a3b8;
+  background: #f8fafc;
+  cursor: not-allowed;
+}
+
+.office-file-zoom-control {
   display: inline-flex;
-}
+  align-items: center;
+  gap: 8px;
 
-.office-file-toolbar__zoom {
-  width: 88px;
-
-  input {
-    text-align: center;
+  .office-file-zoom-icon {
+    font-size: 16px;
   }
 }
 
-.office-file-loading {
-  display: grid;
-  place-items: center;
-  height: 100%;
+.office-file-zoom-combobox {
+  position: relative;
+  width: 72px;
 }
 
-.office-file-loading__placeholder {
-  width: 160px;
-  height: 80px;
+.office-file-zoom-input-wrap {
+  position: relative;
+  display: flex;
+  height: 32px;
+  align-items: center;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid var(--office-file-control-border);
+  border-radius: 6px;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.office-file-zoom-input-wrap:hover {
+  border-color: var(--office-file-control-hover);
+}
+
+.office-file-zoom-input-wrap:focus-within {
+  border-color: var(--office-file-control-hover);
+  box-shadow: 0 0 0 2px rgb(22 119 255 / 12%);
+}
+
+.office-file-zoom-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  padding: 0 22px 0 8px;
+  color: #1f2937;
+  font: inherit;
+  line-height: 30px;
+  text-align: center;
+  background: transparent;
+  border: 0;
+  outline: 0;
+}
+
+.office-file-zoom-input__suffix {
+  position: absolute;
+  right: 8px;
+  color: #475569;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.office-file-zoom-options {
+  position: absolute;
+  z-index: var(--office-file-overlay-z-index);
+  top: calc(100% + 4px);
+  left: 0;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 4px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgb(15 23 42 / 18%);
+}
+
+.office-file-zoom-option {
+  display: block;
+  width: 100%;
+  height: 28px;
+  padding: 0 6px;
+  color: #1f2937;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.office-file-zoom-option:hover,
+.office-file-zoom-option[aria-selected='true'] {
+  color: #0958d9;
+  background: #eaf4ff;
+}
+
+.office-file-zoom-option:focus-visible {
+  outline: 2px solid rgb(22 119 255 / 24%);
+  outline-offset: -2px;
+}
+
+.office-file-loading {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+  color: #536174;
+}
+
+.office-file-loading__tip {
+  line-height: 1.5;
 }
 
 .office-file-parse-status {

@@ -18,43 +18,33 @@ toc: content
 ## Installation
 
 ```bash
-npm install office-file-viewer antd react react-dom
+npm install office-file-viewer
 ```
 
 Or with Yarn:
 
 ```bash
-yarn add office-file-viewer antd react react-dom
+yarn add office-file-viewer
 ```
 
-`react`, `react-dom`, and `antd` are peer dependencies supplied by the host. The package is ESM-only, so the host build tool must support ESM. Component CSS is included by the package build and does not require a Less loader.
+`react` and `react-dom` are peer dependencies supplied by the host. The package is ESM-only, so the host build tool must support ESM. Component CSS is included by the package build and does not require a Less loader.
 
 Import public APIs only from `office-file-viewer`. Undocumented `dist` or source-file imports are not part of the compatibility contract.
 
 ## Version compatibility
 
-| antd version        | React / ReactDOM | Status      | Notes                                          |
-| ------------------- | ---------------- | ----------- | ---------------------------------------------- |
-| `4.24.x`            | `>=16.9.0`       | Supported   | The host entry must load antd v4 global styles |
-| `5.x`               | `>=16.9.0`       | Supported   | Uses the antd v5 styling system                |
-| `6.x`               | `>=18.0.0`       | Supported   | The React requirement comes from antd v6       |
-| `6.x` + React 16/17 | -                | Unsupported | Does not meet antd v6's own requirements       |
+| Item          | Requirement | Notes                                 |
+| ------------- | ----------- | ------------------------------------- |
+| React         | `>=16.9.0`  | Hooks-capable React versions          |
+| ReactDOM      | `>=16.9.0`  | Keep the same major version as React  |
+| Module format | ESM-only    | Use an ESM-capable browser build tool |
 
 Current peer dependency ranges:
 
 ```text
-antd: >=4.24.0 <7.0.0
 react: >=16.9.0
 react-dom: >=16.9.0
 ```
-
-When using antd v4, load its global stylesheet in the host entry:
-
-```tsx | pure
-import 'antd/dist/antd.css';
-```
-
-antd v5 and v6 do not require that stylesheet. The viewer does not create an extra root-level `ConfigProvider`; theme, locale, and prefix settings come from the host provider.
 
 <a id="quick-start"></a>
 
@@ -125,21 +115,15 @@ export default function OfficePreview() {
 }
 ```
 
-### English UI and Ant Design locale
+### English UI
 
-The viewer UI defaults to Simplified Chinese. For English, configure both the viewer and the host Ant Design locale:
+The viewer UI defaults to Simplified Chinese. Set `locale` to use the built-in English messages:
 
 ```tsx | pure
-import { ConfigProvider } from 'antd';
-import antdEnUS from 'antd/locale/en_US';
 import { OfficeFileViewer } from 'office-file-viewer';
 
 export default function EnglishOfficePreview() {
-  return (
-    <ConfigProvider locale={antdEnUS}>
-      <OfficeFileViewer locale="en-US" height="80vh" />
-    </ConfigProvider>
-  );
+  return <OfficeFileViewer locale="en-US" height="80vh" />;
 }
 ```
 
@@ -166,23 +150,23 @@ Remote source rules:
 
 ## `OfficeFileViewer` API
 
-| Prop                             | Type                                                 | Default           | Description                                                                      |
-| -------------------------------- | ---------------------------------------------------- | ----------------- | -------------------------------------------------------------------------------- |
-| `locale`                         | `'zh-CN' \| 'en-US'`                                 | `'zh-CN'`         | Viewer UI language; Ant Design locale still comes from the host `ConfigProvider` |
-| `uri`                            | `OfficeFileViewerUri`                                | -                 | File source to preload; the file picker is shown when omitted                    |
-| `defaultFileName`                | `string`                                             | Localized message | Fallback name when the source does not provide a usable filename                 |
-| `defaultZoom`                    | `number`                                             | `100`             | Initial zoom percentage, clamped from `25` to `300`                              |
-| `defaultShowSpeakerNotes`        | `boolean`                                            | `false`           | Initial speaker-notes state in uncontrolled mode                                 |
-| `showSpeakerNotes`               | `boolean`                                            | -                 | Controlled speaker-notes visibility                                              |
-| `onSpeakerNotesVisibilityChange` | `(visible: boolean) => void`                         | -                 | Called when the presentation notes visibility changes                            |
-| `className`                      | `string`                                             | -                 | Additional class name for the viewer root                                        |
-| `height`                         | `CSSProperties['height']`                            | Parent height     | Viewer height; takes precedence over `style.height`                              |
-| `style`                          | `CSSProperties`                                      | -                 | Inline styles for the viewer root                                                |
-| `onFileParsed`                   | `(parsed: ParsedOfficeFile, file: File) => void`     | -                 | Called once when the complete materialized result is available                   |
-| `onPreviewReady`                 | `(info: OfficePreviewReadyInfo, file: File) => void` | -                 | Called once when the first usable preview is ready                               |
-| `onError`                        | `(error: Error, file?: File) => void`                | -                 | Called when loading, parsing, or a viewer operation fails                        |
-| `parseOptions`                   | `OfficeParseOptions`                                 | `{}`              | Worker strategy and optional Worker factory                                      |
-| `onParseProgress`                | `(progress: ParseProgress) => void`                  | -                 | Called when the current parse stage or progress changes                          |
+| Prop                             | Type                                                 | Default           | Description                                                      |
+| -------------------------------- | ---------------------------------------------------- | ----------------- | ---------------------------------------------------------------- |
+| `locale`                         | `'zh-CN' \| 'en-US'`                                 | `'zh-CN'`         | Built-in viewer UI language                                      |
+| `uri`                            | `OfficeFileViewerUri`                                | -                 | File source to preload; the file picker is shown when omitted    |
+| `defaultFileName`                | `string`                                             | Localized message | Fallback name when the source does not provide a usable filename |
+| `defaultZoom`                    | `number`                                             | `100`             | Initial zoom percentage, clamped from `25` to `300`              |
+| `defaultShowSpeakerNotes`        | `boolean`                                            | `false`           | Initial speaker-notes state in uncontrolled mode                 |
+| `showSpeakerNotes`               | `boolean`                                            | -                 | Controlled speaker-notes visibility                              |
+| `onSpeakerNotesVisibilityChange` | `(visible: boolean) => void`                         | -                 | Called when the presentation notes visibility changes            |
+| `className`                      | `string`                                             | -                 | Additional class name for the viewer root                        |
+| `height`                         | `CSSProperties['height']`                            | Parent height     | Viewer height; takes precedence over `style.height`              |
+| `style`                          | `CSSProperties`                                      | -                 | Inline styles for the viewer root                                |
+| `onFileParsed`                   | `(parsed: ParsedOfficeFile, file: File) => void`     | -                 | Called once when the complete materialized result is available   |
+| `onPreviewReady`                 | `(info: OfficePreviewReadyInfo, file: File) => void` | -                 | Called once when the first usable preview is ready               |
+| `onError`                        | `(error: Error, file?: File) => void`                | -                 | Called when loading, parsing, or a viewer operation fails        |
+| `parseOptions`                   | `OfficeParseOptions`                                 | `{}`              | Worker strategy and optional Worker factory                      |
+| `onParseProgress`                | `(progress: ParseProgress) => void`                  | -                 | Called when the current parse stage or progress changes          |
 
 ### Controlled speaker notes
 
@@ -313,26 +297,35 @@ try {
 
 ## Supported formats and interactions
 
-| Document type      | Extension | Main parser coverage                                                                                            |
-| ------------------ | --------- | --------------------------------------------------------------------------------------------------------------- |
-| Word OOXML         | `.docx`   | Paragraphs, lists, tables, images, charts, shapes, links, styles, and theme colors                              |
-| Word 97-2003       | `.doc`    | Binary document structure, text runs, tables, lists, formatting, and image extraction                           |
-| WPS Writer         | `.wps`    | Reuses the DOC binary pipeline, prioritizing readable content and resource extraction                           |
-| Excel OOXML        | `.xlsx`   | Worksheets, values, styles, merged cells, dimensions, floating images, and charts                               |
-| Excel 97-2003      | `.xls`    | BIFF8 cells, formatting, merged ranges, dimensions, OfficeArt images, and charts                                |
-| PowerPoint OOXML   | `.pptx`   | Master/layout inheritance, text, shapes, images, tables, backgrounds, effects, speaker notes, and common charts |
-| PowerPoint 97-2003 | `.ppt`    | Binary records, masters, text, shapes, images, embedded charts, speaker notes, and static fallbacks             |
+| Document type      | Extension | Main parser coverage                                                                                                                           |
+| ------------------ | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Word OOXML         | `.docx`   | Paragraphs, lists, tables, images, charts, shapes, links, styles, and theme colors                                                             |
+| Word 97-2003       | `.doc`    | Binary document structure, text runs, tables, lists, formatting, images, and basic page-level OfficeArt floating layers                        |
+| WPS Writer         | `.wps`    | Reuses the DOC binary pipeline, prioritizing readable content and resource extraction                                                          |
+| Excel OOXML        | `.xlsx`   | Worksheets, values, styles, merged cells, dimensions, floating images, and charts                                                              |
+| Excel 97-2003      | `.xls`    | BIFF8 cells, formatting, merged ranges, dimensions, OfficeArt images, and charts                                                               |
+| PowerPoint OOXML   | `.pptx`   | Master/layout inheritance, text, shapes, images, tables, backgrounds, effects, speaker notes, slide-number/date-time fields, and common charts |
+| PowerPoint 97-2003 | `.ppt`    | Binary records, masters, text, shapes, images, embedded charts, embedded DrawingML-compatible text, speaker notes, and static fallbacks        |
 
 Common chart coverage includes line, column, pie, doughnut, area, scatter, bubble, radar, and map charts. Embedded document snapshots are used when possible for unsupported or damaged chart content.
 
 Viewer interactions include:
 
-- Zoom from `25%` to `300%`, with common toolbar presets.
-- A toggleable outline for DOC/DOCX/WPS documents that contain usable headings.
-- Worksheet tabs for XLS/XLSX.
+- Zoom from `25%` to `300%` using manual numeric input, common presets, and `10%` step controls.
+- The DOC/DOCX/WPS outline is hidden by default, appears only when usable headings exist, and can be resized horizontally when opened.
+- Worksheet tabs plus Original layout and Reading mode for XLS/XLSX.
 - Slide and thumbnail navigation for PPT/PPTX; previous/next controls are hidden for a single-slide deck.
 - Toggleable and vertically resizable speaker notes when a presentation contains notes.
 - Browser fullscreen with automatic state synchronization after leaving through `Esc`.
+
+### Spreadsheet display modes
+
+The display-mode selector appears only for XLS/XLSX previews:
+
+- **Original layout** is the default. It preserves source row heights, column widths, wrapping, shrink-to-fit, merged cells, and clipping behavior.
+- **Reading mode** keeps column widths but wraps long text and expands row heights as needed so cell content is easier to read. The resulting layout can differ from the source, but values, formulas, workbook structure, and the source file remain unchanged.
+- The selected mode is preserved when switching worksheets in the same file. Opening another file resets the viewer to Original layout.
+- For large worksheets, reading-layout adjustments are calculated only for loaded ranges instead of scanning the entire workbook.
 
 <a id="limitations"></a>
 

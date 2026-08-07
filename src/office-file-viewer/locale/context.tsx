@@ -12,7 +12,7 @@ type OfficeFileViewerLocaleProviderProps = {
   children?: ReactNode;
 };
 
-/** 内置语言映射只在组件内部使用，避免与宿主 Ant Design Locale 命名冲突。 */
+/** 内置语言映射只在组件内部使用，避免宿主语言环境影响预览器文案。 */
 const OFFICE_FILE_VIEWER_LOCALES: Record<
   OfficeFileViewerLocale,
   OfficeFileViewerMessages

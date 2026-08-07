@@ -1,6 +1,7 @@
-import { Button, Spin } from 'antd';
 import React, { memo } from 'react';
 import { useOfficeFileViewerMessages } from '../../locale';
+import { OfficeButton } from '../../shared/ui/OfficeButton';
+import { OfficeSpinner } from '../../shared/ui/OfficeSpinner';
 
 /** 定义大工作表范围占位组件的属性。 */
 type SpreadsheetGridPlaceholderProps = {
@@ -23,7 +24,7 @@ function SpreadsheetGridPlaceholderComponent({
     <div className="office-file-xlsx-grid-placeholder">
       {loading ? (
         <>
-          <Spin aria-label={messages.lazyContent.loading} />
+          <OfficeSpinner label={messages.lazyContent.loading} />
           <span>{messages.lazyContent.loading}</span>
         </>
       ) : (
@@ -33,9 +34,9 @@ function SpreadsheetGridPlaceholderComponent({
             {error?.message ? `：${error.message}` : ''}
           </span>
           {onRetry ? (
-            <Button size="small" onClick={onRetry}>
+            <OfficeButton size="small" onClick={onRetry}>
               {messages.lazyContent.retry}
-            </Button>
+            </OfficeButton>
           ) : null}
         </>
       )}

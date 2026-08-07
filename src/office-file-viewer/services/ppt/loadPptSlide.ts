@@ -30,7 +30,7 @@ export async function loadPptSlide(
   if (!record) {
     throw new Error(`第 ${descriptor.index} 页缺少 PPT 持久化对象`);
   }
-  const slide = readPptSlide(
+  const slide = await readPptSlide(
     record.bytes,
     createLocalPptEditChain(structure.editChain, descriptor.persistId),
     descriptor,

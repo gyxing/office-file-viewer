@@ -1,8 +1,8 @@
-// OfficeChartView 将解析后的 Office 图表模型渲染为 ECharts 图表。
-import { Empty, Spin } from 'antd';
 import type { CSSProperties } from 'react';
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useOfficeFileViewerMessages } from '../../locale';
+import { OfficeEmptyState } from '../ui/OfficeEmptyState';
+import { OfficeSpinner } from '../ui/OfficeSpinner';
 import { buildOfficeChartOption } from './buildOfficeChartOption';
 import './index.less';
 import type { OfficeChartModel } from './officeChartTypes';
@@ -188,7 +188,12 @@ function OfficeChartViewComponent({
   }, [chart, visible]);
 
   if (!width || !height) {
-    return <Empty description={messages.chart.invalidSize} />;
+    return (
+      <OfficeEmptyState
+        className="office-file-chart__empty"
+        description={messages.chart.invalidSize}
+      />
+    );
   }
 
   const staticSnapshotSrc =
@@ -215,7 +220,8 @@ function OfficeChartViewComponent({
   if (renderFailed || (chart.type === 'map' && mapFailed)) {
     if (!chart.snapshotSrc) {
       return (
-        <Empty
+        <OfficeEmptyState
+          className="office-file-chart__empty"
           description={
             renderFailed
               ? messages.chart.renderFailed
@@ -243,7 +249,7 @@ function OfficeChartViewComponent({
       <div ref={hostRef} className="office-file-chart__host" />
       {!ready ? (
         <div className="office-file-chart__loading">
-          <Spin />
+          <OfficeSpinner label={messages.lazyContent.loading} />
         </div>
       ) : null}
     </div>

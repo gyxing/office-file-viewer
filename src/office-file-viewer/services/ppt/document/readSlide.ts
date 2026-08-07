@@ -10,7 +10,7 @@ import type {
 } from '../types';
 
 /** 读取一页幻灯片的母版引用、文本与 OfficeArt 绘图。 */
-export function readPptSlide(
+export async function readPptSlide(
   documentStream: Uint8Array,
   editChain: PptEditChain,
   descriptor: PptSlideDescriptor,
@@ -19,7 +19,7 @@ export function readPptSlide(
   theme: ThemeModel,
   fonts: Map<number, string>,
   context: PptParseContext,
-): PptSlideModel | undefined {
+): Promise<PptSlideModel | undefined> {
   const offset = editChain.persistOffsets.get(descriptor.persistId);
   if (offset === undefined) {
     context.warnings.push({
@@ -65,7 +65,7 @@ export function readPptSlide(
   }
 
   const parsedDrawing = drawing
-    ? parsePptDrawing(drawing, theme, fonts, context)
+    ? await parsePptDrawing(drawing, theme, fonts, context)
     : undefined;
   return {
     id: `ppt-slide-${descriptor.persistId}`,

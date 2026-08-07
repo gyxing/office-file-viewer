@@ -180,6 +180,8 @@ export type TextRun = {
   text: string;
   /** 当前内容使用的渲染样式。 */
   style?: TextStyle;
+  /** PresentationML 动态字段类型，用于按具体幻灯片补全页码等内容。 */
+  fieldType?: string;
 };
 
 /** 由文本片段、段落样式和项目符号组成的段落。 */

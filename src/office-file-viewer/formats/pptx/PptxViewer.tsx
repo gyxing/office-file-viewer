@@ -2,7 +2,7 @@
 import React, { memo, useMemo } from 'react';
 import type { OfficeFileViewerPreviewState } from '../../services/parsing/internalTypes';
 import { getPresentationSource } from '../../services/presentation/presentationSourceRegistry';
-import { OfficeEmpty } from '../../shell/Empty';
+import { OfficePreviewEmpty } from '../common/OfficePreviewEmpty';
 import './index.less';
 import { PptxSlideViewport } from './PptxSlideViewport';
 import { PptxSpeakerNotes } from './PptxSpeakerNotes';
@@ -54,7 +54,7 @@ function PptxViewerComponent({
   } = usePresentationSource(resolvedSource, activeIndex, showSpeakerNotes);
 
   if (!resolvedSource || !snapshot.slideCount) {
-    return <OfficeEmpty kind={preview.previewKind} />;
+    return <OfficePreviewEmpty kind={preview.previewKind} />;
   }
 
   return (

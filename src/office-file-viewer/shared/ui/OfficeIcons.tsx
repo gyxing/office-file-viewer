@@ -1,7 +1,7 @@
 import type { ReactNode, SVGProps } from 'react';
 import React from 'react';
 
-/** 工具栏 SVG 图标可接收的属性。 */
+/** 预览器通用 SVG 图标可接收的属性。 */
 type OfficeIconProps = Omit<SVGProps<SVGSVGElement>, 'children'>;
 
 /** 线性 SVG 图标基础组件属性。 */
@@ -10,11 +10,11 @@ type OfficeIconBaseProps = OfficeIconProps & {
   children: ReactNode;
 };
 
-/** 复制原始矢量路径以保持 Ant Design FolderOpenOutlined 的外观，避免新增运行时依赖。 */
+/** 复制既有打开文件图标的矢量路径，避免为单个图标新增运行时依赖。 */
 const FOLDER_OPEN_OUTLINED_PATH =
   'M928 444H820V330.4c0-17.7-14.3-32-32-32H473L355.7 186.2a8.15 8.15 0 00-5.5-2.2H96c-17.7 0-32 14.3-32 32v592c0 17.7 14.3 32 32 32h698c13 0 24.8-7.9 29.7-20l134-332c1.5-3.8 2.3-7.9 2.3-12 0-17.7-14.3-32-32-32zM136 256h188.5l119.6 114.4H748V444H238c-13 0-24.8 7.9-29.7 20L136 643.2V256zm635.3 512H159l103.3-256h612.4L771.3 768z';
 
-/** 复制原始矢量路径以保持 Ant Design BarsOutlined 的外观，供大纲入口复用。 */
+/** 复制既有大纲图标的矢量路径，供工具栏和大纲面板复用。 */
 const BARS_OUTLINED_PATH =
   'M912 192H328c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h584c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 284H328c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h584c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 284H328c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h584c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM104 228a56 56 0 10112 0 56 56 0 10-112 0zm0 284a56 56 0 10112 0 56 56 0 10-112 0zm0 284a56 56 0 10112 0 56 56 0 10-112 0z';
 
@@ -48,7 +48,7 @@ function OfficeIconBase({
   );
 }
 
-/** 渲染与 Ant Design FolderOpenOutlined 一致的打开文件图标。 */
+/** 渲染打开文件图标。 */
 export function FolderOpenIcon({ className, ...props }: OfficeIconProps) {
   const mergedClassName = ['office-file-icon', className]
     .filter(Boolean)
@@ -126,7 +126,7 @@ export function FullscreenIcon(props: OfficeIconProps) {
   );
 }
 
-/** 渲染与 Ant Design BarsOutlined 一致的文档大纲图标。 */
+/** 渲染文档大纲图标。 */
 export function OutlineIcon({ className, ...props }: OfficeIconProps) {
   const mergedClassName = ['office-file-icon', className]
     .filter(Boolean)

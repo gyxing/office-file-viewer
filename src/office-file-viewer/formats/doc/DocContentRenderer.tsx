@@ -1,10 +1,13 @@
 // DocContentRenderer 渲染 DOC 内容块列表，并合并连续图片段落以优化排版。
 import type { ReactNode } from 'react';
 import React, { memo, useMemo } from 'react';
+import {
+  imagesFromImageOnlyParagraph,
+  isPageDrawingOnlyParagraph,
+} from '../../services/doc/docPagination';
 import type { DocBlock, DocTextStyle } from '../../services/doc/types';
 import { DocBlockRenderer } from './DocBlockRenderer';
 import { DocImageLayout } from './DocImageLayout';
-import { imagesFromImageOnlyParagraph } from './docRenderUtils';
 
 /** DOC内容渲染器组件属性。 */
 type DocContentRendererProps = {
@@ -20,6 +23,11 @@ function buildDocContent(blocks: DocBlock[], contentWidth: number) {
 
   while (index < blocks.length) {
     const currentBlock = blocks[index];
+    if (isPageDrawingOnlyParagraph(currentBlock)) {
+      // 页级画布由页面框架统一叠放，锚点段落本身不生成空行。
+      index += 1;
+      continue;
+    }
     // DOC 解析出的图片经常是连续的“纯图片段落”，合并后再排版更接近 Word 的视觉结果。
     const images = imagesFromImageOnlyParagraph(currentBlock);
     if (!images.length) {

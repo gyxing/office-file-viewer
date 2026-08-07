@@ -5,6 +5,10 @@ import {
 } from '../../shared/officeart';
 import { createResourceReference } from '../parsing/assembly/resourceReferences';
 import type { PortableResource } from '../parsing/protocol/messages';
+import {
+  findDocDrawingParagraphTop,
+  type DocDrawingParagraphAnchor,
+} from './buildDocDrawingParagraphAnchors';
 import type { DocImage, DocPage, DocParagraphBlock } from './types';
 
 /** DOC 主文档中 OfficeArt 绘图索引所需的 FIB 字段。 */
@@ -40,6 +44,10 @@ type SpaAnchor = {
   horizontalReference: number;
   /** 垂直坐标使用的 Word 定位参考类型。 */
   verticalReference: number;
+  /** Word 绘图锚点声明的文字环绕模式。 */
+  wrapMode: number;
+  /** 绘图是否位于正文文字下方。 */
+  belowText: boolean;
 };
 
 /** OfficeArt 属性编号、数值和可选复杂数据。 */
@@ -220,6 +228,8 @@ function parseSpaAnchors(
       bottom: view.getInt32(offset + 16, true),
       horizontalReference: (flags >> 1) & 0x03,
       verticalReference: (flags >> 3) & 0x03,
+      wrapMode: (flags >> 5) & 0x0f,
+      belowText: Boolean(flags & 0x4000),
     };
   }).filter(
     (anchor) => anchor.right !== anchor.left || anchor.bottom !== anchor.top,
@@ -568,14 +578,24 @@ export type DocDrawingCanvasOptions = {
   sections?: DocDrawingSection[];
   /** 当前用于展示的页面模型。 */
   displayPage?: DocPage;
+  /** 正文段落锚点相对所属物理页顶部的偏移。 */
+  paragraphAnchors?: DocDrawingParagraphAnchor[];
 };
 
 /** 把 FSPA 的相对坐标转换为页面坐标。 */
-function directShapeRect(anchor: SpaAnchor, page: DocPage) {
+function directShapeRect(
+  anchor: SpaAnchor,
+  page: DocPage,
+  paragraphAnchors?: readonly DocDrawingParagraphAnchor[],
+) {
   // bx/by 为 1 时相对页面边缘；栏、页边距与段落定位在缺少实时排版坐标时以正文起点降级。
   const horizontalOffset =
     anchor.horizontalReference === 1 ? 0 : page.marginLeft;
-  const verticalOffset = anchor.verticalReference === 1 ? 0 : page.marginTop;
+  const verticalOffset =
+    (anchor.verticalReference === 1 ? 0 : page.marginTop) +
+    (anchor.verticalReference === 2
+      ? findDocDrawingParagraphTop(paragraphAnchors, anchor.cp)
+      : 0);
   const left = twipToPx(anchor.left) + horizontalOffset;
   const top = twipToPx(anchor.top) + verticalOffset;
   const right = twipToPx(anchor.right) + horizontalOffset;
@@ -598,6 +618,7 @@ function renderDirectDrawingSvg(
   textBoxes: DocDrawingTextBox[],
   sourcePage?: DocPage,
   displayPage?: DocPage,
+  paragraphAnchors?: readonly DocDrawingParagraphAnchor[],
 ): RenderedDrawing | undefined {
   const originX = sourcePage
     ? 0
@@ -626,7 +647,7 @@ function renderDirectDrawingSvg(
   const body = shapes
     .map(({ anchor, record }) => {
       const rect = sourcePage
-        ? directShapeRect(anchor, sourcePage)
+        ? directShapeRect(anchor, sourcePage, paragraphAnchors)
         : (() => {
             const left = twipToPx(anchor.left - originX);
             const top = twipToPx(anchor.top - originY);
@@ -669,6 +690,7 @@ function createDrawingImage(
   anchor: SpaAnchor,
   index: number,
   resources: PortableResource[],
+  pageDrawingLayer?: NonNullable<DocImage['pageDrawingLayer']>,
 ): DocImage {
   const resourceId = `doc:drawing:${index + 1}`;
   const buffer = new TextEncoder().encode(rendered.svg);
@@ -686,8 +708,24 @@ function createDrawingImage(
     height: rendered.height,
     offset: anchor.cp,
     anchored: true,
+    pageDrawingLayer,
     pageInsets: rendered.pageInsets,
   };
+}
+
+/** 仅把不参与文字环绕的整页画布提升为页面绘图层。 */
+function resolvePageDrawingLayer(
+  shapes: DirectShape[],
+  rendered: RenderedDrawing,
+): DocImage['pageDrawingLayer'] {
+  if (!rendered.pageInsets || !shapes.length) return undefined;
+  if (!shapes.every(({ anchor }) => anchor.wrapMode === 3)) return undefined;
+  const belowText = shapes[0].anchor.belowText;
+  // 同一画布混合上下层级时保留原有随文降级，避免错误覆盖正文。
+  if (!shapes.every(({ anchor }) => anchor.belowText === belowText)) {
+    return undefined;
+  }
+  return belowText ? 'behindText' : 'inFrontOfText';
 }
 
 /** DOC 绘图资源及其与正文绘图标记一一对应的槽位。 */
@@ -763,11 +801,18 @@ export function extractDocDrawingCanvases(
           textBoxes,
           sourcePage,
           options.displayPage,
+          options.paragraphAnchors,
         )
       : undefined;
     if (rendered) {
       // 连续直属形状属于同一浮动画布；只在首个标记渲染，后续槽位保留为空以维持顺序。
-      const image = createDrawingImage(rendered, anchor, index, resources);
+      const image = createDrawingImage(
+        rendered,
+        anchor,
+        index,
+        resources,
+        resolvePageDrawingLayer(directShapes, rendered),
+      );
       images.push(image);
       slots[index] = image;
     }

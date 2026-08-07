@@ -1,4 +1,4 @@
-// OfficeNotice 展示跨 antd 版本稳定的错误或警告状态。
+// OfficeNotice 展示预览器统一的错误或警告状态。
 import React, { memo } from 'react';
 
 /** Office提示组件属性。 */

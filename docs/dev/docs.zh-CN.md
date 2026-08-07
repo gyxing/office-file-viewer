@@ -18,43 +18,33 @@ toc: content
 ## 安装
 
 ```bash
-npm install office-file-viewer antd react react-dom
+npm install office-file-viewer
 ```
 
 也可以使用 Yarn：
 
 ```bash
-yarn add office-file-viewer antd react react-dom
+yarn add office-file-viewer
 ```
 
-`react`、`react-dom` 和 `antd` 由宿主项目提供。当前包仅发布 ESM，因此宿主构建工具必须支持 ESM。组件构建产物已包含 CSS，不要求宿主配置 Less loader。
+`react` 和 `react-dom` 由宿主项目提供。当前包仅发布 ESM，因此宿主构建工具必须支持 ESM。组件构建产物已包含 CSS，不要求宿主配置 Less loader。
 
 公共 API 只能从 `office-file-viewer` 根入口导入。未文档化的 `dist` 或源码深层路径不属于兼容性承诺。
 
 ## 版本兼容
 
-| antd 版本           | React / ReactDOM | 支持状态 | 说明                              |
-| ------------------- | ---------------- | -------- | --------------------------------- |
-| `4.24.x`            | `>=16.9.0`       | 支持     | 宿主入口必须加载 antd v4 全局样式 |
-| `5.x`               | `>=16.9.0`       | 支持     | 使用 antd v5 样式系统             |
-| `6.x`               | `>=18.0.0`       | 支持     | React 要求来自 antd v6            |
-| `6.x` + React 16/17 | -                | 不支持   | 不满足 antd v6 自身要求           |
+| 项目     | 要求       | 说明                          |
+| -------- | ---------- | ----------------------------- |
+| React    | `>=16.9.0` | 支持 Hooks 的 React 版本      |
+| ReactDOM | `>=16.9.0` | 建议与 React 保持相同主版本   |
+| 模块格式 | 仅 ESM     | 使用支持 ESM 的浏览器构建工具 |
 
 当前 peer dependency 范围：
 
 ```text
-antd: >=4.24.0 <7.0.0
 react: >=16.9.0
 react-dom: >=16.9.0
 ```
-
-使用 antd v4 时，需要在宿主入口加载全局样式：
-
-```tsx | pure
-import 'antd/dist/antd.css';
-```
-
-antd v5 和 v6 不需要加载上述样式。预览器不会额外创建根级 `ConfigProvider`；主题、语言和组件前缀配置均继承宿主 Provider。
 
 <a id="quick-start"></a>
 
@@ -125,21 +115,15 @@ export default function OfficePreview() {
 }
 ```
 
-### 英文界面与 Ant Design 语言
+### 英文界面
 
-预览器界面默认使用简体中文。需要英文界面时，同时配置预览器和宿主 Ant Design 的语言：
+预览器界面默认使用简体中文。将 `locale` 设为英文即可使用内置英文文案：
 
 ```tsx | pure
-import { ConfigProvider } from 'antd';
-import antdEnUS from 'antd/locale/en_US';
 import { OfficeFileViewer } from 'office-file-viewer';
 
 export default function EnglishOfficePreview() {
-  return (
-    <ConfigProvider locale={antdEnUS}>
-      <OfficeFileViewer locale="en-US" height="80vh" />
-    </ConfigProvider>
-  );
+  return <OfficeFileViewer locale="en-US" height="80vh" />;
 }
 ```
 
@@ -166,23 +150,23 @@ type OfficeFileViewerUri =
 
 ## `OfficeFileViewer` API
 
-| 属性                             | 类型                                                 | 默认值     | 说明                                                       |
-| -------------------------------- | ---------------------------------------------------- | ---------- | ---------------------------------------------------------- |
-| `locale`                         | `'zh-CN' \| 'en-US'`                                 | `'zh-CN'`  | 预览器界面语言；Ant Design 语言仍取自宿主 `ConfigProvider` |
-| `uri`                            | `OfficeFileViewerUri`                                | -          | 预加载文件来源；未传时显示文件选择器                       |
-| `defaultFileName`                | `string`                                             | 本地化文案 | 来源无法提供有效文件名时使用的备用名称                     |
-| `defaultZoom`                    | `number`                                             | `100`      | 初始缩放百分比，限制在 `25` 到 `300`                       |
-| `defaultShowSpeakerNotes`        | `boolean`                                            | `false`    | 非受控模式下演讲者备注的初始状态                           |
-| `showSpeakerNotes`               | `boolean`                                            | -          | 受控模式下演讲者备注是否显示                               |
-| `onSpeakerNotesVisibilityChange` | `(visible: boolean) => void`                         | -          | 演讲者备注显示状态变化时触发                               |
-| `className`                      | `string`                                             | -          | 预览器根节点附加类名                                       |
-| `height`                         | `CSSProperties['height']`                            | 跟随父容器 | 预览器高度；优先级高于 `style.height`                      |
-| `style`                          | `CSSProperties`                                      | -          | 预览器根节点内联样式                                       |
-| `onFileParsed`                   | `(parsed: ParsedOfficeFile, file: File) => void`     | -          | 完整实体化解析结果可用时触发一次                           |
-| `onPreviewReady`                 | `(info: OfficePreviewReadyInfo, file: File) => void` | -          | 首个可用预览就绪时触发一次                                 |
-| `onError`                        | `(error: Error, file?: File) => void`                | -          | 加载、解析或预览器操作失败时触发                           |
-| `parseOptions`                   | `OfficeParseOptions`                                 | `{}`       | Worker 策略与可选 Worker 工厂                              |
-| `onParseProgress`                | `(progress: ParseProgress) => void`                  | -          | 解析阶段或完成度变化时触发                                 |
+| 属性                             | 类型                                                 | 默认值     | 说明                                   |
+| -------------------------------- | ---------------------------------------------------- | ---------- | -------------------------------------- |
+| `locale`                         | `'zh-CN' \| 'en-US'`                                 | `'zh-CN'`  | 预览器内置界面语言                     |
+| `uri`                            | `OfficeFileViewerUri`                                | -          | 预加载文件来源；未传时显示文件选择器   |
+| `defaultFileName`                | `string`                                             | 本地化文案 | 来源无法提供有效文件名时使用的备用名称 |
+| `defaultZoom`                    | `number`                                             | `100`      | 初始缩放百分比，限制在 `25` 到 `300`   |
+| `defaultShowSpeakerNotes`        | `boolean`                                            | `false`    | 非受控模式下演讲者备注的初始状态       |
+| `showSpeakerNotes`               | `boolean`                                            | -          | 受控模式下演讲者备注是否显示           |
+| `onSpeakerNotesVisibilityChange` | `(visible: boolean) => void`                         | -          | 演讲者备注显示状态变化时触发           |
+| `className`                      | `string`                                             | -          | 预览器根节点附加类名                   |
+| `height`                         | `CSSProperties['height']`                            | 跟随父容器 | 预览器高度；优先级高于 `style.height`  |
+| `style`                          | `CSSProperties`                                      | -          | 预览器根节点内联样式                   |
+| `onFileParsed`                   | `(parsed: ParsedOfficeFile, file: File) => void`     | -          | 完整实体化解析结果可用时触发一次       |
+| `onPreviewReady`                 | `(info: OfficePreviewReadyInfo, file: File) => void` | -          | 首个可用预览就绪时触发一次             |
+| `onError`                        | `(error: Error, file?: File) => void`                | -          | 加载、解析或预览器操作失败时触发       |
+| `parseOptions`                   | `OfficeParseOptions`                                 | `{}`       | Worker 策略与可选 Worker 工厂          |
+| `onParseProgress`                | `(progress: ParseProgress) => void`                  | -          | 解析阶段或完成度变化时触发             |
 
 ### 受控演讲者备注
 
@@ -313,26 +297,35 @@ try {
 
 ## 支持格式与交互
 
-| 文档类型           | 扩展名  | 主要解析范围                                                            |
-| ------------------ | ------- | ----------------------------------------------------------------------- |
-| Word OOXML         | `.docx` | 段落、列表、表格、图片、图表、形状、链接、样式和主题颜色                |
-| Word 97-2003       | `.doc`  | 二进制文档结构、文本运行、表格、列表、格式与图片提取                    |
-| WPS Writer         | `.wps`  | 复用 DOC 二进制管线，优先还原可读内容和文档资源                         |
-| Excel OOXML        | `.xlsx` | 工作表、值、样式、合并单元格、尺寸、浮动图片和图表                      |
-| Excel 97-2003      | `.xls`  | BIFF8 单元格、格式、合并区域、尺寸、OfficeArt 图片和图表                |
-| PowerPoint OOXML   | `.pptx` | 母版/版式继承、文本、形状、图片、表格、背景、效果、演讲者备注和常用图表 |
-| PowerPoint 97-2003 | `.ppt`  | 二进制记录、母版、文本、形状、图片、嵌入图表、演讲者备注和静态回退      |
+| 文档类型           | 扩展名  | 主要解析范围                                                                                     |
+| ------------------ | ------- | ------------------------------------------------------------------------------------------------ |
+| Word OOXML         | `.docx` | 段落、列表、表格、图片、图表、形状、链接、样式和主题颜色                                         |
+| Word 97-2003       | `.doc`  | 二进制文档结构、文本运行、表格、列表、格式、图片和基础页面级 OfficeArt 浮动分层                  |
+| WPS Writer         | `.wps`  | 复用 DOC 二进制管线，优先还原可读内容和文档资源                                                  |
+| Excel OOXML        | `.xlsx` | 工作表、值、样式、合并单元格、尺寸、浮动图片和图表                                               |
+| Excel 97-2003      | `.xls`  | BIFF8 单元格、格式、合并区域、尺寸、OfficeArt 图片和图表                                         |
+| PowerPoint OOXML   | `.pptx` | 母版/版式继承、文本、形状、图片、表格、背景、效果、演讲者备注、幻灯片编号/日期时间字段和常用图表 |
+| PowerPoint 97-2003 | `.ppt`  | 二进制记录、母版、文本、形状、图片、嵌入图表、内嵌 DrawingML 兼容文本、演讲者备注和静态回退      |
 
 常见图表覆盖折线图、柱状图、饼图、圆环图、面积图、散点图、气泡图、雷达图和地图。无法解析或损坏的图表内容会尽可能使用文档内嵌快照。
 
 预览器交互能力包括：
 
-- `25%` 到 `300%` 缩放，以及常用工具栏档位。
-- DOC/DOCX/WPS 存在可用标题时，可以开关文档大纲。
-- XLS/XLSX 可以切换工作表标签。
+- 支持 `25%` 到 `300%` 缩放、手动输入数值、常用档位，以及每次 `10%` 的放大/缩小操作。
+- DOC/DOCX/WPS 大纲默认隐藏，仅在存在可用标题时提供开关，展开后可以左右调整宽度。
+- XLS/XLSX 支持工作表标签，以及原始版式与阅读模式切换。
 - PPT/PPTX 支持幻灯片与缩略图导航；只有一页时隐藏上一页/下一页。
 - 演示文档存在备注时，可以开关演讲者备注并上下调整备注区域高度。
 - 支持浏览器全屏，按 `Esc` 退出后会自动同步状态。
+
+### 电子表格显示模式
+
+显示模式选择器仅在 XLS/XLSX 预览中出现：
+
+- **原始版式**为默认模式，保留源文件的行高、列宽、换行、缩小字体填充、合并单元格和内容裁切规则。
+- **阅读模式**保留列宽，对长文本自动换行并按需增大行高，以便完整阅读单元格内容。页面版式可能与源文件不同，但不会修改值、公式、工作簿结构或源文件。
+- 在同一文件内切换工作表时保留当前模式；打开其他文件时重置为原始版式。
+- 对于大型工作表，阅读模式只计算已加载区域的布局调整，不扫描整个工作簿。
 
 <a id="limitations"></a>
 

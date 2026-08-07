@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createSpreadsheetAxisIndex } from '../../services/spreadsheet/SpreadsheetAxisIndex';
 import type { SpreadsheetPerformanceProfile } from '../../services/spreadsheet/spreadsheetPerformance';
 import type { SpreadsheetSheetLayout } from '../../services/spreadsheet/SpreadsheetSource';
 import type { SpreadsheetRange } from '../../services/spreadsheet/types';
+import type { SpreadsheetViewMode } from '../../services/spreadsheet/viewMode';
 import {
   XLSX_COLUMN_HEADER_HEIGHT,
   XLSX_ROW_HEADER_WIDTH,
 } from './sheetRenderUtils';
+import { mergeSpreadsheetReadingRowMetrics } from './spreadsheetReadingLayout';
 
 /** 电子表格滚动视口的位置和尺寸。 */
 type ViewportState = {
@@ -28,16 +30,39 @@ const EMPTY_VIEWPORT: ViewportState = {
   height: 0,
 };
 
+/** SSR 环境延后布局副作用，浏览器中则在绘制前校正滚动锚点。 */
+const useIsomorphicLayoutEffect =
+  typeof window === 'undefined' ? useEffect : useLayoutEffect;
+
+/** 虚拟工作表窗口计算所需的输入。 */
+type UseSpreadsheetGridWindowOptions = {
+  /** 当前工作表的稳定标识。 */
+  sheetId: string;
+  /** 当前工作表的轻量布局。 */
+  layout: SpreadsheetSheetLayout;
+  /** 当前工作表使用的窗口化策略。 */
+  gridMode: SpreadsheetPerformanceProfile['gridMode'];
+  /** 当前预览缩放比例。 */
+  zoom: number;
+  /** 当前电子表格采用的显示模式。 */
+  viewMode: SpreadsheetViewMode;
+  /** 当前工作表已经计算出的稀疏阅读行高。 */
+  readingRowHeights: ReadonlyMap<number, number>;
+};
+
 /** 根据二维滚动视口计算带约两个视口缓冲的全局行列范围。 */
-export function useSpreadsheetGridWindow(
-  layout: SpreadsheetSheetLayout,
-  gridMode: SpreadsheetPerformanceProfile['gridMode'],
-  zoom: number,
-) {
+export function useSpreadsheetGridWindow({
+  sheetId,
+  layout,
+  gridMode,
+  zoom,
+  viewMode,
+  readingRowHeights,
+}: UseSpreadsheetGridWindowOptions) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const [viewport, setViewport] = useState(EMPTY_VIEWPORT);
   const scale = Math.max(0.01, zoom / 100);
-  const rowAxis = useMemo(
+  const sourceRowAxis = useMemo(
     () =>
       createSpreadsheetAxisIndex(
         layout.rowCount,
@@ -46,6 +71,14 @@ export function useSpreadsheetGridWindow(
       ),
     [layout],
   );
+  const rowAxis = useMemo(() => {
+    if (viewMode === 'source') return sourceRowAxis;
+    return createSpreadsheetAxisIndex(
+      layout.rowCount,
+      layout.defaultRowHeight,
+      mergeSpreadsheetReadingRowMetrics(layout.rows, readingRowHeights),
+    );
+  }, [layout, readingRowHeights, sourceRowAxis, viewMode]);
   const columnAxis = useMemo(
     () =>
       createSpreadsheetAxisIndex(
@@ -89,6 +122,34 @@ export function useSpreadsheetGridWindow(
       window.removeEventListener('resize', update);
     };
   }, []);
+
+  const previousRowAxisRef = useRef({ sheetId, rowAxis });
+  useIsomorphicLayoutEffect(() => {
+    const previous = previousRowAxisRef.current;
+    previousRowAxisRef.current = { sheetId, rowAxis };
+    const element = viewportRef.current;
+    if (
+      !element ||
+      previous.sheetId !== sheetId ||
+      previous.rowAxis === rowAxis ||
+      element.scrollTop <= 0
+    ) {
+      return;
+    }
+
+    // 固定列标题在画布内随 scrollTop 反向定位，数据区可视起点实际对应 scrollTop 本身。
+    const previousLogicalTop = element.scrollTop / scale;
+    const anchorRow = previous.rowAxis.findIndexAtOffset(previousLogicalTop);
+    const offsetWithinRow =
+      previousLogicalTop - previous.rowAxis.offsetAt(anchorRow);
+    const nextLogicalTop =
+      rowAxis.offsetAt(anchorRow) +
+      Math.min(Math.max(0, offsetWithinRow), rowAxis.sizeAt(anchorRow));
+    const nextScrollTop = nextLogicalTop * scale;
+    if (Math.abs(element.scrollTop - nextScrollTop) > 0.5) {
+      element.scrollTop = nextScrollTop;
+    }
+  }, [rowAxis, scale, sheetId]);
 
   const range = useMemo<SpreadsheetRange>(() => {
     const logicalLeft = Math.max(
@@ -135,6 +196,7 @@ export function useSpreadsheetGridWindow(
     viewportRef,
     viewport,
     range,
+    sourceRowAxis,
     rowAxis,
     columnAxis,
     scale,

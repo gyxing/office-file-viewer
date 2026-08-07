@@ -290,6 +290,8 @@ export type DocImage = {
   offset?: number;
   /** 图片是否采用锚点定位而非随文排列。 */
   anchored?: boolean;
+  /** 整页绘图画布相对正文文字所在的叠放层级。 */
+  pageDrawingLayer?: 'behindText' | 'inFrontOfText';
   /** 整页锚定画布相对正文区域向页面四边扩展的距离。 */
   pageInsets?: {
     /** 页面正文上边距。 */

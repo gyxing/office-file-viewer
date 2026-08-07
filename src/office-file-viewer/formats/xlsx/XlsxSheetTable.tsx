@@ -1,6 +1,7 @@
 // XlsxSheetTable 将工作表行列和单元格模型渲染为带表头的 HTML 表格。
 import type { CSSProperties, RefObject } from 'react';
 import React, { memo, useMemo } from 'react';
+import type { SpreadsheetViewMode } from '../../services/spreadsheet/viewMode';
 import type { XlsxSheet } from '../../services/xlsx/types';
 import {
   buildXlsxCellStyle,
@@ -10,6 +11,7 @@ import {
 import { buildXlsxVisibleTableModel } from './sheetTableUtils';
 import { buildSpreadsheetRowContentBounds } from './spreadsheetCellOverflow';
 import { SpreadsheetCellRenderer } from './SpreadsheetCellRenderer';
+import { isSpreadsheetShrinkToFitCell } from './spreadsheetReadingLayout';
 
 /** Excel工作表表格组件属性。 */
 type XlsxSheetTableProps = {
@@ -29,6 +31,8 @@ type XlsxSheetTableProps = {
   stickyInset: number;
   /** 供布局层读取浏览器真实表格尺寸的节点引用。 */
   tableRef: RefObject<HTMLTableElement>;
+  /** 当前电子表格采用的显示模式。 */
+  viewMode: SpreadsheetViewMode;
 };
 
 /** 使用普通表格模式渲染小型工作表。 */
@@ -41,6 +45,7 @@ function XlsxSheetTableComponent({
   renderedRowHeaderHeights,
   stickyInset,
   tableRef,
+  viewMode,
 }: XlsxSheetTableProps) {
   const tableModel = useMemo(
     () =>
@@ -66,34 +71,35 @@ function XlsxSheetTableComponent({
         // 大表格渲染时单元格很多，先按 ref 缓存静态样式，避免每次 JSX 展开都重复计算。
         cache.set(cell.ref, {
           fontSize: important ? 14 : 13,
-          ...buildXlsxCellStyle(cell),
+          ...buildXlsxCellStyle(cell, viewMode),
         });
       });
     });
     return cache;
-  }, [tableModel.rows]);
-  const rowContentBounds = useMemo(
-    () =>
-      tableModel.rows.map((row) =>
-        buildSpreadsheetRowContentBounds(
-          row.cells.map(({ cell, columnOffset, colSpan, rowSpan }) => ({
-            key: cell.ref,
-            cell,
-            columnOffset,
-            columnSpan: colSpan,
-            clipped: Boolean(
-              cell.style?.wrapText ||
-                cell.style?.shrinkToFit ||
-                colSpan ||
-                rowSpan,
-            ),
-          })),
-          row.occupiedColumns,
-          tableModel.columns.map(({ width }) => width),
-        ),
+  }, [tableModel.rows, viewMode]);
+  const rowContentBounds = useMemo(() => {
+    if (viewMode === 'reading') {
+      return tableModel.rows.map(() => new Map());
+    }
+    return tableModel.rows.map((row) =>
+      buildSpreadsheetRowContentBounds(
+        row.cells.map(({ cell, columnOffset, colSpan, rowSpan }) => ({
+          key: cell.ref,
+          cell,
+          columnOffset,
+          columnSpan: colSpan,
+          clipped: Boolean(
+            cell.style?.wrapText ||
+              cell.style?.shrinkToFit ||
+              colSpan ||
+              rowSpan,
+          ),
+        })),
+        row.occupiedColumns,
+        tableModel.columns.map(({ width }) => width),
       ),
-    [tableModel.columns, tableModel.rows],
-  );
+    );
+  }, [tableModel.columns, tableModel.rows, viewMode]);
 
   return (
     <>
@@ -183,9 +189,11 @@ function XlsxSheetTableComponent({
                 const merged = Boolean(colSpan || rowSpan);
                 // 自动行高允许换行文字自然撑开；手动行高和合并区域必须保持源文件边界。
                 const clipped = Boolean(
-                  merged ||
-                    style.shrinkToFit ||
-                    (style.wrapText && row.customHeight),
+                  viewMode === 'reading'
+                    ? isSpreadsheetShrinkToFitCell(cell)
+                    : merged ||
+                        style.shrinkToFit ||
+                        (style.wrapText && row.customHeight),
                 );
                 const contentWidth = tableModel.columns
                   .slice(columnOffset, columnOffset + (colSpan ?? 1))
@@ -222,7 +230,12 @@ function XlsxSheetTableComponent({
                       contentWidth={contentWidth}
                       contentHeight={clipped ? contentHeight : undefined}
                       clipped={clipped}
-                      contentBounds={rowContentBounds[rowOffset].get(cell.ref)}
+                      contentBounds={
+                        viewMode === 'source'
+                          ? rowContentBounds[rowOffset].get(cell.ref)
+                          : undefined
+                      }
+                      viewMode={viewMode}
                     />
                   </td>
                 );

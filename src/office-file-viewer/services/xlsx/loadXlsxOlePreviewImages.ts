@@ -72,45 +72,61 @@ export async function loadXlsxOlePreviewImages(
   }
   const xml = await context.reader.readText(descriptor.path, signal);
   const document = parseXml(xml);
-  const rowAxis = createSpreadsheetAxisIndex(
+  const previews = descendantsByLocalName(
+    document.documentElement,
+    'objectPr',
+  ).flatMap((objectPr) => {
+    const relationshipId = attr(objectPr, 'r:id') ?? attr(objectPr, 'id');
+    const imagePath = relationshipId
+      ? relationships[relationshipId]?.target
+      : undefined;
+    const source = imagePath
+      ? createXlsxImageResource(context, imagePath)
+      : undefined;
+    const anchor = descendantByLocalName(objectPr, 'anchor');
+    if (!source || !anchor) return [];
+    return [
+      {
+        source,
+        from: readAnchorPoint(childByLocalName(anchor, 'from')),
+        to: readAnchorPoint(childByLocalName(anchor, 'to')),
+      },
+    ];
+  });
+  const rowCount = Math.max(
     layout.rowCount,
+    ...previews.flatMap(({ from, to }) => [from.row, to.row]),
+  );
+  const columnCount = Math.max(
+    layout.columnCount,
+    ...previews.flatMap(({ from, to }) => [from.column, to.column]),
+  );
+  const rowAxis = createSpreadsheetAxisIndex(
+    rowCount,
     layout.defaultRowHeight,
     layout.rows,
   );
   const columnAxis = createSpreadsheetAxisIndex(
-    layout.columnCount,
+    columnCount,
     layout.defaultColumnWidth,
     layout.columns,
   );
-  return descendantsByLocalName(document.documentElement, 'objectPr')
-    .map((objectPr, index): SpreadsheetImage | undefined => {
-      const relationshipId = attr(objectPr, 'r:id') ?? attr(objectPr, 'id');
-      const imagePath = relationshipId
-        ? relationships[relationshipId]?.target
-        : undefined;
-      const source = imagePath
-        ? createXlsxImageResource(context, imagePath)
-        : undefined;
-      const anchor = descendantByLocalName(objectPr, 'anchor');
-      if (!source || !anchor) return undefined;
-      const from = readAnchorPoint(childByLocalName(anchor, 'from'));
-      const to = readAnchorPoint(childByLocalName(anchor, 'to'));
-      const x = columnAxis.offsetAt(from.column) + from.columnOffset;
-      const y = rowAxis.offsetAt(from.row) + from.rowOffset;
-      const right = columnAxis.offsetAt(to.column) + to.columnOffset;
-      const bottom = rowAxis.offsetAt(to.row) + to.rowOffset;
-      return {
-        id: `${descriptor.path}-ole-preview-${index + 1}`,
-        name: '嵌入对象预览',
-        alt: '嵌入对象预览',
-        src: source,
-        from,
-        to,
-        x,
-        y,
-        width: Math.max(1, right - x),
-        height: Math.max(1, bottom - y),
-      };
-    })
-    .filter(Boolean) as SpreadsheetImage[];
+  return previews.map(({ source, from, to }, index): SpreadsheetImage => {
+    const x = columnAxis.offsetAt(from.column) + from.columnOffset;
+    const y = rowAxis.offsetAt(from.row) + from.rowOffset;
+    const right = columnAxis.offsetAt(to.column) + to.columnOffset;
+    const bottom = rowAxis.offsetAt(to.row) + to.rowOffset;
+    return {
+      id: `${descriptor.path}-ole-preview-${index + 1}`,
+      name: '嵌入对象预览',
+      alt: '嵌入对象预览',
+      src: source,
+      from,
+      to,
+      x,
+      y,
+      width: Math.max(1, right - x),
+      height: Math.max(1, bottom - y),
+    };
+  });
 }
