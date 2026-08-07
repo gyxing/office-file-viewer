@@ -110,24 +110,185 @@
   min-height: 0;
   padding: 8px 6px 10px;
   overflow: auto;
+  scrollbar-gutter: stable;
 }
 
-.office-file-word-outline__tree-host--virtual {
-  overflow: hidden;
-}
-
-.office-file-word-outline__tree {
-  min-height: 100%;
+.office-file-outline-tree {
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
   color: inherit;
   background: transparent;
 }
 
-.office-file-word-outline__node-title {
+.office-file-outline-tree--virtual {
+  contain: layout paint style;
+}
+
+.office-file-outline-tree__window {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+}
+
+.office-file-outline-tree__row {
+  position: relative;
+  display: flex;
+  box-sizing: border-box;
+  width: 100%;
+  height: 28px;
+  min-width: 0;
+  padding-right: 4px;
+  align-items: center;
+  color: #1f2937;
+  cursor: pointer;
+  outline: none;
+  border-radius: 4px;
+}
+
+.office-file-outline-tree__row:hover {
+  background: #f5f7fa;
+}
+
+.office-file-outline-tree__row[aria-selected='true'] {
+  color: #0958d9;
+  background: #eaf4ff;
+}
+
+.office-file-outline-tree__row[data-focused='true']:focus-visible {
+  box-shadow: inset 0 0 0 2px rgb(22 119 255 / 28%);
+}
+
+.office-file-outline-tree__guides {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.office-file-outline-tree__guide {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: #d7dce3;
+}
+
+.office-file-outline-tree__branch {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 15px;
+}
+
+.office-file-outline-tree__branch::before,
+.office-file-outline-tree__branch::after {
+  position: absolute;
+  background: #d7dce3;
+  content: '';
+}
+
+.office-file-outline-tree__branch::before {
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 50%;
+}
+
+.office-file-outline-tree__branch[data-continues='true']::before {
+  height: 100%;
+}
+
+.office-file-outline-tree__branch::after {
+  top: 50%;
+  left: 0;
+  width: 15px;
+  height: 1px;
+}
+
+.office-file-outline-tree__switcher,
+.office-file-outline-tree__leaf-space {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+}
+
+.office-file-outline-tree__switcher {
+  padding: 0;
+  color: #475569;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  outline: none;
+}
+
+.office-file-outline-tree__switcher > span {
+  position: relative;
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border: 1px solid currentcolor;
+}
+
+.office-file-outline-tree__switcher > span::before,
+.office-file-outline-tree__switcher > span::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 1px;
+  background: currentcolor;
+  content: '';
+  transform: translate(-50%, -50%);
+}
+
+.office-file-outline-tree__switcher > span::after {
+  transform: translate(-50%, -50%) rotate(90deg);
+}
+
+.office-file-outline-tree__switcher[data-expanded='true'] > span::after {
+  display: none;
+}
+
+.office-file-outline-tree__switcher:hover,
+.office-file-outline-tree__switcher:focus-visible {
+  color: #1677ff;
+}
+
+.office-file-outline-tree__switcher[data-loading='true'] > span {
+  border-radius: 50%;
+  border-right-color: transparent;
+  animation: office-file-outline-tree-loading 720ms linear infinite;
+}
+
+.office-file-outline-tree__switcher[data-loading='true'] > span::before,
+.office-file-outline-tree__switcher[data-loading='true'] > span::after {
+  display: none;
+}
+
+.office-file-outline-tree__title {
   display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0 6px;
   overflow: hidden;
   line-height: 28px;
   white-space: nowrap;
   text-overflow: ellipsis;
+  font-size: 14px;
+}
+
+@keyframes office-file-outline-tree-loading {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .office-file-word-outline__resize-handle {
@@ -185,5 +346,9 @@
     .office-file-word-outline__surface {
     transform: none;
     transition: opacity 140ms linear;
+  }
+
+  .office-file-outline-tree__switcher[data-loading='true'] > span {
+    animation-duration: 1.4s;
   }
 }

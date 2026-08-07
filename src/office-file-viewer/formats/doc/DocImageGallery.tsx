@@ -1,5 +1,3 @@
-// DocImageGallery 展示未能稳定锚定到正文位置的 DOC 图片。
-import { Typography } from 'antd';
 import React, { memo } from 'react';
 import { useOfficeFileViewerMessages } from '../../locale';
 import type { DocImage } from '../../services/doc/types';
@@ -17,9 +15,9 @@ function DocImageGalleryComponent({ images }: DocImageGalleryProps) {
 
   return (
     <section className="office-file-doc-image-gallery">
-      <Typography.Text strong className="office-file-doc-image-gallery__title">
+      <strong className="office-file-doc-image-gallery__title">
         {messages.document.images}
-      </Typography.Text>
+      </strong>
       <div className="office-file-doc-image-gallery__grid">
         {images.map((image) => (
           <figure

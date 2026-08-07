@@ -107,6 +107,14 @@ export type OfficeFileViewerMessages = {
   };
   /** 电子表格预览相关文案。 */
   spreadsheet: {
+    /** 显示模式选择控件的无障碍名称。 */
+    viewMode: string;
+    /** 保持源文件版式的选项文案。 */
+    sourceViewMode: string;
+    /** 优先完整显示单元格内容的选项文案。 */
+    readingViewMode: string;
+    /** 工作表标签区域的无障碍名称。 */
+    sheets: string;
     /** 当前元素的尺寸说明。 */
     dimensions: (rows: number, columns: number) => string;
     /** 图片加载失败时显示的文案。 */

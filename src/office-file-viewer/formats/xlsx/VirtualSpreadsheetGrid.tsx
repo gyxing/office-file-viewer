@@ -1,11 +1,19 @@
 // VirtualSpreadsheetGrid 按完整工作表坐标渲染当前二维窗口。
 import type { CSSProperties } from 'react';
-import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  memo,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useOfficeFileViewerMessages } from '../../locale';
 import {
   useOfficeResourceUrl,
   type OfficeResourceSource,
 } from '../../services/resource-store';
+import type { SpreadsheetAxisIndex } from '../../services/spreadsheet/SpreadsheetAxisIndex';
 import type { SpreadsheetPerformanceProfile } from '../../services/spreadsheet/spreadsheetPerformance';
 import type {
   SpreadsheetSheetLayout,
@@ -18,6 +26,7 @@ import type {
   SpreadsheetMerge,
   SpreadsheetRangeData,
 } from '../../services/spreadsheet/types';
+import type { SpreadsheetViewMode } from '../../services/spreadsheet/viewMode';
 import { OfficeChartView } from '../../shared/chart/OfficeChartView';
 import {
   buildXlsxCellStyle,
@@ -33,7 +42,16 @@ import {
 } from './spreadsheetCellOverflow';
 import { SpreadsheetCellRenderer } from './SpreadsheetCellRenderer';
 import { SpreadsheetGridPlaceholder } from './SpreadsheetGridPlaceholder';
+import {
+  buildSpreadsheetReadingRowHeightUpdates,
+  isSpreadsheetShrinkToFitCell,
+  remapSpreadsheetVerticalRange,
+} from './spreadsheetReadingLayout';
 import { useSpreadsheetGridWindow } from './useSpreadsheetGridWindow';
+
+/** SSR 环境延后布局副作用，浏览器中则在绘制前提交阅读行高。 */
+const useIsomorphicLayoutEffect =
+  typeof window === 'undefined' ? useEffect : useLayoutEffect;
 
 /** 电子表格虚拟网格组件属性。 */
 type VirtualSpreadsheetGridProps = {
@@ -47,6 +65,15 @@ type VirtualSpreadsheetGridProps = {
   gridMode: SpreadsheetPerformanceProfile['gridMode'];
   /** 当前预览缩放比例，100 表示原始大小。 */
   zoom: number;
+  /** 当前电子表格采用的显示模式。 */
+  viewMode: SpreadsheetViewMode;
+  /** 当前工作表已经计算出的稀疏阅读行高。 */
+  readingRowHeights: ReadonlyMap<number, number>;
+  /** 合并当前窗口新计算出的阅读行高。 */
+  onReadingRowHeightsChange: (
+    sheetId: string,
+    updates: ReadonlyMap<number, number>,
+  ) => void;
 };
 
 /** 电子表格已经加载的行列范围。 */
@@ -64,7 +91,15 @@ function positionKey(row: number, column: number) {
 }
 
 /** 在虚拟画布中按需加载单个图片资源。 */
-function VirtualSpreadsheetImage({ image }: { image: SpreadsheetImage }) {
+function VirtualSpreadsheetImage({
+  image,
+  sourceRowAxis,
+  rowAxis,
+}: {
+  image: SpreadsheetImage;
+  sourceRowAxis: SpreadsheetAxisIndex;
+  rowAxis: SpreadsheetAxisIndex;
+}) {
   const messages = useOfficeFileViewerMessages();
   const source = useMemo<OfficeResourceSource>(
     () =>
@@ -74,6 +109,16 @@ function VirtualSpreadsheetImage({ image }: { image: SpreadsheetImage }) {
     [image.src],
   );
   const resource = useOfficeResourceUrl(source);
+  const verticalRange = useMemo(
+    () =>
+      remapSpreadsheetVerticalRange(
+        image.y,
+        image.height,
+        sourceRowAxis,
+        rowAxis,
+      ),
+    [image.height, image.y, rowAxis, sourceRowAxis],
+  );
   return (
     <img
       className="office-file-xlsx-sheet-grid__floating-image"
@@ -89,9 +134,9 @@ function VirtualSpreadsheetImage({ image }: { image: SpreadsheetImage }) {
       data-load-error={resource.error ? 'true' : undefined}
       style={{
         left: XLSX_ROW_HEADER_WIDTH + image.x,
-        top: XLSX_COLUMN_HEADER_HEIGHT + image.y,
+        top: XLSX_COLUMN_HEADER_HEIGHT + verticalRange.y,
         width: image.width,
-        height: image.height,
+        height: verticalRange.height,
       }}
     />
   );
@@ -101,24 +146,38 @@ function VirtualSpreadsheetImage({ image }: { image: SpreadsheetImage }) {
 function VirtualSpreadsheetChart({
   chart,
   zoom,
+  sourceRowAxis,
+  rowAxis,
 }: {
   chart: SpreadsheetChart;
   zoom: number;
+  sourceRowAxis: SpreadsheetAxisIndex;
+  rowAxis: SpreadsheetAxisIndex;
 }) {
+  const verticalRange = useMemo(
+    () =>
+      remapSpreadsheetVerticalRange(
+        chart.y,
+        chart.height,
+        sourceRowAxis,
+        rowAxis,
+      ),
+    [chart.height, chart.y, rowAxis, sourceRowAxis],
+  );
   return (
     <div
       className="office-file-xlsx-sheet-grid__floating-chart"
       style={{
         left: XLSX_ROW_HEADER_WIDTH + chart.x,
-        top: XLSX_COLUMN_HEADER_HEIGHT + chart.y,
+        top: XLSX_COLUMN_HEADER_HEIGHT + verticalRange.y,
         width: chart.width,
-        height: chart.height,
+        height: verticalRange.height,
       }}
     >
       <OfficeChartView
         chart={chart.chart}
         width={chart.width}
-        height={chart.height}
+        height={verticalRange.height}
         zoom={zoom}
       />
     </div>
@@ -134,6 +193,7 @@ function VirtualSpreadsheetCell({
   width,
   height,
   contentBounds,
+  viewMode,
 }: {
   cell: SpreadsheetCell;
   merge?: SpreadsheetMerge;
@@ -142,13 +202,15 @@ function VirtualSpreadsheetCell({
   width: number;
   height: number;
   contentBounds?: SpreadsheetCellContentBounds;
+  viewMode: SpreadsheetViewMode;
 }) {
   const style = cell.style ?? {};
+  const shrinkToFit = isSpreadsheetShrinkToFitCell(cell);
   const fallbackBorder = style.border
     ? `${style.borderWidth ?? 1}px solid ${style.borderColor ?? '#b9c2d0'}`
     : '1px solid #d9e0ea';
   const cellStyle: CSSProperties = {
-    ...buildXlsxCellStyle(cell),
+    ...buildXlsxCellStyle(cell, viewMode),
     position: 'absolute',
     left,
     top,
@@ -172,9 +234,16 @@ function VirtualSpreadsheetCell({
       <SpreadsheetCellRenderer
         cell={cell}
         contentWidth={width}
-        contentHeight={height}
-        clipped={Boolean(style.wrapText || style.shrinkToFit || merge)}
-        contentBounds={contentBounds}
+        contentHeight={
+          viewMode === 'source' || shrinkToFit ? height : undefined
+        }
+        clipped={Boolean(
+          viewMode === 'reading'
+            ? shrinkToFit
+            : style.wrapText || style.shrinkToFit || merge,
+        )}
+        contentBounds={viewMode === 'source' ? contentBounds : undefined}
+        viewMode={viewMode}
       />
     </div>
   );
@@ -187,17 +256,28 @@ function VirtualSpreadsheetGridComponent({
   layout,
   gridMode,
   zoom,
+  viewMode,
+  readingRowHeights,
+  onReadingRowHeightsChange,
 }: VirtualSpreadsheetGridProps) {
   const {
     viewportRef,
     viewport,
     range,
+    sourceRowAxis,
     rowAxis,
     columnAxis,
     scale,
     canvasWidth,
     canvasHeight,
-  } = useSpreadsheetGridWindow(layout, gridMode, zoom);
+  } = useSpreadsheetGridWindow({
+    sheetId,
+    layout,
+    gridMode,
+    zoom,
+    viewMode,
+    readingRowHeights,
+  });
   const generationRef = useRef(0);
   const [retryRevision, setRetryRevision] = useState(0);
   const [loadedRange, setLoadedRange] = useState<LoadedSpreadsheetRange>();
@@ -206,6 +286,16 @@ function VirtualSpreadsheetGridComponent({
     loadedRange?.source === source && loadedRange.sheetId === sheetId
       ? loadedRange.data
       : undefined;
+
+  useIsomorphicLayoutEffect(() => {
+    if (viewMode !== 'reading' || !data) return;
+    const updates = buildSpreadsheetReadingRowHeightUpdates(
+      data,
+      rowAxis,
+      columnAxis,
+    );
+    if (updates.size) onReadingRowHeightsChange(sheetId, updates);
+  }, [columnAxis, data, onReadingRowHeightsChange, rowAxis, sheetId, viewMode]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -286,7 +376,7 @@ function VirtualSpreadsheetGridComponent({
   }, [data, visibleColumns, visibleRows]);
   const contentBoundsByPosition = useMemo(() => {
     const result = new Map<string, SpreadsheetCellContentBounds>();
-    if (!data) return result;
+    if (!data || viewMode === 'reading') return result;
     const columnWidths = visibleColumns.map((column) =>
       columnAxis.sizeAt(column.index),
     );
@@ -333,7 +423,15 @@ function VirtualSpreadsheetGridComponent({
       ).forEach((bounds, key) => result.set(key, bounds));
     });
     return result;
-  }, [cells, columnAxis, data, mergeByPosition, visibleColumns, visibleRows]);
+  }, [
+    cells,
+    columnAxis,
+    data,
+    mergeByPosition,
+    viewMode,
+    visibleColumns,
+    visibleRows,
+  ]);
   const logicalScrollLeft = viewport.scrollLeft / scale;
   const logicalScrollTop = viewport.scrollTop / scale;
 
@@ -382,6 +480,7 @@ function VirtualSpreadsheetGridComponent({
                     width={columnAxis.rangeSize(column.index, endColumn)}
                     height={rowAxis.rangeSize(row.index, endRow)}
                     contentBounds={contentBoundsByPosition.get(key)}
+                    viewMode={viewMode}
                   />,
                 ];
               }),
@@ -389,10 +488,21 @@ function VirtualSpreadsheetGridComponent({
           : null}
 
         {data?.images.map((image) => (
-          <VirtualSpreadsheetImage key={image.id} image={image} />
+          <VirtualSpreadsheetImage
+            key={image.id}
+            image={image}
+            sourceRowAxis={sourceRowAxis}
+            rowAxis={rowAxis}
+          />
         ))}
         {data?.charts.map((chart) => (
-          <VirtualSpreadsheetChart key={chart.id} chart={chart} zoom={zoom} />
+          <VirtualSpreadsheetChart
+            key={chart.id}
+            chart={chart}
+            zoom={zoom}
+            sourceRowAxis={sourceRowAxis}
+            rowAxis={rowAxis}
+          />
         ))}
 
         {visibleColumns.map((column) => (

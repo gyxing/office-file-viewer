@@ -36,6 +36,7 @@ import {
   type OfficeDocumentSession,
 } from '../../services/session';
 import type { SpreadsheetSource } from '../../services/spreadsheet/SpreadsheetSource';
+import type { SpreadsheetViewMode } from '../../services/spreadsheet/viewMode';
 import type {
   WordOutlineProvider,
   WordOutlineProviderSnapshot,
@@ -106,6 +107,8 @@ export type OfficeViewerActions = {
   zoomIn(): void;
   /** 设置指定预览比例。 */
   changeZoom(zoom: number): void;
+  /** 设置电子表格的显示模式。 */
+  changeSpreadsheetViewMode(viewMode: SpreadsheetViewMode): void;
   /** 切换演讲者备注面板。 */
   toggleSpeakerNotes(): void;
   /** 切换 Word 大纲侧栏。 */
@@ -764,6 +767,13 @@ export function useOfficeViewerController(
     dispatch({ type: 'zoom-changed', zoom });
   }, []);
 
+  const changeSpreadsheetViewMode = useCallback(
+    (viewMode: SpreadsheetViewMode) => {
+      dispatch({ type: 'spreadsheet-view-mode-changed', viewMode });
+    },
+    [],
+  );
+
   const toggleSpeakerNotes = useCallback(() => {
     const currentOptions = optionsRef.current;
     const nextVisible = !(
@@ -867,6 +877,7 @@ export function useOfficeViewerController(
       zoomOut,
       zoomIn,
       changeZoom,
+      changeSpreadsheetViewMode,
       toggleSpeakerNotes,
       toggleWordOutline,
       closeWordOutline,
@@ -874,6 +885,7 @@ export function useOfficeViewerController(
     }),
     [
       changeZoom,
+      changeSpreadsheetViewMode,
       closeWordOutline,
       nextSlide,
       previousSlide,

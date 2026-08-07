@@ -8,6 +8,7 @@ import {
   buildDocBlocksFromSegments,
   buildDocBlocksFromText,
 } from './buildDocBlocks';
+import { buildDocDrawingParagraphAnchors } from './buildDocDrawingParagraphAnchors';
 import {
   documentMetadataFromDoc,
   paragraphsFromDocBlocks,
@@ -360,12 +361,22 @@ export async function parseDocCore(
       (block): block is DocParagraphBlock => block.type === 'paragraph',
     );
   }
+  const segments = readDocStorySegments(
+    wordDocument,
+    binaryContent,
+    0,
+    fib.ccpText,
+  );
   const drawingCanvases = extractDocDrawingCanvases(
     tableStream,
     fib,
     textBoxes,
     resources,
-    { sections, displayPage: documentPage },
+    {
+      sections,
+      displayPage: documentPage,
+      paragraphAnchors: buildDocDrawingParagraphAnchors(segments),
+    },
   );
   const drawingImages = drawingCanvases.images;
   await flushDocResources(resources, context.output);
@@ -386,12 +397,6 @@ export async function parseDocCore(
     percent: 0.7,
     message: '正在解析 DOC 正文内容',
   });
-  const segments = readDocStorySegments(
-    wordDocument,
-    binaryContent,
-    0,
-    fib.ccpText,
-  );
   const hasStructuralTableRows = paragraphRuns.some((run) => run.tableRowEnd);
   // 只有文档实际提供行结束标志时才采用 PAPX 表格结构；旧 WPS/DOC 常只有 inTable，
   // 此时继续使用单元格分隔符回退，避免把表格及其后的正文吞成同一行。

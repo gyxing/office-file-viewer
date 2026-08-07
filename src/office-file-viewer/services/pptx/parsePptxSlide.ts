@@ -19,6 +19,10 @@ import {
   toHexColor,
   transformColor,
 } from './colors';
+import {
+  formatPptxTextField,
+  type PptxTextFieldContext,
+} from './formatPptxTextField';
 import { parsePptxSpeakerNotes } from './parseSpeakerNotes';
 import type {
   LayoutDefinition,
@@ -837,6 +841,7 @@ function parseGroupElement(
   placeholderStyles?: Record<string, PlaceholderStyle>,
   tableStyles?: TableStyleMap,
   includePlaceholders = true,
+  fieldContext?: PptxTextFieldContext,
 ) {
   const spPr = childByLocalName(node, 'grpSpPr');
   const xfrm = childByLocalName(spPr, 'xfrm');
@@ -864,6 +869,7 @@ function parseGroupElement(
     placeholderStyles,
     tableStyles,
     includePlaceholders,
+    fieldContext,
   );
   return childElements.map((element) => {
     const translated = transformGroupedElement(element, {
@@ -894,6 +900,7 @@ export function parsePptxVisualTree(
   placeholderStyles?: Record<string, PlaceholderStyle>,
   tableStyles?: TableStyleMap,
   includePlaceholders = true,
+  fieldContext?: PptxTextFieldContext,
 ) {
   const elements: SlideElement[] = [];
   const nodes = childrenByLocalName(spTree, 'sp')
@@ -956,6 +963,7 @@ export function parsePptxVisualTree(
         placeholderStyles,
         tableStyles,
         includePlaceholders,
+        fieldContext,
       );
       elements.push(...groupElements);
       return;
@@ -1010,7 +1018,13 @@ export function parsePptxVisualTree(
 
     elements.push(
       hasText
-        ? parseTextElement(node, elementIndex, theme, inherited)
+        ? parsePptxTextElement(
+            node,
+            elementIndex,
+            theme,
+            inherited,
+            fieldContext,
+          )
         : parseShapeElement(node, elementIndex, theme, inherited),
     );
     elements[elements.length - 1].id = `${sourcePrefix}-${
@@ -1033,11 +1047,13 @@ function mergePlaceholder(
   );
 }
 
-function parseTextElement(
+/** 将单个 DrawingML 文本形状转换为公共演示文本模型。 */
+export function parsePptxTextElement(
   node: Element,
   index: number,
   theme: ThemeModel,
   inherited?: PlaceholderStyle,
+  fieldContext?: PptxTextFieldContext,
 ): TextElement {
   const spPr = childByLocalName(node, 'spPr');
   const xfrm = childByLocalName(spPr, 'xfrm');
@@ -1087,11 +1103,13 @@ function parseTextElement(
 
         if (child.localName === 'fld') {
           const runProps = childByLocalName(child, 'rPr');
+          const storedText =
+            textContent(childByLocalName(child, 't')) ||
+            child.textContent ||
+            '';
           runs.push({
-            text:
-              textContent(childByLocalName(child, 't')) ||
-              child.textContent ||
-              '',
+            text: formatPptxTextField(child, storedText, fieldContext),
+            fieldType: attr(child, 'type'),
             style: mergeTextStyles(
               defaultRunStyle,
               readDefaultRunStyle(runProps, theme),
@@ -1608,6 +1626,23 @@ function findLayoutForSlide(
   );
 }
 
+/** 为母版和版式中复用的动态页码创建当前幻灯片专属文本副本。 */
+function resolvePptxSlideFields(elements: SlideElement[], slideNumber: number) {
+  return elements.map((element) => {
+    if (element.type !== 'text') return element;
+    let changed = false;
+    const paragraphs = element.paragraphs.map((paragraph) => ({
+      ...paragraph,
+      runs: paragraph.runs.map((run) => {
+        if (run.fieldType?.toLowerCase() !== 'slidenum') return run;
+        changed = true;
+        return { ...run, text: String(slideNumber) };
+      }),
+    }));
+    return changed ? { ...element, paragraphs } : element;
+  });
+}
+
 /** 解析单张 PPTX 幻灯片及其关系部件。 */
 export function parseSlideXml(
   xml: string,
@@ -1645,8 +1680,8 @@ export function parseSlideXml(
       : master?.background;
 
   const elements: SlideElement[] = [
-    ...(master?.elements ?? []),
-    ...(layout?.elements ?? []),
+    ...resolvePptxSlideFields(master?.elements ?? [], index),
+    ...resolvePptxSlideFields(layout?.elements ?? [], index),
   ];
   const placeholderStyles = { ...(master?.placeholders ?? {}) };
   Object.keys(layout?.placeholders ?? {}).forEach((key) => {
@@ -1678,6 +1713,8 @@ export function parseSlideXml(
       `slide-${index}`,
       placeholderStyles,
       tableStyles,
+      true,
+      { slideNumber: index },
     ),
   );
 

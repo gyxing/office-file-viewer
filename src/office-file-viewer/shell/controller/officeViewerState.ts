@@ -1,6 +1,10 @@
 import type { ParseProgress } from '../../services/parsing';
 import type { OfficeFileViewerPreviewState } from '../../services/parsing/internalTypes';
 import type { PreviewKind } from '../../services/preview';
+import {
+  DEFAULT_SPREADSHEET_VIEW_MODE,
+  type SpreadsheetViewMode,
+} from '../../services/spreadsheet/viewMode';
 
 /** 查看器当前文档所处的加载与交付阶段。 */
 export type OfficeViewerDocumentState =
@@ -53,6 +57,8 @@ export type OfficeViewerViewState = {
   internalShowSpeakerNotes: boolean;
   /** Word 文档大纲是否展开。 */
   showWordOutline: boolean;
+  /** 电子表格当前采用的显示模式。 */
+  spreadsheetViewMode: SpreadsheetViewMode;
 };
 
 /** 控制器交付给视图层的完整可渲染状态。 */
@@ -137,6 +143,11 @@ export type OfficeViewerAction =
       type: 'word-outline-changed';
       /** Word 大纲的目标状态。 */
       visible: boolean;
+    }
+  | {
+      type: 'spreadsheet-view-mode-changed';
+      /** 电子表格的目标显示模式。 */
+      viewMode: SpreadsheetViewMode;
     };
 
 /** 创建包含调用方默认值的初始查看器状态。 */
@@ -155,6 +166,7 @@ export function createInitialOfficeViewerState(options: {
       isFullscreen: false,
       internalShowSpeakerNotes: options.defaultShowSpeakerNotes,
       showWordOutline: false,
+      spreadsheetViewMode: DEFAULT_SPREADSHEET_VIEW_MODE,
     },
   };
 }
@@ -226,6 +238,7 @@ export function officeViewerReducer(
           activeSlideIndex: 0,
           activeSheetId: undefined,
           showWordOutline: false,
+          spreadsheetViewMode: DEFAULT_SPREADSHEET_VIEW_MODE,
         },
       };
     case 'parse-started':
@@ -242,6 +255,7 @@ export function officeViewerReducer(
           zoom: action.zoom,
           internalShowSpeakerNotes: action.showSpeakerNotes,
           showWordOutline: false,
+          spreadsheetViewMode: DEFAULT_SPREADSHEET_VIEW_MODE,
         },
       };
     case 'progressed':
@@ -290,6 +304,7 @@ export function officeViewerReducer(
           activeSlideIndex: 0,
           activeSheetId: undefined,
           showWordOutline: false,
+          spreadsheetViewMode: DEFAULT_SPREADSHEET_VIEW_MODE,
         },
       };
     case 'slide-selected':
@@ -327,6 +342,12 @@ export function officeViewerReducer(
       return {
         ...state,
         view: { ...state.view, showWordOutline: action.visible },
+      };
+    case 'spreadsheet-view-mode-changed':
+      if (state.view.spreadsheetViewMode === action.viewMode) return state;
+      return {
+        ...state,
+        view: { ...state.view, spreadsheetViewMode: action.viewMode },
       };
   }
 }

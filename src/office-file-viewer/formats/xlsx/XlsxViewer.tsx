@@ -1,9 +1,10 @@
 // XlsxViewer 负责 XLSX 工作簿预览的整体布局，包括工作表选择和当前工作表内容区。
-import React, { memo, useMemo } from 'react';
+import React, { memo, useCallback, useMemo, useRef, useState } from 'react';
 import type { OfficeFileViewerPreviewState } from '../../services/parsing/internalTypes';
 import type { SpreadsheetSource } from '../../services/spreadsheet/SpreadsheetSource';
 import { getSpreadsheetSource } from '../../services/spreadsheet/spreadsheetSourceRegistry';
-import { OfficeEmpty } from '../../shell/Empty';
+import type { SpreadsheetViewMode } from '../../services/spreadsheet/viewMode';
+import { OfficePreviewEmpty } from '../common/OfficePreviewEmpty';
 import './index.less';
 import { SpreadsheetSheetState } from './SpreadsheetSheetState';
 import { useSpreadsheetSource } from './useSpreadsheetSource';
@@ -11,6 +12,9 @@ import { VirtualSpreadsheetGrid } from './VirtualSpreadsheetGrid';
 import { XlsxChartSheet } from './XlsxChartSheet';
 import { XlsxSheetGrid } from './XlsxSheetGrid';
 import { XlsxSheetTabs } from './XlsxSheetTabs';
+
+/** 尚未计算阅读行高时复用的空集合。 */
+const EMPTY_READING_ROW_HEIGHTS: ReadonlyMap<number, number> = new Map();
 
 /** 电子表格 Viewer 可以消费的物化或按需预览。 */
 type SpreadsheetPreview = Extract<
@@ -26,6 +30,8 @@ type XlsxViewerProps = {
   activeSheetId?: string;
   /** 当前预览缩放比例。 */
   zoom: number;
+  /** 当前电子表格采用的显示模式。 */
+  viewMode: SpreadsheetViewMode;
   /** 在 SelectSheet 事件发生时调用的回调函数。 */
   onSelectSheet: (sheetId: string) => void;
 };
@@ -35,6 +41,7 @@ function XlsxViewerComponent({
   preview,
   activeSheetId,
   zoom,
+  viewMode,
   onSelectSheet,
 }: XlsxViewerProps) {
   const resolvedSource = useMemo(
@@ -46,7 +53,7 @@ function XlsxViewerComponent({
   );
 
   if (!resolvedSource) {
-    return <OfficeEmpty kind={preview.previewKind} />;
+    return <OfficePreviewEmpty kind={preview.previewKind} />;
   }
 
   return (
@@ -55,6 +62,7 @@ function XlsxViewerComponent({
       kind={preview.previewKind}
       activeSheetId={activeSheetId}
       zoom={zoom}
+      viewMode={viewMode}
       onSelectSheet={onSelectSheet}
     />
   );
@@ -66,18 +74,56 @@ function XlsxSourceViewer({
   kind,
   activeSheetId,
   zoom,
+  viewMode,
   onSelectSheet,
 }: {
   source: SpreadsheetSource;
   kind: 'xlsx' | 'xls';
   activeSheetId?: string;
   zoom: number;
+  viewMode: SpreadsheetViewMode;
   onSelectSheet: (sheetId: string) => void;
 }) {
+  const readingRowHeightCacheRef = useRef(
+    new Map<string, ReadonlyMap<number, number>>(),
+  );
+  const sourceRef = useRef(source);
+  const [readingLayoutRevision, setReadingLayoutRevision] = useState(0);
+  if (sourceRef.current !== source) {
+    // 数据源变化后旧 Sheet 标识可能复用，必须同步丢弃此前的阅读布局缓存。
+    sourceRef.current = source;
+    readingRowHeightCacheRef.current.clear();
+  }
   const state = useSpreadsheetSource(source, activeSheetId);
   const descriptor = state.activeDescriptor;
+  const readingRowHeights = useMemo(
+    () =>
+      descriptor
+        ? readingRowHeightCacheRef.current.get(descriptor.id) ??
+          EMPTY_READING_ROW_HEIGHTS
+        : EMPTY_READING_ROW_HEIGHTS,
+    [descriptor, readingLayoutRevision, source],
+  );
+  const handleReadingRowHeightsChange = useCallback(
+    (sheetId: string, updates: ReadonlyMap<number, number>) => {
+      if (!updates.size) return;
+      const current =
+        readingRowHeightCacheRef.current.get(sheetId) ??
+        EMPTY_READING_ROW_HEIGHTS;
+      let next: Map<number, number> | undefined;
+      updates.forEach((height, rowIndex) => {
+        if (height <= (current.get(rowIndex) ?? 0) + 0.5) return;
+        next ??= new Map(current);
+        next.set(rowIndex, height);
+      });
+      if (!next) return;
+      readingRowHeightCacheRef.current.set(sheetId, next);
+      setReadingLayoutRevision((revision) => revision + 1);
+    },
+    [],
+  );
 
-  if (!descriptor) return <OfficeEmpty kind={kind} />;
+  if (!descriptor) return <OfficePreviewEmpty kind={kind} />;
 
   return (
     <div className="office-file-xlsx-viewer">
@@ -94,7 +140,11 @@ function XlsxSourceViewer({
         {state.activeSheet?.kind === 'chart' ? (
           <XlsxChartSheet sheet={state.activeSheet} zoom={zoom} />
         ) : state.profile?.gridMode === 'table' && state.activeSheet ? (
-          <XlsxSheetGrid sheet={state.activeSheet} zoom={zoom} />
+          <XlsxSheetGrid
+            sheet={state.activeSheet}
+            zoom={zoom}
+            viewMode={viewMode}
+          />
         ) : state.profile ? (
           <VirtualSpreadsheetGrid
             source={source}
@@ -102,6 +152,9 @@ function XlsxSourceViewer({
             layout={source.getSheetLayout(descriptor.id)}
             gridMode={state.profile.gridMode}
             zoom={zoom}
+            viewMode={viewMode}
+            readingRowHeights={readingRowHeights}
+            onReadingRowHeightsChange={handleReadingRowHeightsChange}
           />
         ) : null}
       </SpreadsheetSheetState>

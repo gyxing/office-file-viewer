@@ -19,14 +19,14 @@ export type PptNotesModel = {
 };
 
 /** 读取一个 NotesContainer，并只保留 Tx_TYPE_NOTES 文本。 */
-export function readPptNotes(
+export async function readPptNotes(
   documentStream: Uint8Array,
   editChain: PptEditChain,
   descriptor: PptNotesDescriptor,
   theme: ThemeModel,
   fonts: Map<number, string>,
   context: PptParseContext,
-): PptNotesModel | undefined {
+): Promise<PptNotesModel | undefined> {
   const offset = editChain.persistOffsets.get(descriptor.persistId);
   if (offset === undefined) return undefined;
 
@@ -65,7 +65,7 @@ export function readPptNotes(
   if (!slideIdRef) return undefined;
 
   const elements = drawing
-    ? parsePptDrawing(drawing, theme, fonts, context).elements
+    ? (await parsePptDrawing(drawing, theme, fonts, context)).elements
     : [];
   const paragraphs = elements
     .filter(

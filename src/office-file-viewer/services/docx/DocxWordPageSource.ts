@@ -1,9 +1,3 @@
-import {
-  createDocxMeasurementBatches,
-  paginateMeasuredDocxPage,
-  type DocxMeasuredBlock,
-  type DocxMeasurementBatch,
-} from '../../formats/docx/docxPagination';
 import type { OfficeArchiveReader } from '../../shared/ooxml/OfficeArchiveReader';
 import { OFFICE_LARGE_FILE_THRESHOLDS } from '../performance/officePerformanceThresholds';
 import { WordPerformanceStatsCollector } from '../word/collectWordPerformanceStats';
@@ -18,6 +12,12 @@ import type {
 } from '../word/WordPageSource';
 import { WordPageStore } from '../word/WordPageStore';
 import type { WordPreviewSource } from '../word/WordPreviewSource';
+import {
+  createDocxMeasurementBatches,
+  paginateMeasuredDocxPage,
+  type DocxMeasuredBlock,
+  type DocxMeasurementBatch,
+} from './docxPagination';
 import type { DocxDocument, DocxPage, DocxPageContent } from './types';
 
 /** DOCX 页面数据源的预览摘要。 */
@@ -112,11 +112,7 @@ export class DocxWordPageSource
   async addSourcePage(page: DocxPageContent) {
     this.throwIfUnavailable();
     this.collectPageMetadata(page);
-    if (this.summary?.preserveSectionPagination) {
-      await this.appendReadyPages([page]);
-      return;
-    }
-
+    // 每个 sourcePage 仍独立分页，因此测量不会跨越显式节边界。
     const batches = createDocxMeasurementBatches(page, this.nextBatchRevision);
     this.nextBatchRevision += batches.length;
     if (!batches.length) {

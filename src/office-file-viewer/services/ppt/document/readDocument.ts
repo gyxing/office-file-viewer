@@ -5,6 +5,7 @@ import { PptParseError } from '../errors';
 import type {
   PptBinaryDocument,
   PptEditChain,
+  PptMasterModel,
   PptParseContext,
   PptSlideModel,
 } from '../types';
@@ -123,34 +124,28 @@ export function readPptDocumentBaseStructure(
 }
 
 /** 只恢复根文档、字体、页面顺序和母版，不进入 Slide 或备注正文。 */
-export function readPptDocumentStructure(
+export async function readPptDocumentStructure(
   documentStream: Uint8Array,
   editChain: PptEditChain,
   context: PptParseContext,
-): PptDocumentReadStructure {
+): Promise<PptDocumentReadStructure> {
   const documentOffset = editChain.persistOffsets.get(
     editChain.documentPersistId,
   )!;
   const { width, height, theme, fonts, descriptors } =
     readPptDocumentBaseStructure(documentStream, documentOffset, context);
-  const masters = new Map(
-    descriptors.masters
-      .map((descriptor) => {
-        const master = readPptMaster(
-          documentStream,
-          editChain,
-          descriptor,
-          theme,
-          fonts,
-          context,
-        );
-        return master ? ([master.id, master] as const) : undefined;
-      })
-      .filter(
-        (entry): entry is readonly [number, NonNullable<typeof entry>[1]] =>
-          Boolean(entry),
-      ),
-  );
+  const masters = new Map<number, PptMasterModel>();
+  for (const descriptor of descriptors.masters) {
+    const master = await readPptMaster(
+      documentStream,
+      editChain,
+      descriptor,
+      theme,
+      fonts,
+      context,
+    );
+    if (master) masters.set(master.id, master);
+  }
   return { width, height, theme, masters, fonts, descriptors };
 }
 
@@ -162,11 +157,11 @@ export async function readPptBinaryDocument(
   observer?: PptDocumentObserver,
 ): Promise<PptBinaryDocument> {
   const { width, height, theme, masters, fonts, descriptors } =
-    readPptDocumentStructure(documentStream, editChain, context);
+    await readPptDocumentStructure(documentStream, editChain, context);
   await observer?.structure({ width, height, theme, masters });
   const speakerNotesBySlideId = new Map<number, SpeakerNotesModel>();
   for (const descriptor of descriptors.notes) {
-    const notes = readPptNotes(
+    const notes = await readPptNotes(
       documentStream,
       editChain,
       descriptor,
@@ -180,7 +175,7 @@ export async function readPptBinaryDocument(
   }
   const slides = [];
   for (const descriptor of descriptors.slides) {
-    const slide = readPptSlide(
+    const slide = await readPptSlide(
       documentStream,
       editChain,
       descriptor,

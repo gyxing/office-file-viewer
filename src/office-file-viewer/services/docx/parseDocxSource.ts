@@ -1,4 +1,4 @@
-import { yieldToMainThread } from '../../formats/word-pages/scheduler';
+import { yieldToMainThread } from '../performance/mainThreadScheduler';
 import type { OfficeArchiveReader } from '../../shared/ooxml/OfficeArchiveReader';
 import { readOfficeXmlEvents } from '../../shared/ooxml/OfficeXmlEventReader';
 import {

@@ -70,6 +70,10 @@ export const zhCN: OfficeFileViewerMessages = {
     resize: '调整文档大纲宽度',
   },
   spreadsheet: {
+    viewMode: '显示模式',
+    sourceViewMode: '原始版式',
+    readingViewMode: '阅读模式',
+    sheets: '工作表',
     dimensions: (rows, columns) => `${rows} 行 × ${columns} 列`,
     imageLoadFailed: (alt) => (alt ? `${alt}（图片加载失败）` : '图片加载失败'),
   },

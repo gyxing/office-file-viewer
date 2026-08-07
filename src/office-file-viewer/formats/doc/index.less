@@ -33,10 +33,11 @@
 
 .office-file-doc-page-frame__article {
   position: relative;
+  isolation: isolate;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  background: #fff;
+  background: transparent;
   box-shadow: 0 14px 30px rgba(15, 23, 42, 14%);
   font-family: 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', Arial,
     sans-serif;
@@ -44,8 +45,37 @@
   transform-origin: top left;
 }
 
+.office-file-doc-page-frame__article::before {
+  position: absolute;
+  z-index: -2;
+  inset: 0;
+  background: #fff;
+  content: '';
+}
+
+.office-file-doc-page-frame__drawing-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.office-file-doc-page-frame__drawing-layer--behind-text {
+  z-index: -1;
+}
+
+.office-file-doc-page-frame__drawing-layer--in-front-of-text {
+  z-index: 1;
+}
+
+.office-file-doc-page-frame__drawing-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
 .office-file-doc-page-frame__header-image {
   position: absolute;
+  z-index: 2;
   // 二进制页眉未恢复 PICF 锚点尺寸时，采用 Word 常见的 93pt 徽标宽度。
   top: 57px;
   left: 120px;
@@ -55,6 +85,7 @@
 
 .office-file-doc-page-frame__footer {
   position: absolute;
+  z-index: 2;
   right: 120px;
   bottom: 52px;
   left: 120px;

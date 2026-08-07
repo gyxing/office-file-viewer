@@ -204,42 +204,66 @@ export class XlsxSpreadsheetSource implements SpreadsheetSource {
             onTile: (tile) => store!.putTile(tile),
           },
         );
+        const declaredLayout = {
+          ...parsed.layout,
+          rowCount: parsed.declaredRowCount,
+          columnCount: parsed.declaredColumnCount,
+        };
         const [objects, oleImages, cellImages] = await Promise.all([
           loadXlsxDrawingObjects(
             this.context,
             descriptor,
-            parsed.layout,
+            declaredLayout,
             parsed.drawingRelationshipId,
             taskSignal,
           ),
           loadXlsxOlePreviewImages(
             this.context,
             descriptor,
-            parsed.layout,
+            declaredLayout,
             taskSignal,
           ),
           loadWpsCellImages(
             this.context.reader,
             this.context.sessionId,
             parsed.cellImages,
-            parsed.layout,
+            declaredLayout,
             parsed.merges,
             taskSignal,
           ),
         ]);
-        store.putStructure({
+        const previewImages = mergeXlsxPreviewImages(objects.images, oleImages);
+        const rowCount = Math.max(
+          parsed.layout.rowCount,
+          objects.rowCount,
+          ...previewImages.map((image) => image.to.row),
+          ...cellImages.map((image) => image.to.row),
+        );
+        const columnCount = Math.max(
+          parsed.layout.columnCount,
+          objects.columnCount,
+          ...previewImages.map((image) => image.to.column),
+          ...cellImages.map((image) => image.to.column),
+        );
+        const layout = {
           ...parsed.layout,
+          rowCount,
+          columnCount,
+          rows: parsed.layout.rows.filter((row) => row.index <= rowCount),
+          columns: parsed.layout.columns.filter(
+            (column) => column.index <= columnCount,
+          ),
+        };
+        store.putStructure({
+          ...layout,
           merges: parsed.merges,
-          images: [
-            ...mergeXlsxPreviewImages(objects.images, oleImages),
-            ...cellImages,
-          ],
+          images: [...previewImages, ...cellImages],
           charts: objects.charts,
         });
         const elapsed = performance.now() - startedAt;
         const nextProfile = createSpreadsheetPerformanceProfile({
-          rowCount: parsed.layout.rowCount,
-          columnCount: parsed.layout.columnCount,
+          rowCount: layout.rowCount,
+          columnCount: layout.columnCount,
           sheetBytes: descriptor.sheetBytes,
           modelBuildMilliseconds: elapsed,
         });
@@ -251,8 +275,8 @@ export class XlsxSpreadsheetSource implements SpreadsheetSource {
           ),
         );
         this.updateDescriptor(sheetId, {
-          rowCount: parsed.layout.rowCount,
-          columnCount: parsed.layout.columnCount,
+          rowCount: layout.rowCount,
+          columnCount: layout.columnCount,
           status: 'ready',
           errorMessage: undefined,
         });

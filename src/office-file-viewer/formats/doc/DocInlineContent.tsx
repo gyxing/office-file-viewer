@@ -37,30 +37,32 @@ function DocInlineContentComponent({
     <>
       {inlines.map((inline, index) =>
         inline.type === 'image' ? (
-          <span
-            key={`${inline.image.id}-${index}`}
-            className="office-file-doc-inline-image"
-          >
-            <img
-              className="office-file-doc-inline-image__img"
-              src={inline.image.src}
-              alt={inline.image.caption ?? inline.image.id}
-              loading="lazy"
-              decoding="async"
-              style={{
-                width:
-                  inline.image.width && inline.image.width <= 520
-                    ? inline.image.width
-                    : undefined,
-                height:
-                  inline.image.height &&
-                  inline.image.width &&
-                  inline.image.width <= 520
-                    ? inline.image.height
-                    : undefined,
-              }}
-            />
-          </span>
+          inline.image.pageDrawingLayer ? null : (
+            <span
+              key={`${inline.image.id}-${index}`}
+              className="office-file-doc-inline-image"
+            >
+              <img
+                className="office-file-doc-inline-image__img"
+                src={inline.image.src}
+                alt={inline.image.caption ?? inline.image.id}
+                loading="lazy"
+                decoding="async"
+                style={{
+                  width:
+                    inline.image.width && inline.image.width <= 520
+                      ? inline.image.width
+                      : undefined,
+                  height:
+                    inline.image.height &&
+                    inline.image.width &&
+                    inline.image.width <= 520
+                      ? inline.image.height
+                      : undefined,
+                }}
+              />
+            </span>
+          )
         ) : (
           <span
             key={`${inline.text}-${index}`}

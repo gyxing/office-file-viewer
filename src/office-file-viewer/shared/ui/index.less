@@ -1,0 +1,220 @@
+.office-file-viewer {
+  --office-file-control-text: #1f2937;
+  --office-file-control-border: #d9d9d9;
+  --office-file-control-hover: #1677ff;
+  --office-file-control-primary: #1677ff;
+  --office-file-control-disabled: #b8bec8;
+  --office-file-control-disabled-bg: #f5f5f5;
+  --office-file-overlay-z-index: 40;
+}
+
+.office-file-button {
+  display: inline-flex;
+  box-sizing: border-box;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 12px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--office-file-control-text);
+  font: inherit;
+  line-height: 1;
+  white-space: nowrap;
+  background: #fff;
+  border: 1px solid var(--office-file-control-border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color 160ms ease, border-color 160ms ease,
+    background-color 160ms ease, box-shadow 160ms ease;
+}
+
+.office-file-button:not(:disabled):hover {
+  color: var(--office-file-control-hover);
+  border-color: var(--office-file-control-hover);
+}
+
+.office-file-button:not(:disabled):active {
+  color: #0958d9;
+  border-color: #0958d9;
+}
+
+.office-file-button:focus-visible {
+  outline: 2px solid rgb(22 119 255 / 24%);
+  outline-offset: 1px;
+}
+
+.office-file-button:disabled {
+  color: var(--office-file-control-disabled);
+  background: var(--office-file-control-disabled-bg);
+  border-color: #e5e7eb;
+  cursor: not-allowed;
+}
+
+.office-file-button--primary {
+  color: #fff;
+  background: var(--office-file-control-primary);
+  border-color: var(--office-file-control-primary);
+}
+
+.office-file-button--primary:not(:disabled):hover {
+  color: #fff;
+  background: #4096ff;
+  border-color: #4096ff;
+}
+
+.office-file-button--primary:not(:disabled):active {
+  color: #fff;
+  background: #0958d9;
+  border-color: #0958d9;
+}
+
+.office-file-button--small {
+  min-width: 24px;
+  height: 24px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.office-file-button--icon-only {
+  width: 32px;
+  padding: 0;
+}
+
+.office-file-button--small.office-file-button--icon-only {
+  width: 24px;
+}
+
+.office-file-button__icon,
+.office-file-button__label {
+  display: inline-flex;
+  align-items: center;
+  font-size: 14px;
+}
+
+.office-file-button__icon {
+  justify-content: center;
+  line-height: 0;
+}
+
+.office-file-tooltip {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+}
+
+.office-file-tooltip__bubble {
+  position: absolute;
+  z-index: var(--office-file-overlay-z-index);
+  top: calc(100% + 7px);
+  left: 50%;
+  visibility: hidden;
+  max-width: 240px;
+  padding: 5px 8px;
+  overflow: hidden;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  background: rgb(0 0 0 / 82%);
+  border-radius: 4px;
+  opacity: 0;
+  transform: translate(-50%, -3px);
+  transition: opacity 120ms ease, transform 120ms ease,
+    visibility 0s linear 120ms;
+}
+
+.office-file-tooltip--bottom-end .office-file-tooltip__bubble {
+  right: 0;
+  left: auto;
+  transform: translateY(-3px);
+}
+
+.office-file-tooltip:hover .office-file-tooltip__bubble,
+.office-file-tooltip:focus-within .office-file-tooltip__bubble {
+  visibility: visible;
+  opacity: 1;
+  transform: translate(-50%, 0);
+  transition-delay: 0s;
+}
+
+.office-file-tooltip--bottom-end:hover .office-file-tooltip__bubble,
+.office-file-tooltip--bottom-end:focus-within .office-file-tooltip__bubble {
+  transform: translateY(0);
+}
+
+.office-file-tooltip[data-dismissed='true'] .office-file-tooltip__bubble {
+  visibility: hidden;
+  opacity: 0;
+}
+
+.office-file-spinner {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  color: var(--office-file-control-primary);
+}
+
+.office-file-spinner--large {
+  width: 28px;
+  height: 28px;
+}
+
+.office-file-spinner__indicator {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  border: 2px solid currentcolor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: office-file-spinner-rotate 720ms linear infinite;
+}
+
+.office-file-spinner--large .office-file-spinner__indicator {
+  border-width: 3px;
+}
+
+.office-file-empty-state {
+  display: flex;
+  min-width: 0;
+  min-height: 120px;
+  padding: 20px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+  color: #a0a8b3;
+  text-align: center;
+}
+
+.office-file-empty-state__icon {
+  display: block;
+  flex: none;
+  font-size: 94px;
+}
+
+.office-file-empty-state__description {
+  max-width: 100%;
+  line-height: 1.6;
+}
+
+@keyframes office-file-spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .office-file-button,
+  .office-file-tooltip__bubble {
+    transition: none;
+  }
+
+  .office-file-spinner__indicator {
+    animation-duration: 1.4s;
+  }
+}

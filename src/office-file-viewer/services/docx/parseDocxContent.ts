@@ -1022,6 +1022,11 @@ function normalizeDocxPages(pages: DocxPageContent[]) {
     .map((pageContent, index) => ({
       ...pageContent,
       id: `docx-page-${index + 1}`,
+      // WPS 相册等模板把整页内容保存为定位画布，这类物理页不应被浏览器测量结果再次拆开。
+      preservePhysicalPage:
+        pageContent.blocks.some((block) =>
+          blockHasFullPagePositionedShape(block, pageContent.page),
+        ) || undefined,
     }));
 }
 

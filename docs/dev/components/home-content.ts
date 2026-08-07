@@ -307,7 +307,7 @@ const WEBSITE_CONTENT: Record<WebsiteLocale, WebsiteContent> = {
           label: 'Viewing experience',
           title: 'Controls that understand the document',
           description:
-            'Zoom, fullscreen, outlines, worksheet tabs, slide navigation, and speaker notes appear where the format supports them.',
+            'Zoom, fullscreen, outlines, spreadsheet display modes, worksheet tabs, slide navigation, and speaker notes appear where the format supports them.',
           tone: 'neutral',
         },
       ],
@@ -336,10 +336,10 @@ const WEBSITE_CONTENT: Record<WebsiteLocale, WebsiteContent> = {
           title: 'Excel workbooks',
           formats: ['XLS', 'XLSX'],
           description:
-            'Explore workbook content with worksheet-aware navigation and spreadsheet-oriented rendering.',
+            'Switch between a source-faithful layout and a reading mode that prioritizes complete cell text.',
           capabilities: [
             'Worksheet tabs',
-            'Cell styles',
+            'Original and reading modes',
             'Charts and drawings',
           ],
           tone: 'spreadsheet',
@@ -361,25 +361,18 @@ const WEBSITE_CONTENT: Record<WebsiteLocale, WebsiteContent> = {
     developer: {
       eyebrow: 'Developer experience',
       title: 'From install to preview in a few lines.',
-      description:
-        'Install the package with the peer dependencies already used by your React application.',
+      description: 'Install the package in your existing React application.',
       installLabel: 'Install',
       exampleLabel: 'React example',
       packageManagerLabel: 'Package manager',
       commands: {
-        npm: 'npm install office-file-viewer antd react react-dom',
-        yarn: 'yarn add office-file-viewer antd react react-dom',
+        npm: 'npm install office-file-viewer',
+        yarn: 'yarn add office-file-viewer',
       },
-      example: `import { ConfigProvider } from 'antd';
-import enUS from 'antd/locale/en_US';
-import { OfficeFileViewer } from 'office-file-viewer';
+      example: `import { OfficeFileViewer } from 'office-file-viewer';
 
 export function Preview({ file }: { file: File }) {
-  return (
-    <ConfigProvider locale={enUS}>
-      <OfficeFileViewer uri={file} locale="en-US" height={640} />
-    </ConfigProvider>
-  );
+  return <OfficeFileViewer uri={file} locale="en-US" height={640} />;
 }`,
       copy: 'Copy command',
       copied: 'Command copied',
@@ -391,11 +384,11 @@ export function Preview({ file }: { file: File }) {
       eyebrow: 'Compatibility',
       title: 'Fits the React stack you already use.',
       description:
-        'Ant Design remains a peer dependency, so the viewer follows the version, theme, and ConfigProvider locale of the host application.',
+        'The viewer supports React 16.9 and later, ships as ESM, and includes its compiled component styles.',
       items: [
-        { name: 'Ant Design 4', version: '>= 4.24', note: 'React 16.9+' },
-        { name: 'Ant Design 5', version: '5.x', note: 'React 16.9+' },
-        { name: 'Ant Design 6', version: '6.x', note: 'React 18+' },
+        { name: 'React', version: '>= 16.9', note: 'Hooks support' },
+        { name: 'ReactDOM', version: '>= 16.9', note: 'Match React' },
+        { name: 'Module', version: 'ESM-only', note: 'Built-in CSS' },
       ],
     },
     finalCta: {
@@ -548,7 +541,7 @@ export function Preview({ file }: { file: File }) {
           label: '体验',
           title: '根据文档类型提供对应操作',
           description:
-            '在格式支持时提供缩放、全屏、大纲、工作表标签、幻灯片导航和演讲者备注等能力。',
+            '在格式支持时提供缩放、全屏、大纲、电子表格显示模式、工作表标签、幻灯片导航和演讲者备注等能力。',
           tone: 'neutral',
         },
       ],
@@ -571,8 +564,9 @@ export function Preview({ file }: { file: File }) {
           category: '电子表格',
           title: 'Excel 工作簿',
           formats: ['XLS', 'XLSX'],
-          description: '通过面向工作表的渲染与导航方式浏览工作簿内容。',
-          capabilities: ['工作表标签', '单元格样式', '图表与绘图对象'],
+          description:
+            '可在优先还原源文件的版式与完整显示单元格文本的阅读模式之间切换。',
+          capabilities: ['工作表标签', '原始版式与阅读模式', '图表与绘图对象'],
           tone: 'spreadsheet',
         },
         {
@@ -591,24 +585,18 @@ export function Preview({ file }: { file: File }) {
     developer: {
       eyebrow: '开发者体验',
       title: '几行代码即可完成安装与预览。',
-      description: '安装组件，并复用 React 项目中已有的 peer dependencies。',
+      description: '在现有 React 应用中安装组件。',
       installLabel: '安装',
       exampleLabel: 'React 示例',
       packageManagerLabel: '包管理器',
       commands: {
-        npm: 'npm install office-file-viewer antd react react-dom',
-        yarn: 'yarn add office-file-viewer antd react react-dom',
+        npm: 'npm install office-file-viewer',
+        yarn: 'yarn add office-file-viewer',
       },
-      example: `import { ConfigProvider } from 'antd';
-import zhCN from 'antd/locale/zh_CN';
-import { OfficeFileViewer } from 'office-file-viewer';
+      example: `import { OfficeFileViewer } from 'office-file-viewer';
 
 export function Preview({ file }: { file: File }) {
-  return (
-    <ConfigProvider locale={zhCN}>
-      <OfficeFileViewer uri={file} locale="zh-CN" height={640} />
-    </ConfigProvider>
-  );
+  return <OfficeFileViewer uri={file} locale="zh-CN" height={640} />;
 }`,
       copy: '复制命令',
       copied: '命令已复制',
@@ -620,11 +608,11 @@ export function Preview({ file }: { file: File }) {
       eyebrow: '兼容性',
       title: '适配你已经在使用的 React 技术栈。',
       description:
-        'Ant Design 保持为 peer dependency，预览器会沿用宿主应用的版本、主题和 ConfigProvider 语言配置。',
+        '预览器支持 React 16.9 及以上版本，以 ESM 发布，并随包提供已编译的组件样式。',
       items: [
-        { name: 'Ant Design 4', version: '>= 4.24', note: 'React 16.9+' },
-        { name: 'Ant Design 5', version: '5.x', note: 'React 16.9+' },
-        { name: 'Ant Design 6', version: '6.x', note: 'React 18+' },
+        { name: 'React', version: '>= 16.9', note: '支持 Hooks' },
+        { name: 'ReactDOM', version: '>= 16.9', note: '与 React 匹配' },
+        { name: '模块格式', version: '仅 ESM', note: '内置 CSS' },
       ],
     },
     finalCta: {

@@ -1,6 +1,6 @@
-import { Button } from 'antd';
 import React, { memo } from 'react';
 import { useOfficeFileViewerMessages } from '../../locale';
+import { OfficeButton } from '../../shared/ui/OfficeButton';
 
 /** 幻灯片加载状态组件属性。 */
 type PresentationSlideStateProps = {
@@ -34,9 +34,9 @@ function PresentationSlideStateComponent({
           : messages.lazyContent.loading}
       </span>
       {error ? (
-        <Button size="small" onClick={onRetry}>
+        <OfficeButton size="small" onClick={onRetry}>
           {messages.lazyContent.retry}
-        </Button>
+        </OfficeButton>
       ) : null}
     </div>
   );

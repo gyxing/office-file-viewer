@@ -5,6 +5,7 @@ import {
   type PreviewFamily,
   type PreviewKind,
 } from '../services/preview';
+import '../shared/ui/index.less';
 
 /** 文件图标支持的视觉类别。 */
 type FileGlyphKind = 'generic' | 'word' | 'excel' | 'powerpoint';

@@ -36,6 +36,10 @@ import {
 export type ParsedXlsxSheetStream = {
   /** 当前内容使用的布局信息。 */
   layout: SpreadsheetSheetLayout;
+  /** 源工作表声明或记录过的最大行数，仅用于解析浮动对象坐标。 */
+  declaredRowCount: number;
+  /** 源工作表声明或记录过的最大列数，仅用于解析浮动对象坐标。 */
+  declaredColumnCount: number;
   /** 按显示顺序排列的单元格。 */
   cells: readonly SpreadsheetCell[];
   /** 当前工作表声明的合并区域。 */
@@ -92,6 +96,20 @@ function readBoolean(value: string | undefined) {
   return value === '1' || value === 'true';
 }
 
+/** 判断空单元格的样式是否会产生可见图形，避免纯字体或对齐样式扩大有效范围。 */
+function hasVisibleEmptyCellStyle(cell: SpreadsheetCell) {
+  const style = cell.style;
+  return Boolean(
+    style?.backgroundColor ||
+      style?.border ||
+      style?.borderTop ||
+      style?.borderRight ||
+      style?.borderBottom ||
+      style?.borderLeft ||
+      style?.diagonalBorder,
+  );
+}
+
 function tileCoordinates(cell: SpreadsheetCell) {
   return {
     rowTile: Math.floor((cell.rowIndex - 1) / SPREADSHEET_TILE_ROWS),
@@ -116,8 +134,10 @@ export async function parseXlsxSheetStream(
   const pendingColumns: PendingColumnMetric[] = [];
   const merges: SpreadsheetMerge[] = [];
   const cellImages: WpsCellImagePlacement[] = [];
-  let rowCount = Math.max(1, descriptor.rowCount);
-  let columnCount = Math.max(1, descriptor.columnCount);
+  let rowCount = 1;
+  let columnCount = 1;
+  let declaredRowCount = Math.max(1, descriptor.rowCount);
+  let declaredColumnCount = Math.max(1, descriptor.columnCount);
   let defaultRowHeight = 20;
   let defaultColumnWidth = 64;
   const maxDigitWidth = resolveXlsxMaxDigitWidth(context.styles.fonts[0]);
@@ -151,8 +171,8 @@ export async function parseXlsxSheetStream(
       if (event.localName === 'dimension') {
         const range = parseRange(event.attributes.get('ref'));
         if (range) {
-          rowCount = Math.max(rowCount, range.endRow);
-          columnCount = Math.max(columnCount, range.endColumn);
+          declaredRowCount = Math.max(declaredRowCount, range.endRow);
+          declaredColumnCount = Math.max(declaredColumnCount, range.endColumn);
         }
       } else if (event.localName === 'sheetFormatPr') {
         const sourceDefaultColumnWidth =
@@ -209,8 +229,8 @@ export async function parseXlsxSheetStream(
           formula: '',
           inlineText: '',
         };
-        rowCount = Math.max(rowCount, address.row);
-        columnCount = Math.max(columnCount, address.column);
+        declaredRowCount = Math.max(declaredRowCount, address.row);
+        declaredColumnCount = Math.max(declaredColumnCount, address.column);
       } else if (pendingCell && event.localName === 'v') {
         capture = 'value';
       } else if (pendingCell && event.localName === 'f') {
@@ -228,6 +248,8 @@ export async function parseXlsxSheetStream(
           merges.push({ ref, ...range });
           rowCount = Math.max(rowCount, range.endRow);
           columnCount = Math.max(columnCount, range.endColumn);
+          declaredRowCount = Math.max(declaredRowCount, range.endRow);
+          declaredColumnCount = Math.max(declaredColumnCount, range.endColumn);
         }
       } else if (event.localName === 'drawing') {
         drawingRelationshipId =
@@ -274,6 +296,10 @@ export async function parseXlsxSheetStream(
       style: resolveStyle(pendingCell.styleId, context.styles),
       formula: pendingCell.formula || undefined,
     };
+    if (cell.value || cell.formula || hasVisibleEmptyCellStyle(cell)) {
+      rowCount = Math.max(rowCount, cell.rowIndex);
+      columnCount = Math.max(columnCount, cell.columnIndex);
+    }
     if (cellImageId) {
       cellImages.push({
         imageId: cellImageId,
@@ -299,7 +325,11 @@ export async function parseXlsxSheetStream(
 
   // 列格式可能延伸到 XFD；内容边界确定后再截取，避免把样式范围当成已用列。
   pendingColumns.forEach(({ start, end, width, hidden }) => {
-    for (let index = start; index <= Math.min(end, columnCount); index += 1) {
+    for (
+      let index = start;
+      index <= Math.min(end, declaredColumnCount);
+      index += 1
+    ) {
       columns.set(index, { index, width, hidden });
     }
   });
@@ -355,9 +385,11 @@ export async function parseXlsxSheetStream(
       columnCount,
       defaultRowHeight,
       defaultColumnWidth,
-      rows: [...rows.values()].filter((row) => row.index <= rowCount),
+      rows: [...rows.values()],
       columns: [...columns.values()],
     },
+    declaredRowCount,
+    declaredColumnCount,
     cells,
     merges,
     cellImages,

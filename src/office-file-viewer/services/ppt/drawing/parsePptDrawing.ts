@@ -16,6 +16,7 @@ import { PptRecordReader } from '../binary/PptRecordReader';
 import { createPptStaticPreviewCard } from '../images';
 import { parsePptTextGroups } from '../text';
 import type { PptParseContext } from '../types';
+import { parsePptMetroText } from './parsePptMetroText';
 import { readPptOfficeArtProperties } from './readOfficeArtProperties';
 import { readPptAnchor } from './readPptAnchor';
 
@@ -178,13 +179,13 @@ function readTextVerticalAlign(value: number | undefined) {
   return 'top' as const;
 }
 
-function parseShape(
+async function parseShape(
   record: OfficeArtRecord,
   index: number,
   theme: ThemeModel,
   fonts: Map<number, string>,
   context: PptParseContext,
-): SlideElement | undefined {
+): Promise<SlideElement | undefined> {
   const fsp = findChild(record, OFFICE_ART_RECORD.FSP);
   const anchor = readPptAnchor(
     findChild(record, OFFICE_ART_RECORD.CLIENT_ANCHOR),
@@ -307,6 +308,20 @@ function parseShape(
     };
     return chart;
   }
+  const textbox = findChild(record, OFFICE_ART_RECORD.CLIENT_TEXTBOX);
+  const metroText = textbox
+    ? undefined
+    : await parsePptMetroText(record, index, theme, context);
+  if (metroText) {
+    const element: TextElement = {
+      ...metroText,
+      ...common,
+      type: 'text',
+      paragraphs: metroText.paragraphs,
+      boxStyle: metroText.boxStyle,
+    };
+    return element;
+  }
   const imageSource =
     shapeType === 75 && blipIndex ? context.blipUrls.get(blipIndex) : undefined;
   if (imageSource) {
@@ -346,7 +361,6 @@ function parseShape(
     return image;
   }
 
-  const textbox = findChild(record, OFFICE_ART_RECORD.CLIENT_TEXTBOX);
   if (textbox) {
     const textRecords = Array.from(new PptRecordReader(textbox.data).records());
     const groups = parsePptTextGroups(
@@ -412,24 +426,32 @@ function collectShapeContainers(records: OfficeArtRecord[]) {
 }
 
 /** 将一页 PPDrawing 转换为统一的文本与基础图形元素。 */
-export function parsePptDrawing(
+export async function parsePptDrawing(
   bytes: Uint8Array,
   theme: ThemeModel,
   fonts: Map<number, string>,
   context: PptParseContext,
-): PptDrawingModel {
+): Promise<PptDrawingModel> {
   try {
     const records = parseOfficeArtRecords(bytes, context.warnings);
     const shapeContainers = collectShapeContainers(records);
+    const elements: SlideElement[] = [];
+    // metroBlob 只在少量兼容形状中出现，顺序解析可避免异常文件同时解压大量小归档。
+    for (let index = 0; index < shapeContainers.length; index += 1) {
+      const element = await parseShape(
+        shapeContainers[index],
+        index,
+        theme,
+        fonts,
+        context,
+      );
+      if (element) elements.push(element);
+    }
     return {
       background: shapeContainers
         .map((record) => parseBackgroundShape(record, context))
         .find((background) => Boolean(background)),
-      elements: shapeContainers
-        .map((record, index) =>
-          parseShape(record, index, theme, fonts, context),
-        )
-        .filter((element): element is SlideElement => Boolean(element)),
+      elements,
     };
   } catch (error) {
     context.warnings.push({

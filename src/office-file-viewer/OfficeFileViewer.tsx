@@ -1,7 +1,6 @@
 // OfficeFileViewer 是组件库对外主入口，负责组合本地化、控制器、工具栏和格式预览舞台。
-import { ConfigProvider, Layout } from 'antd';
 import type { CSSProperties, ReactElement } from 'react';
-import React, { memo, useCallback, useMemo } from 'react';
+import React, { memo, useMemo } from 'react';
 import './index.less';
 import {
   OfficeFileViewerLocaleProvider,
@@ -33,8 +32,6 @@ import {
 } from './shell/Toolbar';
 import { OFFICE_DEFAULT_ZOOM } from './shell/constants';
 import { useOfficeViewerController } from './shell/controller/useOfficeViewerController';
-
-const { Content } = Layout;
 
 export type { OfficeFileViewerUri } from './services/input/normalizeOfficeFileUri';
 
@@ -104,11 +101,6 @@ function OfficeFileViewerContent({
       onParseProgress,
       messages,
     });
-  const getPopupContainer = useCallback(
-    (triggerNode?: HTMLElement) =>
-      viewerRef.current ?? triggerNode?.parentElement ?? document.body,
-    [viewerRef],
-  );
   const { document: documentState, view } = state;
   const preview = meta.preview;
   const loading =
@@ -160,18 +152,27 @@ function OfficeFileViewerContent({
       };
     }
     if (meta.format.kind === 'spreadsheet') {
-      return { kind: 'spreadsheet' };
+      return {
+        kind: 'spreadsheet',
+        viewMode: {
+          value: view.spreadsheetViewMode,
+          disabled: !meta.hasRenderableContent,
+          change: actions.changeSpreadsheetViewMode,
+        },
+      };
     }
     return { kind: 'empty' };
   }, [
     actions.nextSlide,
     actions.previousSlide,
+    actions.changeSpreadsheetViewMode,
     actions.toggleSpeakerNotes,
     actions.toggleWordOutline,
     meta.format,
     meta.hasRenderableContent,
     meta.speakerNotesVisible,
     view.showWordOutline,
+    view.spreadsheetViewMode,
   ]);
   const zoomControls = useMemo<ZoomControls>(
     () => ({
@@ -223,6 +224,7 @@ function OfficeFileViewerContent({
       preview,
       activeSheetId: view.activeSheetId,
       zoom: view.zoom,
+      viewMode: view.spreadsheetViewMode,
     };
   } else if (preview.previewKind === 'docx') {
     previewStageState = {
@@ -248,37 +250,32 @@ function OfficeFileViewerContent({
       className={['office-file-viewer', className].filter(Boolean).join(' ')}
       style={viewerStyle}
     >
-      <ConfigProvider
-        // 浏览器全屏只保留预览器根节点，弹层也必须挂载到当前实例内部。
-        getPopupContainer={getPopupContainer}
-      >
-        <Layout className="office-file-viewer__layout">
-          <OfficeToolbar
-            fileName={displayedFileName}
-            previewKind={meta.previewKind}
-            formatControls={formatControls}
-            zoomControls={zoomControls}
-            fullscreenControls={fullscreenControls}
-            onSelectFile={actions.selectFile}
-          />
-          <Content className="office-file-viewer__content">
-            <OfficeResourceStoreProvider store={resourceStore}>
-              <OfficePreviewStage
-                state={previewStageState}
-                onCloseWordOutline={actions.closeWordOutline}
-                onSelectSlide={actions.selectSlide}
-                onSelectSheet={actions.selectSheet}
-              />
-            </OfficeResourceStoreProvider>
-            <OfficeParseStatus
-              progress={
-                loading && meta.hasRenderableContent ? parseProgress : undefined
-              }
-              warning={partialWarning}
+      <div className="office-file-viewer__layout">
+        <OfficeToolbar
+          fileName={displayedFileName}
+          previewKind={meta.previewKind}
+          formatControls={formatControls}
+          zoomControls={zoomControls}
+          fullscreenControls={fullscreenControls}
+          onSelectFile={actions.selectFile}
+        />
+        <div className="office-file-viewer__content">
+          <OfficeResourceStoreProvider store={resourceStore}>
+            <OfficePreviewStage
+              state={previewStageState}
+              onCloseWordOutline={actions.closeWordOutline}
+              onSelectSlide={actions.selectSlide}
+              onSelectSheet={actions.selectSheet}
             />
-          </Content>
-        </Layout>
-      </ConfigProvider>
+          </OfficeResourceStoreProvider>
+          <OfficeParseStatus
+            progress={
+              loading && meta.hasRenderableContent ? parseProgress : undefined
+            }
+            warning={partialWarning}
+          />
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,13 +1,14 @@
-import { AutoComplete, Button, Input, Space, Tooltip } from 'antd';
-import type { KeyboardEvent } from 'react';
+import type { ChangeEvent, KeyboardEvent, MouseEvent } from 'react';
 import React, { useEffect, useRef, useState } from 'react';
 import { useOfficeFileViewerMessages } from '../locale';
+import { OfficeButton } from '../shared/ui/OfficeButton';
+import { ZoomInIcon, ZoomOutIcon } from '../shared/ui/OfficeIcons';
+import { OfficeTooltip } from '../shared/ui/OfficeTooltip';
 import {
   OFFICE_MAX_ZOOM,
   OFFICE_MIN_ZOOM,
   OFFICE_ZOOM_LEVELS,
 } from './constants';
-import { ZoomInIcon, ZoomOutIcon } from './icons';
 
 /** 工具栏通用缩放能力。 */
 export type ZoomControls = {
@@ -23,19 +24,22 @@ export type ZoomControls = {
   change(value: number): void;
 };
 
+/** 缩放操作组件属性。 */
 type ZoomControlProps = {
   /** 当前可用的缩放能力。 */
   controls: ZoomControls;
 };
 
-/** 缩放下拉列表保持固定档位，自定义输入值不会追加到列表。 */
-const OFFICE_ZOOM_OPTIONS = OFFICE_ZOOM_LEVELS.map((value) => ({
-  value: String(value),
-  label: `${value}%`,
-}));
-
-/** 缩放输入仅接受空值或十进制整数，空值在提交时恢复当前比例。 */
+/** 缩放输入仅接受空值或十进制整数。 */
 const ZOOM_INPUT_PATTERN = /^\d*$/;
+
+let zoomControlSequence = 0;
+
+/** 为 React 16 环境生成稳定的组合框列表标识。 */
+function createZoomListId() {
+  zoomControlSequence += 1;
+  return `office-file-zoom-list-${zoomControlSequence}`;
+}
 
 /** 将有效整数限制到预览器支持的缩放范围。 */
 function normalizeZoomInput(value: string): number | undefined {
@@ -48,13 +52,20 @@ function normalizeZoomInput(value: string): number | undefined {
 /** 提供可输入、可选择并带固定百分号后缀的缩放操作。 */
 export function ZoomControl({ controls }: ZoomControlProps) {
   const messages = useOfficeFileViewerMessages();
-  // 只有方向键主动进入选项导航后，Enter 才交给 AutoComplete 选择建议项。
-  const keyboardOptionNavigationRef = useRef(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [listId] = useState(createZoomListId);
   const [inputValue, setInputValue] = useState(String(controls.value));
+  const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
 
   useEffect(() => {
     setInputValue(String(controls.value));
   }, [controls.value]);
+
+  const closeOptions = () => {
+    setOpen(false);
+    setActiveIndex(-1);
+  };
 
   const commitZoom = (nextInputValue = inputValue) => {
     const normalizedValue = normalizeZoomInput(nextInputValue);
@@ -66,70 +77,141 @@ export function ZoomControl({ controls }: ZoomControlProps) {
     controls.change(normalizedValue);
   };
 
-  const handleInputChange = (nextInputValue: string) => {
-    keyboardOptionNavigationRef.current = false;
-    if (ZOOM_INPUT_PATTERN.test(nextInputValue)) {
-      setInputValue(nextInputValue);
-    }
+  const handleInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const nextInputValue = event.currentTarget.value;
+    if (!ZOOM_INPUT_PATTERN.test(nextInputValue)) return;
+    setInputValue(nextInputValue);
+    setActiveIndex(-1);
+    setOpen(true);
+  };
+
+  const moveActiveOption = (direction: 1 | -1) => {
+    setOpen(true);
+    setActiveIndex((currentIndex) => {
+      if (currentIndex < 0) {
+        const matchingIndex = OFFICE_ZOOM_LEVELS.indexOf(Number(inputValue));
+        if (matchingIndex >= 0) return matchingIndex;
+        return direction > 0 ? 0 : OFFICE_ZOOM_LEVELS.length - 1;
+      }
+      return (
+        (currentIndex + direction + OFFICE_ZOOM_LEVELS.length) %
+        OFFICE_ZOOM_LEVELS.length
+      );
+    });
   };
 
   const handleInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      keyboardOptionNavigationRef.current = true;
+      event.preventDefault();
+      moveActiveOption(event.key === 'ArrowDown' ? 1 : -1);
       return;
     }
-    if (event.key !== 'Enter' || keyboardOptionNavigationRef.current) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setInputValue(String(controls.value));
+      closeOptions();
+      return;
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      const selectedValue =
+        activeIndex >= 0 ? OFFICE_ZOOM_LEVELS[activeIndex] : undefined;
+      commitZoom(
+        selectedValue === undefined ? inputValue : String(selectedValue),
+      );
+      closeOptions();
+      return;
+    }
+    if (event.key === 'Tab') {
+      commitZoom();
+      closeOptions();
+    }
+  };
+
+  const handleInputBlur = () => {
+    commitZoom();
+    closeOptions();
+  };
+
+  const handleOptionMouseDown = (event: MouseEvent<HTMLButtonElement>) => {
+    // 阻止输入框先触发 blur，避免选项点击被关闭动作吞掉。
     event.preventDefault();
-    event.stopPropagation();
-    commitZoom();
-    event.currentTarget.blur();
   };
 
-  const handleSelect = (value: string) => {
-    keyboardOptionNavigationRef.current = false;
-    commitZoom(value);
-  };
-
-  const handleBlur = () => {
-    keyboardOptionNavigationRef.current = false;
-    commitZoom();
+  const selectPreset = (value: number) => {
+    commitZoom(String(value));
+    closeOptions();
+    inputRef.current?.focus();
   };
 
   return (
-    <Space size={8}>
-      <AutoComplete
-        value={inputValue}
-        className="office-file-toolbar__zoom"
-        options={OFFICE_ZOOM_OPTIONS}
-        defaultActiveFirstOption={false}
-        filterOption={false}
-        onChange={handleInputChange}
-        onSelect={handleSelect}
-      >
-        <Input
-          aria-label={messages.toolbar.zoomLevel}
-          inputMode="numeric"
-          suffix={<span aria-hidden="true">%</span>}
-          onBlur={handleBlur}
-          onKeyDownCapture={handleInputKeyDown}
-        />
-      </AutoComplete>
-      <Tooltip title={messages.toolbar.zoomOut}>
-        <Button
+    <div className="office-file-zoom-control">
+      <div className="office-file-zoom-combobox">
+        <div className="office-file-zoom-input-wrap">
+          <input
+            ref={inputRef}
+            className="office-file-zoom-input"
+            value={inputValue}
+            aria-activedescendant={
+              open && activeIndex >= 0
+                ? `${listId}-option-${activeIndex}`
+                : undefined
+            }
+            aria-autocomplete="list"
+            aria-controls={listId}
+            aria-expanded={open}
+            aria-label={messages.toolbar.zoomLevel}
+            autoComplete="off"
+            inputMode="numeric"
+            role="combobox"
+            onBlur={handleInputBlur}
+            onChange={handleInputChange}
+            onFocus={() => setOpen(true)}
+            onKeyDown={handleInputKeyDown}
+          />
+          <span className="office-file-zoom-input__suffix" aria-hidden="true">
+            %
+          </span>
+        </div>
+        {open ? (
+          <div id={listId} className="office-file-zoom-options" role="listbox">
+            {OFFICE_ZOOM_LEVELS.map((value, index) => (
+              <button
+                id={`${listId}-option-${index}`}
+                key={value}
+                className="office-file-zoom-option"
+                type="button"
+                aria-selected={
+                  activeIndex === index || Number(inputValue) === value
+                }
+                role="option"
+                tabIndex={-1}
+                onClick={() => selectPreset(value)}
+                onMouseDown={handleOptionMouseDown}
+                onMouseEnter={() => setActiveIndex(index)}
+              >
+                {value}%
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+      <OfficeTooltip content={messages.toolbar.zoomOut}>
+        <OfficeButton
           aria-label={messages.toolbar.zoomOut}
-          icon={<ZoomOutIcon />}
+          icon={<ZoomOutIcon className="office-file-zoom-icon" />}
           disabled={!controls.hasDocument || controls.value <= OFFICE_MIN_ZOOM}
           onClick={controls.zoomOut}
         />
-      </Tooltip>
-      <Tooltip title={messages.toolbar.zoomIn}>
-        <Button
+      </OfficeTooltip>
+      <OfficeTooltip content={messages.toolbar.zoomIn}>
+        <OfficeButton
           aria-label={messages.toolbar.zoomIn}
-          icon={<ZoomInIcon />}
+          icon={<ZoomInIcon className="office-file-zoom-icon" />}
           disabled={!controls.hasDocument || controls.value >= OFFICE_MAX_ZOOM}
           onClick={controls.zoomIn}
         />
-      </Tooltip>
-    </Space>
+      </OfficeTooltip>
+    </div>
   );
 }

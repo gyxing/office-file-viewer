@@ -1,11 +1,13 @@
 // sheetRenderUtils 提供 XLSX 工作表渲染所需的样式转换和画布尺寸计算。
 import type { CSSProperties } from 'react';
+import type { SpreadsheetViewMode } from '../../services/spreadsheet/viewMode';
 import type {
   XlsxAnchorPoint,
   XlsxCell,
   XlsxCellStyle,
   XlsxSheet,
 } from '../../services/xlsx/types';
+import { isSpreadsheetShrinkToFitCell } from './spreadsheetReadingLayout';
 
 /** 工作表左侧行号栏的固定宽度。 */
 export const XLSX_ROW_HEADER_WIDTH = 48;
@@ -60,8 +62,15 @@ export type XlsxSheetMetrics = {
 
 // 单元格字体、填充、边框等来自工作簿样式表，只能在运行时转成 CSS，不能放到 Less。
 /** 将标准单元格样式转换为 React CSS 属性。 */
-export function buildXlsxCellStyle(cell: XlsxCell): CSSProperties {
+export function buildXlsxCellStyle(
+  cell: XlsxCell,
+  viewMode: SpreadsheetViewMode = 'source',
+): CSSProperties {
   const style = cell.style ?? {};
+  const wrapped = Boolean(
+    style.wrapText ||
+      (viewMode === 'reading' && !isSpreadsheetShrinkToFitCell(cell)),
+  );
   const css: CSSProperties = {
     fontWeight: style.bold ? 700 : 400,
     fontStyle: style.italic ? 'italic' : undefined,
@@ -72,10 +81,11 @@ export function buildXlsxCellStyle(cell: XlsxCell): CSSProperties {
     verticalAlign: style.verticalAlign,
     fontFamily: style.fontFamily,
     fontSize: style.fontSize,
-    whiteSpace: style.wrapText ? 'pre-wrap' : 'nowrap',
+    whiteSpace: wrapped ? 'pre-wrap' : 'nowrap',
+    lineHeight: viewMode === 'reading' ? 1.2 : undefined,
     // 短英文保持完整；只有单词本身超过单元格宽度时，才按 Excel 行为在字符边界换行。
-    overflowWrap: style.wrapText ? 'break-word' : undefined,
-    wordBreak: style.wrapText ? 'normal' : undefined,
+    overflowWrap: wrapped ? 'break-word' : undefined,
+    wordBreak: wrapped ? 'normal' : undefined,
   };
   return Object.fromEntries(
     Object.entries(css).filter(([, value]) => value !== undefined),

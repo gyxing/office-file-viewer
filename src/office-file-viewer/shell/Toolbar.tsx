@@ -1,12 +1,13 @@
 // OfficeToolbar 提供打开文件、翻页、缩放、全屏等 OfficeFileViewer 顶部通用操作。
-import { Button, Space, Tooltip, Typography, Upload } from 'antd';
-import React, { memo } from 'react';
+import type { ChangeEvent } from 'react';
+import React, { memo, useRef } from 'react';
 import {
   useOfficeFileViewerMessages,
   type OfficeFileViewerMessages,
 } from '../locale';
 import type { PreviewKind } from '../services/preview';
-import { OfficeFileTypeIcon } from './FileTypeIcon';
+import type { SpreadsheetViewMode } from '../services/spreadsheet/viewMode';
+import { OfficeButton } from '../shared/ui/OfficeButton';
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -14,7 +15,10 @@ import {
   FullscreenIcon,
   NotesIcon,
   OutlineIcon,
-} from './icons';
+} from '../shared/ui/OfficeIcons';
+import { OfficeTooltip } from '../shared/ui/OfficeTooltip';
+import { OfficeFileTypeIcon } from './OfficeFileTypeIcon';
+import { SpreadsheetViewModeControl } from './SpreadsheetViewModeControl';
 import { ZoomControl, type ZoomControls } from './ZoomControl';
 
 export type { ZoomControls } from './ZoomControl';
@@ -57,7 +61,18 @@ export type OfficeToolbarFormatControls =
         toggle(): void;
       };
     }
-  | { kind: 'spreadsheet' };
+  | {
+      kind: 'spreadsheet';
+      /** 电子表格显示模式的受控能力。 */
+      viewMode: {
+        /** 当前采用的显示模式。 */
+        value: SpreadsheetViewMode;
+        /** 当前是否禁止切换。 */
+        disabled: boolean;
+        /** 切换显示模式。 */
+        change(value: SpreadsheetViewMode): void;
+      };
+    };
 
 /** 工具栏通用全屏能力。 */
 export type FullscreenControls = {
@@ -128,37 +143,36 @@ function renderPresentationControls({
 
   if (controls.navigation) {
     items.push(
-      <Tooltip key="previous" title={messages.toolbar.previousSlide}>
-        <Button
+      <OfficeTooltip key="previous" content={messages.toolbar.previousSlide}>
+        <OfficeButton
           aria-label={messages.toolbar.previousSlide}
           icon={<ChevronLeftIcon />}
           disabled={!controls.navigation.canPrevious}
           onClick={controls.navigation.previous}
         />
-      </Tooltip>,
-      <Tooltip key="next" title={messages.toolbar.nextSlide}>
-        <Button
+      </OfficeTooltip>,
+      <OfficeTooltip key="next" content={messages.toolbar.nextSlide}>
+        <OfficeButton
           aria-label={messages.toolbar.nextSlide}
           icon={<ChevronRightIcon />}
           disabled={!controls.navigation.canNext}
           onClick={controls.navigation.next}
         />
-      </Tooltip>,
+      </OfficeTooltip>,
     );
   }
   items.push(
-    <Tooltip key="speaker-notes" title={speakerNotesLabel}>
-      <Button
-        aria-label={speakerNotesLabel}
-        aria-pressed={controls.speakerNotes.visible}
-        type={controls.speakerNotes.visible ? 'primary' : 'default'}
-        icon={<NotesIcon />}
-        disabled={controls.speakerNotes.disabled}
-        onClick={controls.speakerNotes.toggle}
-      >
-        {messages.toolbar.speakerNotes}
-      </Button>
-    </Tooltip>,
+    <OfficeButton
+      key="speaker-notes"
+      aria-label={speakerNotesLabel}
+      aria-pressed={controls.speakerNotes.visible}
+      variant={controls.speakerNotes.visible ? 'primary' : 'default'}
+      icon={<NotesIcon />}
+      disabled={controls.speakerNotes.disabled}
+      onClick={controls.speakerNotes.toggle}
+    >
+      {messages.toolbar.speakerNotes}
+    </OfficeButton>,
   );
   return items;
 }
@@ -171,17 +185,15 @@ function WordControl({ controls, messages }: WordControlProps) {
     : messages.outline.expand;
 
   return (
-    <Tooltip title={outlineLabel}>
-      <Button
-        aria-label={outlineLabel}
-        aria-pressed={controls.outline.visible}
-        type={controls.outline.visible ? 'primary' : 'default'}
-        icon={<OutlineIcon />}
-        onClick={controls.outline.toggle}
-      >
-        {messages.outline.title}
-      </Button>
-    </Tooltip>
+    <OfficeButton
+      aria-label={outlineLabel}
+      aria-pressed={controls.outline.visible}
+      variant={controls.outline.visible ? 'primary' : 'default'}
+      icon={<OutlineIcon />}
+      onClick={controls.outline.toggle}
+    >
+      {messages.outline.title}
+    </OfficeButton>
   );
 }
 
@@ -192,18 +204,14 @@ function FullscreenControl({ controls, messages }: FullscreenControlProps) {
     : messages.toolbar.fullscreen;
 
   return (
-    <Tooltip title={label}>
-      <span className="office-file-toolbar__tooltip-anchor">
-        <Button
-          aria-label={label}
-          icon={<FullscreenIcon />}
-          disabled={controls.disabled}
-          onClick={controls.toggle}
-        >
-          {label}
-        </Button>
-      </span>
-    </Tooltip>
+    <OfficeButton
+      aria-label={label}
+      icon={<FullscreenIcon />}
+      disabled={controls.disabled}
+      onClick={controls.toggle}
+    >
+      {label}
+    </OfficeButton>
   );
 }
 
@@ -217,6 +225,14 @@ function OfficeToolbarComponent({
   onSelectFile,
 }: OfficeToolbarProps) {
   const messages = useOfficeFileViewerMessages();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    // 清空原生输入值，确保用户可以连续打开同一文件。
+    event.currentTarget.value = '';
+    if (file) void onSelectFile(file);
+  };
 
   return (
     <div className="office-file-toolbar">
@@ -225,43 +241,42 @@ function OfficeToolbarComponent({
           className="office-file-toolbar__filename-icon"
           previewKind={previewKind}
         />
-        <Typography.Text
-          strong
-          ellipsis
-          className="office-file-toolbar__filename"
-        >
+        <strong className="office-file-toolbar__filename" title={fileName}>
           {fileName}
-        </Typography.Text>
+        </strong>
       </div>
-      <Space size={8} wrap>
-        <Tooltip title={messages.toolbar.selectFile}>
-          <span className="office-file-toolbar__tooltip-anchor">
-            <Upload
-              accept={OFFICE_FILE_ACCEPT}
-              showUploadList={false}
-              beforeUpload={(file) => {
-                void onSelectFile(file);
-                return false;
-              }}
-            >
-              <Button
-                aria-label={messages.toolbar.selectFile}
-                icon={<FolderOpenIcon />}
-              >
-                {messages.toolbar.selectFile}
-              </Button>
-            </Upload>
-          </span>
-        </Tooltip>
+      <div className="office-file-toolbar__actions">
+        <input
+          ref={fileInputRef}
+          className="office-file-toolbar__file-input"
+          type="file"
+          accept={OFFICE_FILE_ACCEPT}
+          tabIndex={-1}
+          onChange={handleFileChange}
+        />
+        <OfficeButton
+          aria-label={messages.toolbar.selectFile}
+          icon={<FolderOpenIcon />}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          {messages.toolbar.selectFile}
+        </OfficeButton>
         {formatControls.kind === 'presentation'
           ? renderPresentationControls({ controls: formatControls, messages })
           : null}
         {formatControls.kind === 'word' ? (
           <WordControl controls={formatControls} messages={messages} />
         ) : null}
+        {formatControls.kind === 'spreadsheet' ? (
+          <SpreadsheetViewModeControl
+            value={formatControls.viewMode.value}
+            disabled={formatControls.viewMode.disabled}
+            onChange={formatControls.viewMode.change}
+          />
+        ) : null}
         <ZoomControl controls={zoomControls} />
         <FullscreenControl controls={fullscreenControls} messages={messages} />
-      </Space>
+      </div>
     </div>
   );
 }

@@ -229,16 +229,18 @@ export class PptPresentationSource implements PresentationSource {
           this.lifecycleController.signal,
         );
         if (!record) return undefined;
-        return readPptNotes(
-          record.bytes,
-          createLocalPptEditChain(
-            this.structure.editChain,
-            descriptor.persistId,
-          ),
-          descriptor,
-          this.structure.theme,
-          this.structure.fonts,
-          this.structure.parseContext,
+        return (
+          await readPptNotes(
+            record.bytes,
+            createLocalPptEditChain(
+              this.structure.editChain,
+              descriptor.persistId,
+            ),
+            descriptor,
+            this.structure.theme,
+            this.structure.fonts,
+            this.structure.parseContext,
+          )
         )?.speakerNotes;
       })().then((result) => {
         this.notes.set(index, result);

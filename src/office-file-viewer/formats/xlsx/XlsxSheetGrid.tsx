@@ -1,6 +1,7 @@
 // XlsxSheetGrid 负责工作表滚动画布，统一承载表格、浮动图片和浮动图表。
 import type { CSSProperties } from 'react';
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
+import type { SpreadsheetViewMode } from '../../services/spreadsheet/viewMode';
 import type { XlsxSheet } from '../../services/xlsx/types';
 import { getXlsxSheetMetrics } from './sheetRenderUtils';
 import { useXlsxSheetTableLayout } from './useXlsxSheetTableLayout';
@@ -15,6 +16,8 @@ type XlsxSheetGridProps = {
   sheet: XlsxSheet;
   /** 当前预览缩放比例。 */
   zoom: number;
+  /** 当前电子表格采用的显示模式。 */
+  viewMode: SpreadsheetViewMode;
 };
 
 /** 描述工作表滚动内容区当前可用的 CSS 像素尺寸。 */
@@ -59,7 +62,7 @@ function readGridViewportSize(grid: HTMLDivElement): XlsxSheetViewportSize {
 }
 
 /** 渲染支持大数据窗口化的工作表网格。 */
-function XlsxSheetGridComponent({ sheet, zoom }: XlsxSheetGridProps) {
+function XlsxSheetGridComponent({ sheet, zoom, viewMode }: XlsxSheetGridProps) {
   const scale = zoom / 100;
   // 内边距属于未缩放的滚动容器，固定层位于缩放画布内，因此需要换算回逻辑像素。
   const stickyInset = -XLSX_SHEET_GRID_PADDING / Math.max(scale, 0.01);
@@ -148,6 +151,7 @@ function XlsxSheetGridComponent({ sheet, zoom }: XlsxSheetGridProps) {
           renderedRowHeaderHeights={metrics.visibleRowHeights}
           stickyInset={stickyInset}
           tableRef={tableRef}
+          viewMode={viewMode}
         />
         <XlsxFloatingImages sheet={sheet} metrics={metrics} />
         <XlsxFloatingCharts sheet={sheet} metrics={metrics} />

@@ -31,14 +31,14 @@ function applyColorScheme(theme: ThemeModel, bytes: Uint8Array) {
 }
 
 /** 读取一个主母版的主题、背景与可继承绘图元素。 */
-export function readPptMaster(
+export async function readPptMaster(
   documentStream: Uint8Array,
   editChain: PptEditChain,
   descriptor: PptMasterDescriptor,
   theme: ThemeModel,
   fonts: Map<number, string>,
   context: PptParseContext,
-): PptMasterModel | undefined {
+): Promise<PptMasterModel | undefined> {
   const offset = editChain.persistOffsets.get(descriptor.persistId);
   if (offset === undefined) {
     context.warnings.push({
@@ -78,7 +78,7 @@ export function readPptMaster(
   }
 
   const parsedDrawing = drawing
-    ? parsePptDrawing(drawing, theme, fonts, context)
+    ? await parsePptDrawing(drawing, theme, fonts, context)
     : undefined;
   return {
     id: descriptor.masterId,

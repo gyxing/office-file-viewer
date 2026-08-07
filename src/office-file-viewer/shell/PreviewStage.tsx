@@ -1,8 +1,9 @@
 // OfficePreviewStage 根据显式舞台状态切换预览组件，并统一处理加载和错误态。
 import type { ReactElement } from 'react';
 import React, { lazy, memo, Suspense } from 'react';
+import { OfficePreviewEmpty } from '../formats/common/OfficePreviewEmpty';
 import type { OfficeFileViewerPreviewState } from '../services/parsing/internalTypes';
-import { OfficeEmpty } from './Empty';
+import type { SpreadsheetViewMode } from '../services/spreadsheet/viewMode';
 import { OfficeError } from './Error';
 import { OfficeLoading } from './Loading';
 
@@ -80,6 +81,8 @@ export type OfficePreviewStageState =
       activeSheetId?: string;
       /** 当前预览缩放比例。 */
       zoom: number;
+      /** 当前电子表格采用的显示模式。 */
+      viewMode: SpreadsheetViewMode;
     }
   | {
       kind: 'docx';
@@ -119,7 +122,7 @@ function OfficePreviewStageComponent({
   onSelectSlide,
   onSelectSheet,
 }: OfficePreviewStageProps) {
-  if (state.kind === 'empty') return <OfficeEmpty />;
+  if (state.kind === 'empty') return <OfficePreviewEmpty />;
   if (state.kind === 'loading') return <OfficeLoading tip={state.tip} />;
   if (state.kind === 'error') return <OfficeError message={state.message} />;
 
@@ -144,6 +147,7 @@ function OfficePreviewStageComponent({
           preview={state.preview}
           activeSheetId={state.activeSheetId}
           zoom={state.zoom}
+          viewMode={state.viewMode}
           onSelectSheet={onSelectSheet}
         />
       );

@@ -8,15 +8,81 @@
 }
 
 .office-file-xlsx-sheet-tabs {
+  display: flex;
   flex: 0 0 auto;
+  min-width: 0;
+  height: 46px;
   padding: 0 16px;
+  align-items: stretch;
+  gap: 16px;
   background: #fff;
   border-bottom: 1px solid #dde3ec;
   box-shadow: 0 1px 0 rgba(15, 23, 42, 4%);
 }
 
+.office-file-xlsx-sheet-tabs__list {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: stretch;
+  gap: 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.office-file-xlsx-sheet-tabs__tab {
+  position: relative;
+  flex: 0 0 auto;
+  max-width: 240px;
+  padding: 0 12px;
+  overflow: hidden;
+  color: #334155;
+  font: inherit;
+  font-size: 14px;
+  line-height: 45px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.office-file-xlsx-sheet-tabs__tab::after {
+  position: absolute;
+  right: 12px;
+  bottom: 0;
+  left: 12px;
+  height: 2px;
+  background: #1677ff;
+  content: '';
+  opacity: 0;
+  transform: scaleX(0.6);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.office-file-xlsx-sheet-tabs__tab:hover,
+.office-file-xlsx-sheet-tabs__tab[aria-selected='true'] {
+  color: #1677ff;
+}
+
+.office-file-xlsx-sheet-tabs__tab[aria-selected='true']::after {
+  opacity: 1;
+  transform: scaleX(1);
+}
+
+.office-file-xlsx-sheet-tabs__tab:focus-visible {
+  outline: 2px solid rgb(22 119 255 / 24%);
+  outline-offset: -3px;
+}
+
 .office-file-xlsx-sheet-tabs__range {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
   font-size: 12px;
+  color: #64748b;
+  white-space: nowrap;
 }
 
 .office-file-xlsx-sheet-grid {

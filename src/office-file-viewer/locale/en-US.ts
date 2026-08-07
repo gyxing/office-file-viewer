@@ -70,6 +70,10 @@ export const enUS: OfficeFileViewerMessages = {
     resize: 'Resize document outline',
   },
   spreadsheet: {
+    viewMode: 'Display mode',
+    sourceViewMode: 'Original layout',
+    readingViewMode: 'Reading mode',
+    sheets: 'Worksheets',
     dimensions: (rows, columns) => `${rows} rows × ${columns} columns`,
     imageLoadFailed: (alt) =>
       alt ? `${alt} (image failed to load)` : 'Image failed to load',

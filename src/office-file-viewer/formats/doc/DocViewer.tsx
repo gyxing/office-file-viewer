@@ -1,11 +1,16 @@
 import React, { memo, useEffect, useMemo, useRef } from 'react';
+import {
+  pageDrawingImagesFromBlock,
+  paginateDocBlocks,
+  type PaginatedDocPage,
+} from '../../services/doc/docPagination';
 import type { DocDocument } from '../../services/doc/types';
 import type { OfficeFileViewerPreviewState } from '../../services/parsing/internalTypes';
 import { collectWordPerformanceStats } from '../../services/word/collectWordPerformanceStats';
 import { createMaterializedWordPageSource } from '../../services/word/createMaterializedWordPageSource';
 import { createMemoryWordOutlineProvider } from '../../services/word/createMemoryWordOutlineProvider';
 import { useExternalStoreSnapshot } from '../../shared/react/useExternalStoreSnapshot';
-import { OfficeEmpty } from '../../shell/Empty';
+import { OfficePreviewEmpty } from '../common/OfficePreviewEmpty';
 import { useWordOutlinePresence } from '../word-outline/useWordOutlinePresence';
 import { WordOutlineSidebar } from '../word-outline/WordOutlineSidebar';
 import type { WordPageNavigationController } from '../word-pages/types';
@@ -15,7 +20,6 @@ import { useWordPerformanceProfile } from '../word-performance/useWordPerformanc
 import { DocContentRenderer } from './DocContentRenderer';
 import { DocImageGallery } from './DocImageGallery';
 import { DocPageFrame } from './DocPageFrame';
-import { paginateDocBlocks, type PaginatedDocPage } from './docRenderUtils';
 import './index.less';
 
 /** DOC/WPS Viewer 可以消费的物化或按需预览。 */
@@ -196,7 +200,7 @@ function DocViewerComponent({
   );
 
   if (!page || !documentMetadata || !pageSnapshot.pages.length) {
-    return <OfficeEmpty kind="doc" />;
+    return <OfficePreviewEmpty kind="doc" />;
   }
 
   const renderPage = (docPage: PaginatedDocPage, pageIndex: number) => (
@@ -205,6 +209,7 @@ function DocViewerComponent({
       page={page}
       zoom={zoom}
       headerImage={documentMetadata.headerImage}
+      pageDrawings={docPage.blocks.flatMap(pageDrawingImagesFromBlock)}
       footerText={
         documentMetadata.footerPageNumbers &&
         pageIndex >= footerPageNumberStartIndex

@@ -9,6 +9,11 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import {
+  paginateMeasuredDocxPage,
+  type DocxMeasuredBlock,
+  type DocxMeasurementBatch,
+} from '../../services/docx/docxPagination';
 import type {
   DocxPageContent,
   DocxPageRegionVariants,
@@ -18,7 +23,7 @@ import { collectWordPerformanceStats } from '../../services/word/collectWordPerf
 import { createMaterializedWordPageSource } from '../../services/word/createMaterializedWordPageSource';
 import { createMemoryWordOutlineProvider } from '../../services/word/createMemoryWordOutlineProvider';
 import { useExternalStoreSnapshot } from '../../shared/react/useExternalStoreSnapshot';
-import { OfficeEmpty } from '../../shell/Empty';
+import { OfficePreviewEmpty } from '../common/OfficePreviewEmpty';
 import { useWordOutlinePresence } from '../word-outline/useWordOutlinePresence';
 import { WordOutlineSidebar } from '../word-outline/WordOutlineSidebar';
 import type { WordPageNavigationController } from '../word-pages/types';
@@ -28,11 +33,6 @@ import { useWordPerformanceProfile } from '../word-performance/useWordPerformanc
 import { DocxBlockRenderer } from './DocxBlockRenderer';
 import { DocxCharacterSpacingContext } from './DocxInlineContent';
 import { DocxPageFrame } from './DocxPageFrame';
-import {
-  paginateMeasuredDocxPage,
-  type DocxMeasuredBlock,
-  type DocxMeasurementBatch,
-} from './docxPagination';
 import './index.less';
 import { measureDocxParagraphLines } from './measureDocxParagraphLines';
 
@@ -83,7 +83,6 @@ function selectPageRegion<T>(
 /** 根据浏览器实际排版高度为单节流式 DOCX 补充分页。 */
 function useMeasuredDocxPages(
   sourcePages: DocxPageContent[],
-  preserveSectionPagination: boolean,
   reportPaginationDuration: (durationMs: number) => void,
 ) {
   const measureRef = useRef<HTMLDivElement>(null);
@@ -91,7 +90,6 @@ function useMeasuredDocxPages(
 
   useLayoutEffect(() => {
     setMeasuredPages(undefined);
-    if (preserveSectionPagination) return;
     const articles = Array.from(
       measureRef.current?.querySelectorAll<HTMLElement>(
         '.office-file-docx-page-frame__article',
@@ -139,7 +137,7 @@ function useMeasuredDocxPages(
       measured.some((page, index) => page !== sourcePages[index]);
     if (didSplit) setMeasuredPages(measured);
     reportPaginationDuration(performance.now() - startedAt);
-  }, [preserveSectionPagination, reportPaginationDuration, sourcePages]);
+  }, [reportPaginationDuration, sourcePages]);
 
   return { measureRef, pages: measuredPages ?? sourcePages };
 }
@@ -177,11 +175,6 @@ function DocxViewerComponent({
         : [],
     [document, source],
   );
-  const preserveSectionPagination = Boolean(
-    source
-      ? summary?.preserveSectionPagination
-      : document?.preserveSectionPagination,
-  );
   const characterSpacingControl = source
     ? summary?.characterSpacingControl
     : document?.characterSpacingControl;
@@ -218,7 +211,6 @@ function DocxViewerComponent({
     useWordPerformanceProfile(documentSessionId, materializedPerformanceStats);
   const { measureRef, pages: materializedPages } = useMeasuredDocxPages(
     materializedSourcePages,
-    preserveSectionPagination,
     reportPaginationDuration,
   );
   const materializedPageSource = useMemo(
@@ -369,7 +361,7 @@ function DocxViewerComponent({
     (!source && (!document?.blocks.length || !materializedPages.length)) ||
     (source && !summary)
   ) {
-    return <OfficeEmpty kind="docx" />;
+    return <OfficePreviewEmpty kind="docx" />;
   }
 
   return (
@@ -388,7 +380,7 @@ function DocxViewerComponent({
               onError={handleMeasurementError}
             />
           </Suspense>
-        ) : !preserveSectionPagination ? (
+        ) : (
           <div
             ref={measureRef}
             className="office-file-docx-viewer__measure"
@@ -400,7 +392,7 @@ function DocxViewerComponent({
               </DocxPageFrame>
             ))}
           </div>
-        ) : null}
+        )}
         <div className="office-file-docx-viewer__body">
           <WordOutlineSidebar
             visible={showOutline}
