@@ -1,12 +1,13 @@
 // DocImageLayout 渲染 DOC 中连续图片段落形成的图片组，并按内容宽度决定排布。
 import type { CSSProperties } from 'react';
 import React, { memo, useMemo } from 'react';
-import type { DocImage, DocTextStyle } from '../../services/doc/types';
 import {
   DOC_IMAGE_ROW_GAP,
   getDocImageRenderWidth,
   imageRows,
 } from '../../services/doc/docPagination';
+import type { DocImage, DocTextStyle } from '../../services/doc/types';
+import { OfficePreviewableImage } from '../../shared/image-preview';
 
 /** DOC图片布局组件属性。 */
 type DocImageLayoutProps = {
@@ -100,7 +101,11 @@ function DocImageLayoutComponent({
                   className="office-file-doc-image-layout__figure"
                   style={figureStyle}
                 >
-                  <img
+                  <OfficePreviewableImage
+                    previewId={image.id}
+                    previewName={image.caption}
+                    previewMimeType={image.mimeType}
+                    previewSource={image.src}
                     className="office-file-doc-image-layout__img"
                     src={image.src}
                     alt={image.caption ?? image.id}

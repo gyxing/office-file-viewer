@@ -1,11 +1,18 @@
 // TableRenderer 渲染 PPTX 表格元素，包括单元格填充、边框和文字样式。
 import React, { memo } from 'react';
-import type { TableElement } from '../../../services/pptx/types';
+import type {
+  TableElement,
+  TextRun,
+  TextStyle,
+} from '../../../services/pptx/types';
+import { useOfficeHyperlink } from '../../../shared/hyperlink';
 
 /** 表格渲染器组件属性。 */
 type TableRendererProps = {
   /** 当前处理或渲染的演示文稿元素。 */
   element: TableElement;
+  /** 是否允许表格对象和内部文字响应链接交互。 */
+  interactive: boolean;
 };
 
 function colorWithOpacity(color?: string, opacity?: number) {
@@ -19,12 +26,65 @@ function colorWithOpacity(color?: string, opacity?: number) {
   return `rgba(${r}, ${g}, ${b}, ${opacity})`;
 }
 
+/** 渲染表格内单个文字片段并绑定可选链接。 */
+function TableTextRun({
+  run,
+  cellStyle,
+  sourceId,
+  interactive,
+}: {
+  /** 当前文字片段。 */
+  run: TextRun;
+  /** 当前单元格继承的基础文字样式。 */
+  cellStyle?: TextStyle;
+  /** 当前片段在文稿中的稳定来源标识。 */
+  sourceId: string;
+  /** 是否允许当前文字片段响应链接交互。 */
+  interactive: boolean;
+}) {
+  const hyperlinkProps = useOfficeHyperlink<HTMLSpanElement>({
+    hyperlink: run.hyperlink,
+    source: { type: 'text', id: sourceId },
+    interactive,
+  });
+  return (
+    <span
+      {...hyperlinkProps}
+      style={{
+        color: run.style?.color ?? cellStyle?.color,
+        fontFamily: run.style?.fontFamily ?? cellStyle?.fontFamily,
+        fontSize: run.style?.fontSize ?? cellStyle?.fontSize,
+        fontWeight: run.style?.bold || cellStyle?.bold ? 600 : 400,
+        fontStyle: run.style?.italic || cellStyle?.italic ? 'italic' : 'normal',
+        textDecoration:
+          [
+            run.style?.underline || cellStyle?.underline ? 'underline' : '',
+            run.style?.strike && run.style.strike !== 'none'
+              ? 'line-through'
+              : '',
+          ]
+            .filter(Boolean)
+            .join(' ') || 'none',
+        letterSpacing: run.style?.charSpace ?? cellStyle?.charSpace ?? 0,
+      }}
+    >
+      {run.text}
+    </span>
+  );
+}
+
 /** 渲染表格渲染器。 */
-function TableRendererComponent({ element }: TableRendererProps) {
+function TableRendererComponent({ element, interactive }: TableRendererProps) {
   const columnWidths = element.columnWidths ?? [];
   const rowHeights = element.rowHeights ?? [];
+  const hyperlinkProps = useOfficeHyperlink<HTMLTableElement>({
+    hyperlink: element.hyperlink,
+    source: { type: 'shape', id: element.id },
+    interactive,
+  });
   return (
     <table
+      {...hyperlinkProps}
       style={{
         position: 'absolute',
         left: element.x,
@@ -91,40 +151,13 @@ function TableRendererComponent({ element }: TableRendererProps) {
                         }}
                       >
                         {paragraph.runs.map((run, runIndex) => (
-                          <span
+                          <TableTextRun
                             key={runIndex}
-                            style={{
-                              color: run.style?.color ?? cell.style?.color,
-                              fontFamily:
-                                run.style?.fontFamily ?? cell.style?.fontFamily,
-                              fontSize:
-                                run.style?.fontSize ?? cell.style?.fontSize,
-                              fontWeight:
-                                run.style?.bold || cell.style?.bold ? 600 : 400,
-                              fontStyle:
-                                run.style?.italic || cell.style?.italic
-                                  ? 'italic'
-                                  : 'normal',
-                              textDecoration:
-                                [
-                                  run.style?.underline || cell.style?.underline
-                                    ? 'underline'
-                                    : '',
-                                  run.style?.strike &&
-                                  run.style.strike !== 'none'
-                                    ? 'line-through'
-                                    : '',
-                                ]
-                                  .filter(Boolean)
-                                  .join(' ') || 'none',
-                              letterSpacing:
-                                run.style?.charSpace ??
-                                cell.style?.charSpace ??
-                                0,
-                            }}
-                          >
-                            {run.text}
-                          </span>
+                            run={run}
+                            cellStyle={cell.style}
+                            sourceId={`${element.id}:${rowIndex}:${cellIndex}:${paragraphIndex}:${runIndex}`}
+                            interactive={interactive}
+                          />
                         ))}
                       </div>
                     ))

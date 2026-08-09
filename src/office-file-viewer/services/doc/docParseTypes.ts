@@ -4,6 +4,21 @@ import type { DocNumberingCatalog } from './parseDocNumbering';
 import type { DocStyleOutlineCatalog } from './parseDocStyleOutline';
 import type { DocBlock, DocImage, DocTableBlock, DocTextStyle } from './types';
 
+/** DOC 二进制书签表中可以精确映射到正文的书签。 */
+export type DocBinaryBookmark = {
+  /** 源文档声明的书签名称。 */
+  name: string;
+  /** 书签起点在主文档 story 中的字符位置。 */
+  charStart: number;
+  /** 书签终点在主文档 story 中的字符位置。 */
+  charEnd: number;
+  /** 渲染零宽定位标记时使用的稳定标识。 */
+  markerId: string;
+};
+
+/** 插入正文片段起点的书签标记。 */
+export type DocBookmarkMarker = Pick<DocBinaryBookmark, 'name' | 'markerId'>;
+
 /** DOC Piece Table 中的字符区间和文件偏移。 */
 export type DocPiece = {
   /** 对应内容在文档字符流中的起始位置。 */
@@ -54,6 +69,18 @@ export type DocFib = {
   fcSttbfFfn: number;
   /** 字体表占用的字节数。 */
   lcbSttbfFfn: number;
+  /** 标准书签名称表在表流中的起始偏移。 */
+  fcSttbfBkmk: number;
+  /** 标准书签名称表占用的字节数。 */
+  lcbSttbfBkmk: number;
+  /** 标准书签起点 PLC 在表流中的起始偏移。 */
+  fcPlcfBkf: number;
+  /** 标准书签起点 PLC 占用的字节数。 */
+  lcbPlcfBkf: number;
+  /** 标准书签终点 PLC 在表流中的起始偏移。 */
+  fcPlcfBkl: number;
+  /** 标准书签终点 PLC 占用的字节数。 */
+  lcbPlcfBkl: number;
   /** Piece Table 所属 CLX 的起始偏移。 */
   fcClx: number;
   /** Piece Table 所属 CLX 占用的字节数。 */
@@ -142,6 +169,14 @@ export type DocParagraphRun = {
 export type DocTextSegment = Omit<DocParagraphRun, 'fcStart' | 'fcEnd'> & {
   /** 文本内容。 */
   text: string;
+  /** 当前片段在对应 Word story 中的起始字符位置。 */
+  charStart?: number;
+  /** 当前片段在对应 Word story 中的结束字符位置。 */
+  charEnd?: number;
+  /** 当前字符位置之前需要渲染的书签标记。 */
+  bookmarkMarkers?: DocBookmarkMarker[];
+  /** 由 Word 域结果静态解析出的超链接。 */
+  hyperlink?: import('../../shared/hyperlink').OfficeHyperlink;
 };
 
 /** DOC 正文中的图片占位片段。 */
@@ -184,6 +219,10 @@ export type DocBinaryContent = {
   outlineCatalog: DocStyleOutlineCatalog;
   /** 列表定义、覆盖关系和当前计数状态。 */
   numbering: DocNumberingCatalog;
+  /** 可精确映射到主文档 story 的标准书签。 */
+  bookmarks: DocBinaryBookmark[];
+  /** 书签表损坏或暂不支持时产生的降级提示。 */
+  bookmarkWarnings: string[];
 };
 
 /** 将 DOC 文本行组装为块级模型时使用的选项。 */

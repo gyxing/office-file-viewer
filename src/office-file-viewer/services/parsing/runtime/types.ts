@@ -1,3 +1,4 @@
+import type { OfficeParseResourcePolicy } from '../../../shared/resource/OfficeResourcePolicy';
 import type { DocBlock } from '../../doc/types';
 import type { SlideModel } from '../../presentation/types';
 import type { ParsedOfficeFile } from '../../preview';
@@ -18,6 +19,8 @@ export type RuntimeContext = {
   documentSessionId: string;
   /** 用于取消当前异步操作的信号。 */
   signal: AbortSignal;
+  /** 当前解析会话采用的可选资源上限。 */
+  resourcePolicy?: OfficeParseResourcePolicy;
 };
 
 /** 定义解析运行时输出分块结果时调用的接收接口。 */

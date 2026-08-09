@@ -5,6 +5,8 @@ import {
   DEFAULT_SPREADSHEET_VIEW_MODE,
   type SpreadsheetViewMode,
 } from '../../services/spreadsheet/viewMode';
+import { normalizeOfficeZoom } from '../normalizeOfficeZoom';
+import type { OfficeFileViewerViewState } from '../viewState';
 
 /** 查看器当前文档所处的加载与交付阶段。 */
 export type OfficeViewerDocumentState =
@@ -78,10 +80,8 @@ export type OfficeViewerAction =
       fileName: string;
       /** 本次解析文件的格式。 */
       previewKind: PreviewKind;
-      /** 新文件采用的初始缩放比例。 */
-      zoom: number;
-      /** 新文件采用的非受控备注初始状态。 */
-      showSpeakerNotes: boolean;
+      /** 新文件采用的非受控视图初始状态。 */
+      viewState: OfficeFileViewerViewState;
     }
   | {
       type: 'progressed';
@@ -152,21 +152,19 @@ export type OfficeViewerAction =
 
 /** 创建包含调用方默认值的初始查看器状态。 */
 export function createInitialOfficeViewerState(options: {
-  /** 初始缩放比例。 */
-  defaultZoom: number;
-  /** 非受控备注面板的初始状态。 */
-  defaultShowSpeakerNotes: boolean;
+  /** 所有非受控视图字段的初始状态。 */
+  defaultViewState: OfficeFileViewerViewState;
 }): OfficeViewerState {
   return {
     document: { phase: 'empty' },
     view: {
-      activeSlideIndex: 0,
-      activeSheetId: undefined,
-      zoom: options.defaultZoom,
+      activeSlideIndex: options.defaultViewState.activeSlideIndex,
+      activeSheetId: options.defaultViewState.activeSheetId,
+      zoom: normalizeOfficeZoom(options.defaultViewState.zoom),
       isFullscreen: false,
-      internalShowSpeakerNotes: options.defaultShowSpeakerNotes,
-      showWordOutline: false,
-      spreadsheetViewMode: DEFAULT_SPREADSHEET_VIEW_MODE,
+      internalShowSpeakerNotes: options.defaultViewState.speakerNotesVisible,
+      showWordOutline: options.defaultViewState.wordOutlineVisible,
+      spreadsheetViewMode: options.defaultViewState.spreadsheetViewMode,
     },
   };
 }
@@ -250,12 +248,12 @@ export function officeViewerReducer(
         },
         view: {
           ...state.view,
-          activeSlideIndex: 0,
-          activeSheetId: undefined,
-          zoom: action.zoom,
-          internalShowSpeakerNotes: action.showSpeakerNotes,
-          showWordOutline: false,
-          spreadsheetViewMode: DEFAULT_SPREADSHEET_VIEW_MODE,
+          activeSlideIndex: action.viewState.activeSlideIndex,
+          activeSheetId: action.viewState.activeSheetId,
+          zoom: normalizeOfficeZoom(action.viewState.zoom),
+          internalShowSpeakerNotes: action.viewState.speakerNotesVisible,
+          showWordOutline: action.viewState.wordOutlineVisible,
+          spreadsheetViewMode: action.viewState.spreadsheetViewMode,
         },
       };
     case 'progressed':
@@ -319,9 +317,11 @@ export function officeViewerReducer(
         ...state,
         view: { ...state.view, activeSheetId: action.sheetId },
       };
-    case 'zoom-changed':
-      if (state.view.zoom === action.zoom) return state;
-      return { ...state, view: { ...state.view, zoom: action.zoom } };
+    case 'zoom-changed': {
+      const zoom = normalizeOfficeZoom(action.zoom, state.view.zoom);
+      if (state.view.zoom === zoom) return state;
+      return { ...state, view: { ...state.view, zoom } };
+    }
     case 'fullscreen-changed':
       if (state.view.isFullscreen === action.fullscreen) return state;
       return {

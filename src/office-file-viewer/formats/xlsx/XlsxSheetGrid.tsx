@@ -1,9 +1,10 @@
 // XlsxSheetGrid 负责工作表滚动画布，统一承载表格、浮动图片和浮动图表。
-import type { CSSProperties } from 'react';
+import type { CSSProperties, MutableRefObject } from 'react';
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { SpreadsheetViewMode } from '../../services/spreadsheet/viewMode';
 import type { XlsxSheet } from '../../services/xlsx/types';
 import { getXlsxSheetMetrics } from './sheetRenderUtils';
+import type { SpreadsheetNavigationController } from './spreadsheetNavigation';
 import { useXlsxSheetTableLayout } from './useXlsxSheetTableLayout';
 import { XlsxFloatingCharts } from './XlsxFloatingCharts';
 import { XlsxFloatingImages } from './XlsxFloatingImages';
@@ -18,6 +19,10 @@ type XlsxSheetGridProps = {
   zoom: number;
   /** 当前电子表格采用的显示模式。 */
   viewMode: SpreadsheetViewMode;
+  /** 供工作簿内部链接驱动当前表格定位。 */
+  navigationControllerRef: MutableRefObject<
+    SpreadsheetNavigationController | undefined
+  >;
 };
 
 /** 描述工作表滚动内容区当前可用的 CSS 像素尺寸。 */
@@ -62,7 +67,12 @@ function readGridViewportSize(grid: HTMLDivElement): XlsxSheetViewportSize {
 }
 
 /** 渲染支持大数据窗口化的工作表网格。 */
-function XlsxSheetGridComponent({ sheet, zoom, viewMode }: XlsxSheetGridProps) {
+function XlsxSheetGridComponent({
+  sheet,
+  zoom,
+  viewMode,
+  navigationControllerRef,
+}: XlsxSheetGridProps) {
   const scale = zoom / 100;
   // 内边距属于未缩放的滚动容器，固定层位于缩放画布内，因此需要换算回逻辑像素。
   const stickyInset = -XLSX_SHEET_GRID_PADDING / Math.max(scale, 0.01);
@@ -70,6 +80,59 @@ function XlsxSheetGridComponent({ sheet, zoom, viewMode }: XlsxSheetGridProps) {
   const tableRef = useRef<HTMLTableElement>(null);
   const [viewportSize, setViewportSize] =
     useState<XlsxSheetViewportSize>(EMPTY_VIEWPORT_SIZE);
+
+  useEffect(() => {
+    const controller: SpreadsheetNavigationController = {
+      sheetId: sheet.id,
+      scrollToCell(rowIndex, columnIndex) {
+        const grid = gridRef.current;
+        if (!grid) return false;
+        const ref = `${columnLabel(columnIndex)}${rowIndex}`;
+        const cell = Array.from(
+          grid.querySelectorAll<HTMLElement>('[data-office-spreadsheet-cell]'),
+        ).find((element) => element.dataset.officeSpreadsheetCell === ref);
+        if (!cell) return false;
+        const gridRect = grid.getBoundingClientRect();
+        const cellRect = cell.getBoundingClientRect();
+        grid.scrollTo({
+          left: Math.min(
+            Math.max(
+              0,
+              grid.scrollLeft +
+                cellRect.left -
+                gridRect.left -
+                grid.clientWidth / 2 +
+                cellRect.width / 2,
+            ),
+            Math.max(0, grid.scrollWidth - grid.clientWidth),
+          ),
+          top: Math.min(
+            Math.max(
+              0,
+              grid.scrollTop +
+                cellRect.top -
+                gridRect.top -
+                grid.clientHeight / 2 +
+                cellRect.height / 2,
+            ),
+            Math.max(0, grid.scrollHeight - grid.clientHeight),
+          ),
+          behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)')
+            .matches
+            ? 'auto'
+            : 'smooth',
+        });
+        cell.focus({ preventScroll: true });
+        return true;
+      },
+    };
+    navigationControllerRef.current = controller;
+    return () => {
+      if (navigationControllerRef.current === controller) {
+        navigationControllerRef.current = undefined;
+      }
+    };
+  }, [navigationControllerRef, sheet.id]);
 
   // 补位表格脱离文档流后，边框盒只会随外部布局变化，不再被补位行列反向撑大。
   useEffect(() => {
@@ -161,3 +224,15 @@ function XlsxSheetGridComponent({ sheet, zoom, viewMode }: XlsxSheetGridProps) {
 }
 
 export const XlsxSheetGrid = memo(XlsxSheetGridComponent);
+
+/** 将一基列号转换为 Excel 列标签。 */
+function columnLabel(columnIndex: number) {
+  let current = columnIndex;
+  let label = '';
+  while (current > 0) {
+    current -= 1;
+    label = String.fromCharCode(65 + (current % 26)) + label;
+    current = Math.floor(current / 26);
+  }
+  return label;
+}

@@ -22,8 +22,10 @@ import type { OfficeFileViewerPreviewState } from '../../services/parsing/intern
 import { collectWordPerformanceStats } from '../../services/word/collectWordPerformanceStats';
 import { createMaterializedWordPageSource } from '../../services/word/createMaterializedWordPageSource';
 import { createMemoryWordOutlineProvider } from '../../services/word/createMemoryWordOutlineProvider';
+import { OfficeImagePreviewContext } from '../../shared/image-preview/OfficeImagePreviewContext';
 import { useExternalStoreSnapshot } from '../../shared/react/useExternalStoreSnapshot';
 import { OfficePreviewEmpty } from '../common/OfficePreviewEmpty';
+import { useWordTargetNavigation } from '../word-hyperlink/useWordTargetNavigation';
 import { useWordOutlinePresence } from '../word-outline/useWordOutlinePresence';
 import { WordOutlineSidebar } from '../word-outline/WordOutlineSidebar';
 import type { WordPageNavigationController } from '../word-pages/types';
@@ -254,6 +256,15 @@ function DocxViewerComponent({
     return index;
   }, [pageSnapshot.pages, pageSnapshot.revision]);
   const pageNavigationControllerRef = useRef<WordPageNavigationController>();
+  useWordTargetNavigation({
+    bookmarks: source ? summary?.bookmarks : document?.bookmarks,
+    scrollContainerRef,
+    pageMode: profile.pageMode,
+    pageSource,
+    blockPageIndex,
+    pageNavigationControllerRef,
+    documentSessionId,
+  });
   const layoutKey = useMemo(
     () =>
       source
@@ -371,28 +382,35 @@ function DocxViewerComponent({
         data-word-source-mode={source ? 'progressive' : 'materialized'}
         data-character-spacing-control={characterSpacingControl}
       >
-        {source ? (
-          <Suspense fallback={null}>
-            <LazyDocxMeasureHost
-              batch={measurementBatch}
-              renderBlock={renderMeasurementBlock}
-              onMeasured={handleMeasured}
-              onError={handleMeasurementError}
-            />
-          </Suspense>
-        ) : (
-          <div
-            ref={measureRef}
-            className="office-file-docx-viewer__measure"
-            aria-hidden="true"
-          >
-            {materializedSourcePages.map((pageItem) => (
-              <DocxPageFrame key={pageItem.id} page={pageItem.page} zoom={100}>
-                {renderPageBlocks(pageItem)}
-              </DocxPageFrame>
-            ))}
-          </div>
-        )}
+        <OfficeImagePreviewContext.Provider value={null}>
+          {/* 隐藏测量副本不应注册图片交互，避免重复资源与焦点节点。 */}
+          {source ? (
+            <Suspense fallback={null}>
+              <LazyDocxMeasureHost
+                batch={measurementBatch}
+                renderBlock={renderMeasurementBlock}
+                onMeasured={handleMeasured}
+                onError={handleMeasurementError}
+              />
+            </Suspense>
+          ) : (
+            <div
+              ref={measureRef}
+              className="office-file-docx-viewer__measure"
+              aria-hidden="true"
+            >
+              {materializedSourcePages.map((pageItem) => (
+                <DocxPageFrame
+                  key={pageItem.id}
+                  page={pageItem.page}
+                  zoom={100}
+                >
+                  {renderPageBlocks(pageItem)}
+                </DocxPageFrame>
+              ))}
+            </div>
+          )}
+        </OfficeImagePreviewContext.Provider>
         <div className="office-file-docx-viewer__body">
           <WordOutlineSidebar
             visible={showOutline}

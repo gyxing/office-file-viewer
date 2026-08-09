@@ -1,8 +1,11 @@
 import type { ReactNode } from 'react';
 import React, { useLayoutEffect, useRef } from 'react';
+import type {
+  DocxMeasuredBlock,
+  DocxMeasurementBatch,
+} from '../../services/docx/docxPagination';
 import type { DocxBlock } from '../../services/docx/types';
 import { DocxPageFrame } from './DocxPageFrame';
-import type { DocxMeasuredBlock, DocxMeasurementBatch } from '../../services/docx/docxPagination';
 
 /** DOCX 隐藏测量容器组件属性。 */
 type DocxMeasureHostProps = {

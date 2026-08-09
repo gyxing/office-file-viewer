@@ -72,6 +72,8 @@ export type ParsedSheetChart = {
   anchor: Biff8DrawingShape['anchor'];
   /** 匹配到的图表静态预览图片标识。 */
   previewImageId?: string;
+  /** 图表形状声明的 OfficeArt 超链接目标。 */
+  hyperlink?: Biff8DrawingShape['hyperlink'];
   /** 解析时产生但不阻止继续预览的警告。 */
   warnings: SpreadsheetWarning[];
 };
@@ -114,6 +116,7 @@ export function parseBiff8Charts(
         chart: adapted.chart,
         anchor: parsed.anchor,
         previewImageId: preview?.id,
+        hyperlink: shape?.hyperlink,
         warnings: [
           ...adapted.warnings,
           ...(!shape && sourceSheet
@@ -144,6 +147,7 @@ export function parseBiff8Charts(
           to: { row: 19, column: 9, rowFraction: 0, columnFraction: 0 },
         },
         previewImageId: preview?.id,
+        hyperlink: shape?.hyperlink,
         warnings: [
           {
             code: 'INVALID_CHART',

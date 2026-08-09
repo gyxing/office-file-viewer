@@ -108,6 +108,73 @@ export function ZoomInIcon(props: OfficeIconProps) {
   );
 }
 
+/** 渲染图片预览图标。 */
+export function PreviewIcon(props: OfficeIconProps) {
+  return (
+    <OfficeIconBase {...props}>
+      <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+      <circle cx="12" cy="12" r="2.5" />
+    </OfficeIconBase>
+  );
+}
+
+/** 渲染图片顺时针旋转图标。 */
+export function RotateClockwiseIcon(props: OfficeIconProps) {
+  return (
+    <OfficeIconBase {...props}>
+      <path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7" />
+    </OfficeIconBase>
+  );
+}
+
+/** 渲染图片复位图标。 */
+export function ResetIcon(props: OfficeIconProps) {
+  return (
+    <OfficeIconBase {...props}>
+      <path d="M4 8V4h4M20 16v4h-4M5 5l4 4M19 19l-4-4" />
+      <path d="M15 5h4v4M9 19H5v-4M19 5l-4 4M5 19l4-4" />
+    </OfficeIconBase>
+  );
+}
+
+/** 渲染下载图片图标。 */
+export function DownloadIcon(props: OfficeIconProps) {
+  return (
+    <OfficeIconBase {...props}>
+      <path d="M12 3v12m-4-4 4 4 4-4M4 20h16" />
+    </OfficeIconBase>
+  );
+}
+
+/** 渲染打开链接图标。 */
+export function OpenLinkIcon(props: OfficeIconProps) {
+  return (
+    <OfficeIconBase {...props}>
+      <path d="M10 5H6a3 3 0 0 0-3 3v10a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-4" />
+      <path d="M14 3h7v7M21 3l-10 10" />
+    </OfficeIconBase>
+  );
+}
+
+/** 渲染复制链接地址图标。 */
+export function CopyIcon(props: OfficeIconProps) {
+  return (
+    <OfficeIconBase {...props}>
+      <rect x="8" y="8" width="12" height="12" rx="2" />
+      <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
+    </OfficeIconBase>
+  );
+}
+
+/** 渲染关闭弹层图标。 */
+export function CloseIcon(props: OfficeIconProps) {
+  return (
+    <OfficeIconBase {...props}>
+      <path d="m6 6 12 12M18 6 6 18" />
+    </OfficeIconBase>
+  );
+}
+
 /** 渲染演讲者备注图标。 */
 export function NotesIcon(props: OfficeIconProps) {
   return (

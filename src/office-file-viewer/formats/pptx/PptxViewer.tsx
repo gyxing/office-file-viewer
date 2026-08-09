@@ -7,6 +7,7 @@ import './index.less';
 import { PptxSlideViewport } from './PptxSlideViewport';
 import { PptxSpeakerNotes } from './PptxSpeakerNotes';
 import { PptxThumbnailPane } from './PptxThumbnailPane';
+import { usePresentationHyperlinkNavigation } from './usePresentationHyperlinkNavigation';
 import { usePresentationSource } from './usePresentationSource';
 
 /** 演示文稿 Viewer 可以消费的物化或按需预览。 */
@@ -52,6 +53,7 @@ function PptxViewerComponent({
     error,
     retry,
   } = usePresentationSource(resolvedSource, activeIndex, showSpeakerNotes);
+  usePresentationHyperlinkNavigation({ snapshot, activeIndex, onSelectSlide });
 
   if (!resolvedSource || !snapshot.slideCount) {
     return <OfficePreviewEmpty kind={preview.previewKind} />;

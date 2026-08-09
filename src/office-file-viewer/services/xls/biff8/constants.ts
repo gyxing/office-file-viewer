@@ -26,6 +26,8 @@ export const BIFF8_RECORD = {
   MSODRAWING: 0x00ec,
   NOTE: 0x001c,
   TXO: 0x01b6,
+  HLINK: 0x01b8,
+  HLINKTOOLTIP: 0x0800,
   SST: 0x00fc,
   LABELSST: 0x00fd,
   EXTSST: 0x00ff,

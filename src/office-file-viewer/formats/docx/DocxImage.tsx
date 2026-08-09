@@ -3,6 +3,8 @@ import type { CSSProperties } from 'react';
 import React, { memo, useMemo } from 'react';
 import type { DocxImageInline } from '../../services/docx/types';
 import { useOfficeResourceUrl } from '../../services/resource-store/useOfficeResourceUrl';
+import { useOfficeHyperlink } from '../../shared/hyperlink';
+import { OfficePreviewableImage } from '../../shared/image-preview';
 import { calculatePositionStyle } from './positionUtils';
 
 /** DOCX图片组件属性。 */
@@ -25,6 +27,10 @@ function DocxImageComponent({ inline }: DocxImageProps) {
   const image = inline.image;
   const positionStyle = calculatePositionStyle(image.position);
   const resource = useOfficeResourceUrl(image.src);
+  const hyperlinkProps = useOfficeHyperlink<HTMLImageElement>({
+    hyperlink: image.hyperlink,
+    source: { type: 'image', id: image.id },
+  });
 
   const imageStyle = useMemo<DocxImageStyle>(
     () => ({
@@ -37,8 +43,12 @@ function DocxImageComponent({ inline }: DocxImageProps) {
   );
 
   return (
-    <img
+    <OfficePreviewableImage
+      {...hyperlinkProps}
       className="office-file-docx-inline-image"
+      previewId={image.id}
+      previewName={image.name}
+      previewSource={image.src}
       src={resource.url}
       alt={image.alt ?? ''}
       title={image.name}

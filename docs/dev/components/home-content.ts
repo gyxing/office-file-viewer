@@ -307,7 +307,7 @@ const WEBSITE_CONTENT: Record<WebsiteLocale, WebsiteContent> = {
           label: 'Viewing experience',
           title: 'Controls that understand the document',
           description:
-            'Zoom, fullscreen, outlines, spreadsheet display modes, worksheet tabs, slide navigation, and speaker notes appear where the format supports them.',
+            'Zoom, fullscreen, content-image preview and download, outlines, spreadsheet display modes, worksheet tabs, slide navigation, and speaker notes appear where the format supports them.',
           tone: 'neutral',
         },
       ],
@@ -541,7 +541,7 @@ export function Preview({ file }: { file: File }) {
           label: '体验',
           title: '根据文档类型提供对应操作',
           description:
-            '在格式支持时提供缩放、全屏、大纲、电子表格显示模式、工作表标签、幻灯片导航和演讲者备注等能力。',
+            '在格式支持时提供缩放、全屏、内容图片预览与下载、大纲、电子表格显示模式、工作表标签、幻灯片导航和演讲者备注等能力。',
           tone: 'neutral',
         },
       ],

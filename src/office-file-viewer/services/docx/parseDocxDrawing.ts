@@ -24,6 +24,7 @@ import {
   type DocxParseContext,
   type ReadBlockChildrenOptions,
 } from './docxParsingContext';
+import { parseDocxDrawingHyperlink } from './parseDocxHyperlink';
 import type {
   DocxBlock,
   DocxChartBlock,
@@ -274,6 +275,10 @@ function parseDrawingImage(
     width,
     height,
     position,
+    hyperlink: parseDocxDrawingHyperlink(
+      docPr ?? drawingNode,
+      context.documentRels,
+    ),
   };
   context.imageIndex += 1;
   context.images.push(image);
@@ -714,6 +719,7 @@ function parseWpgShapeItem(
     textVerticalAlign: readDrawingTextAnchor(shapeNode),
     fitShapeToText: textBehavior.fitShapeToText || undefined,
     noWrap: textBehavior.noWrap || undefined,
+    hyperlink: parseDocxDrawingHyperlink(shapeNode, context.documentRels),
     blocks: blocks.length ? blocks : undefined,
     paragraphs: blocks.filter(
       (block): block is DocxParagraphBlock => block.type === 'paragraph',
@@ -775,6 +781,7 @@ function parseWpgPictureItem(
     ...parseDrawingLineStyle(spPr, context.theme),
     borderRadius:
       kind === 'ellipse' ? '50%' : readDrawingShapeBorderRadius(spPr, size),
+    hyperlink: parseDocxDrawingHyperlink(pictureNode, context.documentRels),
   };
 }
 
@@ -1294,6 +1301,7 @@ function parseVmlShapeItem(
     textVerticalAlign: readVmlTextAnchor(shapeNode),
     fitShapeToText: textBehavior.fitShapeToText || undefined,
     noWrap: textBehavior.noWrap || undefined,
+    hyperlink: parseDocxDrawingHyperlink(shapeNode, context.documentRels),
     blocks: blocks.length ? blocks : undefined,
     paragraphs: blocks.filter(
       (block): block is DocxParagraphBlock => block.type === 'paragraph',

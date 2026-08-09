@@ -1,5 +1,5 @@
 // VirtualSpreadsheetGrid 按完整工作表坐标渲染当前二维窗口。
-import type { CSSProperties } from 'react';
+import type { CSSProperties, MutableRefObject } from 'react';
 import React, {
   memo,
   useEffect,
@@ -28,6 +28,8 @@ import type {
 } from '../../services/spreadsheet/types';
 import type { SpreadsheetViewMode } from '../../services/spreadsheet/viewMode';
 import { OfficeChartView } from '../../shared/chart/OfficeChartView';
+import { useOfficeHyperlink } from '../../shared/hyperlink';
+import { OfficePreviewableImage } from '../../shared/image-preview';
 import {
   buildXlsxCellStyle,
   getSpreadsheetColumnLabel,
@@ -42,6 +44,7 @@ import {
 } from './spreadsheetCellOverflow';
 import { SpreadsheetCellRenderer } from './SpreadsheetCellRenderer';
 import { SpreadsheetGridPlaceholder } from './SpreadsheetGridPlaceholder';
+import type { SpreadsheetNavigationController } from './spreadsheetNavigation';
 import {
   buildSpreadsheetReadingRowHeightUpdates,
   isSpreadsheetShrinkToFitCell,
@@ -74,6 +77,10 @@ type VirtualSpreadsheetGridProps = {
     sheetId: string,
     updates: ReadonlyMap<number, number>,
   ) => void;
+  /** 供工作簿内部链接驱动当前虚拟网格定位。 */
+  navigationControllerRef: MutableRefObject<
+    SpreadsheetNavigationController | undefined
+  >;
 };
 
 /** 电子表格已经加载的行列范围。 */
@@ -109,6 +116,10 @@ function VirtualSpreadsheetImage({
     [image.src],
   );
   const resource = useOfficeResourceUrl(source);
+  const hyperlinkProps = useOfficeHyperlink<HTMLImageElement>({
+    hyperlink: image.hyperlink,
+    source: { type: 'image', id: image.id },
+  });
   const verticalRange = useMemo(
     () =>
       remapSpreadsheetVerticalRange(
@@ -120,7 +131,11 @@ function VirtualSpreadsheetImage({
     [image.height, image.y, rowAxis, sourceRowAxis],
   );
   return (
-    <img
+    <OfficePreviewableImage
+      {...hyperlinkProps}
+      previewId={image.id}
+      previewName={image.name}
+      previewSource={source}
       className="office-file-xlsx-sheet-grid__floating-image"
       src={resource.url}
       alt={image.alt ?? ''}
@@ -154,6 +169,10 @@ function VirtualSpreadsheetChart({
   sourceRowAxis: SpreadsheetAxisIndex;
   rowAxis: SpreadsheetAxisIndex;
 }) {
+  const hyperlinkProps = useOfficeHyperlink<HTMLDivElement>({
+    hyperlink: chart.hyperlink,
+    source: { type: 'shape', id: chart.id },
+  });
   const verticalRange = useMemo(
     () =>
       remapSpreadsheetVerticalRange(
@@ -166,6 +185,7 @@ function VirtualSpreadsheetChart({
   );
   return (
     <div
+      {...hyperlinkProps}
       className="office-file-xlsx-sheet-grid__floating-chart"
       style={{
         left: XLSX_ROW_HEADER_WIDTH + chart.x,
@@ -186,6 +206,7 @@ function VirtualSpreadsheetChart({
 
 /** 渲染当前范围内一个普通或合并单元格槽位。 */
 function VirtualSpreadsheetCell({
+  sheetId,
   cell,
   merge,
   left,
@@ -195,6 +216,7 @@ function VirtualSpreadsheetCell({
   contentBounds,
   viewMode,
 }: {
+  sheetId: string;
   cell: SpreadsheetCell;
   merge?: SpreadsheetMerge;
   left: number;
@@ -228,11 +250,14 @@ function VirtualSpreadsheetCell({
   return (
     <div
       className="office-file-xlsx-virtual-grid__cell"
+      data-office-spreadsheet-cell={cell.ref}
+      tabIndex={-1}
       title={cell.value}
       style={cellStyle}
     >
       <SpreadsheetCellRenderer
         cell={cell}
+        sourceId={`${sheetId}:${cell.ref}`}
         contentWidth={width}
         contentHeight={
           viewMode === 'source' || shrinkToFit ? height : undefined
@@ -259,6 +284,7 @@ function VirtualSpreadsheetGridComponent({
   viewMode,
   readingRowHeights,
   onReadingRowHeightsChange,
+  navigationControllerRef,
 }: VirtualSpreadsheetGridProps) {
   const {
     viewportRef,
@@ -286,6 +312,72 @@ function VirtualSpreadsheetGridComponent({
     loadedRange?.source === source && loadedRange.sheetId === sheetId
       ? loadedRange.data
       : undefined;
+
+  useEffect(() => {
+    const controller: SpreadsheetNavigationController = {
+      sheetId,
+      scrollToCell(rowIndex, columnIndex) {
+        const viewportElement = viewportRef.current;
+        if (
+          !viewportElement ||
+          rowIndex < 1 ||
+          rowIndex > layout.rowCount ||
+          columnIndex < 1 ||
+          columnIndex > layout.columnCount
+        ) {
+          return false;
+        }
+        const targetLeft =
+          (XLSX_ROW_HEADER_WIDTH +
+            columnAxis.offsetAt(columnIndex) +
+            columnAxis.sizeAt(columnIndex) / 2) *
+            scale -
+          viewportElement.clientWidth / 2;
+        const targetTop =
+          (XLSX_COLUMN_HEADER_HEIGHT +
+            rowAxis.offsetAt(rowIndex) +
+            rowAxis.sizeAt(rowIndex) / 2) *
+            scale -
+          viewportElement.clientHeight / 2;
+        viewportElement.scrollTo({
+          left: Math.min(
+            Math.max(0, targetLeft),
+            Math.max(
+              0,
+              viewportElement.scrollWidth - viewportElement.clientWidth,
+            ),
+          ),
+          top: Math.min(
+            Math.max(0, targetTop),
+            Math.max(
+              0,
+              viewportElement.scrollHeight - viewportElement.clientHeight,
+            ),
+          ),
+          behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)')
+            .matches
+            ? 'auto'
+            : 'smooth',
+        });
+        return true;
+      },
+    };
+    navigationControllerRef.current = controller;
+    return () => {
+      if (navigationControllerRef.current === controller) {
+        navigationControllerRef.current = undefined;
+      }
+    };
+  }, [
+    columnAxis,
+    layout.columnCount,
+    layout.rowCount,
+    navigationControllerRef,
+    rowAxis,
+    scale,
+    sheetId,
+    viewportRef,
+  ]);
 
   useIsomorphicLayoutEffect(() => {
     if (viewMode !== 'reading' || !data) return;
@@ -469,6 +561,7 @@ function VirtualSpreadsheetGridComponent({
                 return [
                   <VirtualSpreadsheetCell
                     key={cell.ref}
+                    sheetId={sheetId}
                     cell={cell}
                     merge={merge}
                     left={

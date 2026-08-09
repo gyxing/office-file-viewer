@@ -114,7 +114,11 @@ function DocxParagraphComponent({
     inline: (typeof block.inlines)[number],
     index: number,
   ) => (
-    <DocxInlineContent key={`${block.id}-inline-${index}`} inline={inline} />
+    <DocxInlineContent
+      key={`${block.id}-inline-${index}`}
+      inline={inline}
+      sourceId={`${block.id}-inline-${index}`}
+    />
   );
 
   return (

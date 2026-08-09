@@ -1,3 +1,4 @@
+import { parseOfficeArtHyperlink } from '../../../shared/officeart';
 import type { SpreadsheetWarning } from '../../spreadsheet/types';
 import { OFFICE_ART_RECORD } from './officeArtRecords';
 import { parseClientAnchor } from './parseAnchors';
@@ -21,6 +22,8 @@ type ShapeProperties = {
   lineColor?: number;
   /** 形状轮廓宽度，单位为 EMU。 */
   lineWidth?: number;
+  /** OfficeArt 形状属性中声明的超链接目标。 */
+  hyperlink?: ReturnType<typeof parseOfficeArtHyperlink>;
 };
 
 /** 提取并汇总 `collectRecords` 返回的数据。 */
@@ -57,7 +60,28 @@ function decodeUtf16(bytes: Uint8Array) {
   return value;
 }
 
-function parseShapeProperties(record: OfficeArtRecord | undefined) {
+/** 避免物化模型和按需数据源重复解析同一形状时产生重复提示。 */
+function pushHyperlinkWarning(
+  warnings: SpreadsheetWarning[],
+  warning: SpreadsheetWarning,
+) {
+  if (
+    warnings.some(
+      (item) =>
+        item.code === warning.code &&
+        item.offset === warning.offset &&
+        item.message === warning.message,
+    )
+  ) {
+    return;
+  }
+  warnings.push(warning);
+}
+
+function parseShapeProperties(
+  record: OfficeArtRecord | undefined,
+  warnings: SpreadsheetWarning[],
+) {
   const result: ShapeProperties = {};
   if (!record) return result;
   const propertyBytes = record.instance * 6;
@@ -84,9 +108,53 @@ function parseShapeProperties(record: OfficeArtRecord | undefined) {
           record.data.subarray(complexOffset, complexOffset + value),
         );
       }
+      if (propertyId === 0x0382) {
+        try {
+          result.hyperlink = parseOfficeArtHyperlink(
+            record.data.subarray(complexOffset, complexOffset + value),
+          );
+          if (!result.hyperlink) {
+            pushHyperlinkWarning(warnings, {
+              code: 'UNSUPPORTED_HYPERLINK',
+              message: 'XLS 形状使用了暂不支持的 OfficeArt 超链接结构',
+              offset: record.offset,
+            });
+          }
+        } catch (error) {
+          pushHyperlinkWarning(warnings, {
+            code: 'UNSUPPORTED_HYPERLINK',
+            message: `XLS 形状超链接结构无效：${
+              error instanceof Error ? error.message : '未知错误'
+            }`,
+            offset: record.offset,
+          });
+        }
+      }
       complexOffset += value;
     }
   }
+  return result;
+}
+
+/** 合并形状的主、次和三级属性表，后级表仅覆盖自身明确声明的属性。 */
+function parseContainerShapeProperties(
+  children: readonly OfficeArtRecord[],
+  warnings: SpreadsheetWarning[],
+) {
+  const result: ShapeProperties = {};
+  [
+    OFFICE_ART_RECORD.FOPT,
+    OFFICE_ART_RECORD.SECONDARY_FOPT,
+    OFFICE_ART_RECORD.TERTIARY_FOPT,
+  ].forEach((type) => {
+    Object.assign(
+      result,
+      parseShapeProperties(
+        children.find((record) => record.type === type),
+        warnings,
+      ),
+    );
+  });
   return result;
 }
 
@@ -111,9 +179,7 @@ export function parseBiff8DrawingShapes(
     );
     if (!anchor) continue;
     const shapeId = parseShapeId(fsp);
-    const properties = parseShapeProperties(
-      children.find((record) => record.type === OFFICE_ART_RECORD.FOPT),
-    );
+    const properties = parseContainerShapeProperties(children, warnings);
     try {
       result.push({
         id: `xls-shape-${shapeId ?? result.length + 1}`,
@@ -125,6 +191,7 @@ export function parseBiff8DrawingShapes(
         lineColor: properties.lineColor,
         lineWidth: properties.lineWidth,
         anchor: parseClientAnchor(anchor.data),
+        hyperlink: properties.hyperlink,
       });
     } catch {
       // 图片解析流程会产生带对象名称的锚点告警，这里只跳过无效候选。
@@ -155,9 +222,7 @@ export function parseBiff8Drawings(
     const shapeId = parseShapeId(
       children.find((record) => record.type === OFFICE_ART_RECORD.FSP),
     );
-    const properties = parseShapeProperties(
-      children.find((record) => record.type === OFFICE_ART_RECORD.FOPT),
-    );
+    const properties = parseContainerShapeProperties(children, warnings);
     const anchorRecord = children.find(
       (record) => record.type === OFFICE_ART_RECORD.CLIENT_ANCHOR,
     );
@@ -183,6 +248,7 @@ export function parseBiff8Drawings(
         compressed: blip.compressed,
         anchor: parseClientAnchor(anchorRecord.data),
         warnings: [...blip.warnings],
+        hyperlink: properties.hyperlink,
       });
     } catch (error) {
       warnings.push({

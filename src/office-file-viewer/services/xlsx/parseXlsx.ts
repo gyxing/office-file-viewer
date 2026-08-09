@@ -7,8 +7,10 @@ import {
   attr,
   childByLocalName,
   childrenByLocalName,
+  descendantsByLocalName,
   parseXml,
 } from '../../shared/ooxml/xml';
+import type { OfficeArchiveResourcePolicy } from '../../shared/resource/OfficeResourcePolicy';
 import type { OfficeFormatParser } from '../parsing/formatParserRegistry';
 import { throwIfParseAborted } from '../parsing/runtime/types';
 import { loadXlsxEntries } from './archive';
@@ -77,10 +79,11 @@ async function xlsxParseCheckpoint(signal?: AbortSignal) {
 export async function parseXlsx(
   file: File,
   signal?: AbortSignal,
+  resourcePolicy?: OfficeArchiveResourcePolicy,
 ): Promise<XlsxWorkbook> {
   // sharedStrings 和 styles 是全工作簿共享数据，先解析后再逐个 sheet 套用。
   throwIfXlsxParseAborted(signal);
-  const entries = await loadXlsxEntries(file, { signal });
+  const entries = await loadXlsxEntries(file, { signal, resourcePolicy });
   await xlsxParseCheckpoint(signal);
   const packageState = buildPackageState(entries);
   const workbookXml = readXml(entries, 'xl/workbook.xml');
@@ -94,6 +97,14 @@ export async function parseXlsx(
     packageState.theme,
   );
   const workbookDoc = parseXml(workbookXml);
+  const definedNames = Object.fromEntries(
+    descendantsByLocalName(workbookDoc.documentElement, 'definedName')
+      .map((node) => [attr(node, 'name'), node.textContent?.trim()] as const)
+      .filter(
+        (entry): entry is readonly [string, string] =>
+          Boolean(entry[0] && entry[1]),
+      ),
+  );
   const sheetEntries = childrenByLocalName(
     childByLocalName(workbookDoc.documentElement, 'sheets'),
     'sheet',
@@ -129,13 +140,13 @@ export async function parseXlsx(
   }
 
   throwIfXlsxParseAborted(signal);
-  return { sheets };
+  return { sheets, definedNames };
 }
 
 /** 通过统一运行时合同解析 XLSX，并输出完整工作簿模型。 */
 export const runXlsxParser: OfficeFormatParser = async (
   file,
-  { signal },
+  { signal, resourcePolicy },
   sink,
 ) => {
   sink.progress({
@@ -143,7 +154,7 @@ export const runXlsxParser: OfficeFormatParser = async (
     percent: 0.05,
     message: '正在解析文件',
   });
-  const workbook = await parseXlsx(file, signal);
+  const workbook = await parseXlsx(file, signal, resourcePolicy);
   throwIfParseAborted(signal);
   await sink.parsed({ kind: 'xlsx', workbook });
   await sink.complete();

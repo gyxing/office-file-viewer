@@ -1,3 +1,6 @@
+import type { OfficeHyperlink } from '../../shared/hyperlink';
+import type { OfficeResourceSource } from '../resource-store';
+
 /** 描述演示文稿标准模型过程中可继续处理的警告。 */
 export type PresentationWarning = {
   /** 供程序识别当前情况的稳定代码。 */
@@ -182,6 +185,8 @@ export type TextRun = {
   style?: TextStyle;
   /** PresentationML 动态字段类型，用于按具体幻灯片补全页码等内容。 */
   fieldType?: string;
+  /** 源文档为当前文字片段声明的超链接。 */
+  hyperlink?: OfficeHyperlink;
 };
 
 /** 由文本片段、段落样式和项目符号组成的段落。 */
@@ -224,6 +229,10 @@ export type BaseElement = {
   placeholderType?: string;
   /** 元素继承的占位符索引。 */
   placeholderIdx?: string;
+  /** 源文档为当前绘制对象声明的超链接。 */
+  hyperlink?: OfficeHyperlink;
+  /** 形状承担放映动作按钮时使用更具体的来源类型。 */
+  hyperlinkSourceType?: 'shape' | 'button';
 };
 
 /** 包含段落、形状外观和文本框样式的文字元素。 */
@@ -408,4 +417,3 @@ export type ChartElement = BaseElement & {
   /** 图表使用的按需静态快照资源。 */
   snapshotSource?: OfficeResourceSource;
 };
-import type { OfficeResourceSource } from '../resource-store';

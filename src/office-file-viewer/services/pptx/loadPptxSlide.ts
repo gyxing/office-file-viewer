@@ -14,12 +14,14 @@ async function loadReferencedXml(
 ) {
   const targets = Object.values(
     context.packageState.relationships[descriptor.relsPath] ?? {},
-  ).filter(
-    (target) =>
-      target.endsWith('.xml') &&
-      !target.includes('slideLayouts/') &&
-      !target.includes('notesSlides/'),
-  );
+  )
+    .map((relationship) => relationship.target)
+    .filter(
+      (target) =>
+        target.endsWith('.xml') &&
+        !target.includes('slideLayouts/') &&
+        !target.includes('notesSlides/'),
+    );
   await Promise.all(
     targets.map(async (target) => {
       if (
@@ -57,6 +59,9 @@ export async function loadPptxSlide(
     [...context.layoutDefinitions],
     [...context.masterDefinitions],
     context.tableStyles,
+    Object.fromEntries(
+      context.descriptors.map((item, index) => [item.slidePath, index]),
+    ),
   );
   slide.hidden = descriptor.hidden;
   slide.speakerNotes = undefined;

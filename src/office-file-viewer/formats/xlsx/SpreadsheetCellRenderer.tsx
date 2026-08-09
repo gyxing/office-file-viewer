@@ -5,6 +5,7 @@ import type {
   SpreadsheetDiagonalBorder,
 } from '../../services/spreadsheet/types';
 import type { SpreadsheetViewMode } from '../../services/spreadsheet/viewMode';
+import { useOfficeHyperlink } from '../../shared/hyperlink';
 import type { SpreadsheetCellContentBounds } from './spreadsheetCellOverflow';
 import {
   estimateSpreadsheetLineWidth,
@@ -31,6 +32,8 @@ type SpreadsheetCellRendererProps = {
   contentBounds?: SpreadsheetCellContentBounds;
   /** 当前电子表格采用的显示模式。 */
   viewMode?: SpreadsheetViewMode;
+  /** 当前单元格在工作簿中的稳定来源标识。 */
+  sourceId: string;
 };
 
 /** 根据源文件线型生成浏览器 SVG 描边间隔。 */
@@ -169,7 +172,12 @@ function SpreadsheetCellRendererComponent({
   clipped,
   contentBounds,
   viewMode = 'source',
+  sourceId,
 }: SpreadsheetCellRendererProps) {
+  const hyperlinkProps = useOfficeHyperlink<HTMLDivElement>({
+    hyperlink: cell.hyperlink,
+    source: { type: 'cell', id: sourceId },
+  });
   const shrinkToFit = isSpreadsheetShrinkToFitCell(cell);
   const wrapped = Boolean(
     cell.style?.wrapText || (viewMode === 'reading' && !shrinkToFit),
@@ -188,6 +196,7 @@ function SpreadsheetCellRendererComponent({
   return (
     <>
       <div
+        {...hyperlinkProps}
         className={`office-file-xlsx-sheet-table__cell-content${
           wrapped ? ' office-file-xlsx-sheet-table__cell-content--wrapped' : ''
         }${

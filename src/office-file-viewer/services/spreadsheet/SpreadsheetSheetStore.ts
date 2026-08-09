@@ -12,6 +12,7 @@ import type {
   SpreadsheetChart,
   SpreadsheetColumnMetric,
   SpreadsheetImage,
+  SpreadsheetHyperlinkRange,
   SpreadsheetMerge,
   SpreadsheetRange,
   SpreadsheetRangeData,
@@ -45,6 +46,8 @@ export type SpreadsheetSheetStructure = SpreadsheetSheetLayout & {
   images: readonly SpreadsheetImage[];
   /** 按图表对象编号索引的标准图表模型。 */
   charts: readonly SpreadsheetChart[];
+  /** 工作表声明的稀疏超链接范围。 */
+  hyperlinks?: readonly SpreadsheetHyperlinkRange[];
 };
 
 /** Sheet Store 对 Source 暴露的范围读取协议。 */
@@ -76,6 +79,17 @@ type TileMeta = {
 
 function tileKey(sheetId: string, rowTile: number, columnTile: number) {
   return `${sheetId}:${rowTile}:${columnTile}`;
+}
+
+function columnLabel(column: number) {
+  let value = Math.max(1, Math.floor(column));
+  let label = '';
+  while (value > 0) {
+    value -= 1;
+    label = String.fromCharCode(65 + (value % 26)) + label;
+    value = Math.floor(value / 26);
+  }
+  return label;
 }
 
 function normalizeRange(
@@ -238,14 +252,43 @@ export function createSpreadsheetSheetStore(
       );
       throwIfSpreadsheetAborted(signal);
       const cells = records.flatMap((record) =>
-        (record?.value?.cells ?? []).filter(
-          (cell) =>
-            cell.rowIndex >= range.startRow &&
-            cell.rowIndex <= range.endRow &&
-            cell.columnIndex >= range.startColumn &&
-            cell.columnIndex <= range.endColumn,
-        ),
+        (record?.value?.cells ?? [])
+          .filter(
+            (cell) =>
+              cell.rowIndex >= range.startRow &&
+              cell.rowIndex <= range.endRow &&
+              cell.columnIndex >= range.startColumn &&
+              cell.columnIndex <= range.endColumn,
+          )
+          .map((cell) => ({ ...cell })),
       );
+      const cellByRef = new Map(cells.map((cell) => [cell.ref, cell]));
+      (structure.hyperlinks ?? []).forEach((rangeLink) => {
+        const startRow = Math.max(range.startRow, rangeLink.startRow);
+        const endRow = Math.min(range.endRow, rangeLink.endRow);
+        const startColumn = Math.max(range.startColumn, rangeLink.startColumn);
+        const endColumn = Math.min(range.endColumn, rangeLink.endColumn);
+        if (startRow > endRow || startColumn > endColumn) return;
+        for (let row = startRow; row <= endRow; row += 1) {
+          for (let column = startColumn; column <= endColumn; column += 1) {
+            const ref = `${columnLabel(column)}${row}`;
+            const existing = cellByRef.get(ref);
+            if (existing) {
+              existing.hyperlink = rangeLink.hyperlink;
+            } else {
+              const linkedCell: SpreadsheetCell = {
+                ref,
+                rowIndex: row,
+                columnIndex: column,
+                value: '',
+                hyperlink: rangeLink.hyperlink,
+              };
+              cells.push(linkedCell);
+              cellByRef.set(ref, linkedCell);
+            }
+          }
+        }
+      });
       const rowsByIndex = metricMap(structure.rows);
       const columnsByIndex = metricMap(structure.columns);
       const rows = Array.from(

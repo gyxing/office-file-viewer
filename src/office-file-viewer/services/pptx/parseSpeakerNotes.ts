@@ -15,6 +15,7 @@ import type {
   TextParagraph,
   TextRun,
 } from '../presentation/types';
+import type { RelationshipMap } from './PptxPackageContext';
 
 /** 将备注页中的一个正文段落转换为统一文本模型。 */
 function parseNotesParagraph(node: Element): TextParagraph | undefined {
@@ -50,12 +51,12 @@ function parseNotesParagraph(node: Element): TextParagraph | undefined {
 /** 从 PPTX 当前幻灯片关系中读取演讲者正文，过滤日期、页脚等备注页占位符。 */
 export function parsePptxSpeakerNotes(
   entries: OfficeEntryMap,
-  relationships: Record<string, Record<string, string>>,
+  relationships: RelationshipMap,
   slideRelsPath: string,
 ): SpeakerNotesModel | undefined {
   const notesPath = Object.values(relationships[slideRelsPath] ?? {}).find(
-    (target) => target.includes('notesSlides/'),
-  );
+    (relationship) => relationship.target.includes('notesSlides/'),
+  )?.target;
   if (!notesPath) return undefined;
 
   const xml = readXml(entries, notesPath);

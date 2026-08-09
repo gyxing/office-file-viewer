@@ -1,4 +1,5 @@
-import type { WordOutlineItem } from '../word/types';
+import type { OfficeHyperlink } from '../../shared/hyperlink';
+import type { WordBookmarkTarget, WordOutlineItem } from '../word/types';
 
 /** 包含页面、正文、资源和大纲的标准化 DOC 文档。 */
 export type DocDocument = {
@@ -14,6 +15,8 @@ export type DocDocument = {
   images: DocImage[];
   /** 源 DOC/WPS 明确声明的大纲条目；为空时不显示目录侧栏。 */
   outline?: WordOutlineItem[];
+  /** 按源名称索引的文档内部书签。 */
+  bookmarks?: Record<string, WordBookmarkTarget>;
   /** 从页眉 story 中识别出的徽标图片；未提供时不渲染页眉图片。 */
   headerImage?: DocImage;
   /** 页脚 story 是否包含 PAGE 字段。 */
@@ -185,8 +188,11 @@ export type DocListItem = {
   inlines?: DocTextInline[];
 };
 
-/** DOC 段落支持的文本和图片行内节点。 */
-export type DocTextInline = DocTextRunInline | DocImageInline;
+/** DOC 段落支持的文本、图片和书签行内节点。 */
+export type DocTextInline =
+  | DocTextRunInline
+  | DocImageInline
+  | DocBookmarkInline;
 
 /** 具有统一样式的 DOC 连续文本片段。 */
 export type DocTextRunInline = {
@@ -196,6 +202,8 @@ export type DocTextRunInline = {
   text: string;
   /** 当前内容使用的渲染样式。 */
   style?: DocTextStyle;
+  /** 源文档为该段文字声明的超链接。 */
+  hyperlink?: OfficeHyperlink;
 };
 
 /** 嵌入 DOC 段落中的图片节点。 */
@@ -204,6 +212,16 @@ export type DocImageInline = {
   type: 'image';
   /** 当前关联的图片资源或图片模型。 */
   image: DocImage;
+};
+
+/** DOC 正文中用于内部跳转的零宽书签标记。 */
+export type DocBookmarkInline = {
+  /** 用于区分联合类型分支的类型标识。 */
+  type: 'bookmark';
+  /** 源文档声明的书签名称。 */
+  name: string;
+  /** 渲染定位标记时使用的稳定标识。 */
+  markerId: string;
 };
 
 /** DOC 文本、段落和边框的标准化样式。 */
@@ -303,4 +321,6 @@ export type DocImage = {
     /** 页面正文左边距。 */
     left: number;
   };
+  /** 源文档为图片声明的超链接。 */
+  hyperlink?: OfficeHyperlink;
 };

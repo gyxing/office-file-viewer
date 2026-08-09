@@ -10,6 +10,16 @@ export type WordOutlineItem = {
   targetBlockId: string;
 };
 
+/** Word 书签在标准文档模型中的稳定定位信息。 */
+export type WordBookmarkTarget = {
+  /** 源文档声明的书签名称。 */
+  name: string;
+  /** 书签起点所在的正文块标识。 */
+  targetBlockId: string;
+  /** 渲染书签零宽标记时使用的稳定标识。 */
+  markerId: string;
+};
+
 /** Word 大纲侧栏使用的树节点。 */
 export type WordOutlineTreeNode = WordOutlineItem & {
   /** 大纲树用于识别节点的稳定键。 */

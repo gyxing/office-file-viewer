@@ -6,7 +6,7 @@
 
 `office-file-viewer` 在浏览器内完成 Office 文件下载、解析和渲染，不需要配套的文档转换服务，也不会主动上传本地文件。
 
-组件使用统一界面预览 Word 文档、Excel 表格和 PowerPoint 演示文稿，包含文件选择、远程加载、解析进度、缩放、全屏、文档大纲、电子表格显示模式、工作表标签、幻灯片导航和演讲者备注。
+组件使用统一界面预览 Word 文档、Excel 表格和 PowerPoint 演示文稿，包含文件选择、远程加载、解析进度、缩放、全屏、内容图片预览与下载、文档大纲、电子表格显示模式、工作表标签、幻灯片导航和演讲者备注。
 
 > 这是独立实现的解析与渲染引擎，并非 Microsoft Office 或 WPS Office 的原生排版引擎。复杂文档可能与桌面应用存在差异，使用前请阅读[完整限制说明](https://gyxing.github.io/office-file-viewer/zh-CN/docs#limitations)。
 
@@ -15,10 +15,13 @@
 - **纯浏览器解析**：适用于内网、离线环境和隐私敏感场景。
 - **七种文件格式**：支持 DOC、DOCX、WPS、XLS、XLSX、PPT 和 PPTX。
 - **统一 React 组件**：各格式共用加载、错误、空状态、缩放和全屏交互。
-- **多种文件来源**：接受本地 `File`、远程 URL 或异步加载函数。
+- **多种文件来源**：接受本地 `File`、远程 URL 或支持取消信号的异步加载函数。
 - **渐进预览**：受支持格式可以在解析继续进行时提前展示已完成内容。
+- **可控视图状态**：可以按字段控制缩放、当前页、工作表、侧栏和显示模式。
+- **内容图片交互**：DOC/DOCX/WPS 与 XLS/XLSX 支持双击预览图片，以及右键预览和下载。
+- **源文档超链接**：支持文字、单元格、图片、形状和按钮链接，以 `Ctrl`/`Command` 修饰单击安全激活，并支持宿主接管。
 - **Worker 支持**：旧格式 DOC/WPS、XLS 和 PPT 可以在 Web Worker 中解析。
-- **资源管理**：组件负责取消任务、订阅、Worker 和 Blob URL 的生命周期。
+- **资源管理**：组件负责取消任务、订阅、Worker 和 Blob URL 的生命周期，并支持宿主配置解析资源上限。
 - **内置预览界面**：提供作用域隔离的文件选择、导航、缩放和全屏控件及样式。
 
 ## 安装
@@ -62,15 +65,15 @@ export default function OfficePreview() {
 }
 ```
 
-查看[完整快速接入](https://gyxing.github.io/office-file-viewer/zh-CN/docs#quick-start)、[`OfficeFileViewer` API](https://gyxing.github.io/office-file-viewer/zh-CN/docs#component-api) 和[高级解析 API](https://gyxing.github.io/office-file-viewer/zh-CN/docs#advanced-api)，了解 URI 来源、回调、Worker 模式、底层会话和资源释放。
+查看[完整快速接入](https://gyxing.github.io/office-file-viewer/zh-CN/docs#quick-start)、[`OfficeFileViewer` API](https://gyxing.github.io/office-file-viewer/zh-CN/docs#component-api) 和[高级解析 API](https://gyxing.github.io/office-file-viewer/zh-CN/docs#advanced-api)，了解 URI 来源、受控视图状态、回调、Worker 模式、资源限制、底层会话和资源释放。
 
 ## 支持格式
 
-| 分类       | 扩展名                  | 主要能力                                                                  |
-| ---------- | ----------------------- | ------------------------------------------------------------------------- |
-| Word       | `.doc`、`.docx`、`.wps` | 文本、格式、列表、表格、图片、图表、形状、链接和文档大纲                  |
-| Excel      | `.xls`、`.xlsx`         | 工作表、值、样式、合并单元格、尺寸、图片、图表、工作表标签和原始/阅读模式 |
-| PowerPoint | `.ppt`、`.pptx`         | 幻灯片、母版、文本、形状、图片、表格、图表、导航和演讲者备注              |
+| 分类       | 扩展名                  | 主要能力                                                                        |
+| ---------- | ----------------------- | ------------------------------------------------------------------------------- |
+| Word       | `.doc`、`.docx`、`.wps` | 文本、格式、列表、表格、图片、图表、形状、链接和文档大纲                        |
+| Excel      | `.xls`、`.xlsx`         | 工作表、值、样式、合并单元格、尺寸、图片、图表、链接、工作表标签和原始/阅读模式 |
+| PowerPoint | `.ppt`、`.pptx`         | 幻灯片、母版、文本、形状、图片、表格、图表、链接、导航和演讲者备注              |
 
 支持范围不代表可以完整还原所有 Office 版本、厂商扩展、宏、嵌入对象、动画或复杂布局。
 

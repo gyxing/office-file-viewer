@@ -2,6 +2,7 @@
 import type { CSSProperties } from 'react';
 import React, { memo, useMemo } from 'react';
 import type { DocxInline } from '../../services/docx/types';
+import { useOfficeHyperlink } from '../../shared/hyperlink';
 import { DocxShapeItemRenderer } from './DocxShapeItemRenderer';
 import { calculatePositionStyle } from './positionUtils';
 
@@ -30,6 +31,10 @@ type DocxShapeStyle = CSSProperties & {
 function DocxShapeComponent({ inline }: DocxShapeProps) {
   const shape = inline.shape;
   const positionStyle = calculatePositionStyle(shape.position);
+  const hyperlinkProps = useOfficeHyperlink<HTMLSpanElement>({
+    hyperlink: shape.hyperlink,
+    source: { type: 'shape', id: shape.id },
+  });
 
   const shapeStyle = useMemo<DocxShapeStyle>(() => {
     return {
@@ -42,7 +47,11 @@ function DocxShapeComponent({ inline }: DocxShapeProps) {
     };
   }, [positionStyle, shape.height, shape.position, shape.width]);
   return (
-    <span className="office-file-docx-shape" style={shapeStyle}>
+    <span
+      {...hyperlinkProps}
+      className="office-file-docx-shape"
+      style={shapeStyle}
+    >
       {shape.items.map((item) => (
         <DocxShapeItemRenderer key={item.id} item={item} />
       ))}

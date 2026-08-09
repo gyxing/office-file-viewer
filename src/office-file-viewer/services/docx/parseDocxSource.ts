@@ -1,4 +1,3 @@
-import { yieldToMainThread } from '../performance/mainThreadScheduler';
 import type { OfficeArchiveReader } from '../../shared/ooxml/OfficeArchiveReader';
 import { readOfficeXmlEvents } from '../../shared/ooxml/OfficeXmlEventReader';
 import {
@@ -7,7 +6,9 @@ import {
   matchesLocalName,
 } from '../../shared/ooxml/xml';
 import type { OfficeSourcePreviewFactory } from '../parsing/formatParserRegistry';
+import { yieldToMainThread } from '../performance/mainThreadScheduler';
 import { disposeDocumentSession } from '../session';
+import type { WordBookmarkTarget } from '../word/types';
 import { profileDocxArchive } from './docxArchiveProfile';
 import { loadDocxPackageContext } from './DocxPackageContext';
 import { DocxWordPageSource } from './DocxWordPageSource';
@@ -48,6 +49,8 @@ export type DocxSourceOutput = {
     title: string;
     /** 当前文档或页面包含的图片资源。 */
     images: DocxImage[];
+    /** 按源名称索引的文档内部书签。 */
+    bookmarks: Record<string, WordBookmarkTarget>;
   }): void | Promise<void>;
 };
 
@@ -233,20 +236,25 @@ export async function parseDocxSource(
   await output.complete({
     title: markDocxTitle(titleCandidates),
     images: context.images,
+    bookmarks: context.bookmarks,
   });
 }
 
 /** 仅在 DOCX 画像命中大文件阈值时创建流式分页预览源。 */
 export const tryCreateDocxSourcePreview: OfficeSourcePreviewFactory = async (
   file,
-  { documentSession, emitProgress, emitPartial },
+  { documentSession, emitProgress, emitPartial, resourcePolicy },
 ) => {
   emitProgress({
     stage: 'container',
     percent: 0.02,
     message: '正在读取 DOCX 包目录',
   });
-  const archive = await profileDocxArchive(file, documentSession.signal);
+  const archive = await profileDocxArchive(
+    file,
+    documentSession.signal,
+    resourcePolicy,
+  );
   if (archive.profile.mode !== 'lazy') {
     await archive.reader.close();
     return undefined;
@@ -307,6 +315,7 @@ export const tryCreateDocxSourcePreview: OfficeSourcePreviewFactory = async (
         source.finishParsing({
           title: summary.title,
           images: summary.images,
+          bookmarks: summary.bookmarks ?? {},
         });
       } catch {
         // 已完成或已取消的 Source 保留当前可渲染快照即可。

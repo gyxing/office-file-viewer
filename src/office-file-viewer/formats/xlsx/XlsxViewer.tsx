@@ -6,7 +6,9 @@ import { getSpreadsheetSource } from '../../services/spreadsheet/spreadsheetSour
 import type { SpreadsheetViewMode } from '../../services/spreadsheet/viewMode';
 import { OfficePreviewEmpty } from '../common/OfficePreviewEmpty';
 import './index.less';
+import type { SpreadsheetNavigationController } from './spreadsheetNavigation';
 import { SpreadsheetSheetState } from './SpreadsheetSheetState';
+import { useSpreadsheetHyperlinkNavigation } from './useSpreadsheetHyperlinkNavigation';
 import { useSpreadsheetSource } from './useSpreadsheetSource';
 import { VirtualSpreadsheetGrid } from './VirtualSpreadsheetGrid';
 import { XlsxChartSheet } from './XlsxChartSheet';
@@ -96,6 +98,13 @@ function XlsxSourceViewer({
   }
   const state = useSpreadsheetSource(source, activeSheetId);
   const descriptor = state.activeDescriptor;
+  const navigationControllerRef = useRef<SpreadsheetNavigationController>();
+  useSpreadsheetHyperlinkNavigation({
+    snapshot: state.snapshot,
+    activeSheetId: descriptor?.id,
+    onSelectSheet,
+    navigationControllerRef,
+  });
   const readingRowHeights = useMemo(
     () =>
       descriptor
@@ -144,6 +153,7 @@ function XlsxSourceViewer({
             sheet={state.activeSheet}
             zoom={zoom}
             viewMode={viewMode}
+            navigationControllerRef={navigationControllerRef}
           />
         ) : state.profile ? (
           <VirtualSpreadsheetGrid
@@ -155,6 +165,7 @@ function XlsxSourceViewer({
             viewMode={viewMode}
             readingRowHeights={readingRowHeights}
             onReadingRowHeightsChange={handleReadingRowHeightsChange}
+            navigationControllerRef={navigationControllerRef}
           />
         ) : null}
       </SpreadsheetSheetState>

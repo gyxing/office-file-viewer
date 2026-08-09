@@ -32,16 +32,6 @@ import type {
 } from './PptxPackageContext';
 import type { ThemeModel } from './types';
 
-// PPTX 是 zip 包结构，幻灯片、母版、布局、媒体之间都通过 .rels 关系文件串联。
-/** 提取 OOXML 关系标识到目标路径的映射。 */
-export function relationshipTargets(rels: Record<string, OfficeRelationship>) {
-  const map: Record<string, string> = {};
-  Object.entries(rels).forEach(([id, rel]) => {
-    map[id] = rel.target;
-  });
-  return map;
-}
-
 /** 构建 PPTX 各部件解析共享的包状态。 */
 export function buildPptxPackageState(
   entries: OfficeEntryMap,
@@ -50,7 +40,7 @@ export function buildPptxPackageState(
   const relationships: RelationshipMap = {};
   for (const [path, value] of entries) {
     if (typeof value === 'string' && path.endsWith('.rels')) {
-      relationships[path] = relationshipTargets(readRelationships(value, path));
+      relationships[path] = readRelationships(value, path);
     }
   }
 
@@ -197,7 +187,7 @@ function readMaster(
   theme: ThemeModel,
   relPath: string,
   packageState: PackageState,
-  rels: Record<string, string>,
+  rels: Record<string, OfficeRelationship>,
   tableStyles?: TableStyleMap,
 ): MasterDefinition {
   const doc = parseXml(xml);
@@ -235,7 +225,7 @@ function readLayout(
   relPath: string,
   masterPath: string,
   packageState: PackageState,
-  rels: Record<string, string>,
+  rels: Record<string, OfficeRelationship>,
   tableStyles?: TableStyleMap,
 ): LayoutDefinition {
   const doc = parseXml(xml);
@@ -287,7 +277,8 @@ export function readPresentationLayouts(
   const masterDefinitions: MasterDefinition[] = [];
   const masterLayoutDefinitions: Record<string, LayoutDefinition[]> = {};
 
-  Object.entries(presentationRels).forEach(([, target]) => {
+  Object.entries(presentationRels).forEach(([, relationship]) => {
+    const target = relationship.target;
     if (!target.includes('slideMasters/')) return;
     const xmlPath = target.startsWith('ppt/') ? target : `ppt/${target}`;
     const relPath = xmlPath
@@ -304,6 +295,7 @@ export function readPresentationLayouts(
     );
     masterDefinitions.push(master);
     masterLayoutDefinitions[xmlPath] = Object.values(masterRels)
+      .map((relationship) => relationship.target)
       .filter((item) => item.includes('slideLayouts/'))
       .map((layoutTarget) => {
         const layoutPath = layoutTarget.startsWith('ppt/')

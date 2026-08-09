@@ -3,12 +3,14 @@ import { emuToPx } from '../../shared/ooxml/units';
 import {
   attr,
   childByLocalName,
-  childrenByLocalName,
   descendantByLocalName,
   parseXml,
   textContent,
 } from '../../shared/ooxml/xml';
-import { createSpreadsheetAxisIndex } from '../spreadsheet/SpreadsheetAxisIndex';
+import {
+  createSpreadsheetAxisIndex,
+  type SpreadsheetAxisIndex,
+} from '../spreadsheet/SpreadsheetAxisIndex';
 import type { SpreadsheetSheetLayout } from '../spreadsheet/SpreadsheetSource';
 import type {
   SpreadsheetAnchorPoint,
@@ -16,6 +18,7 @@ import type {
   SpreadsheetImage,
 } from '../spreadsheet/types';
 import { createXlsxImageResource } from './createXlsxImageResource';
+import { parseXlsxDrawingHyperlink } from './parseXlsxHyperlinks';
 import type {
   XlsxPackageContext,
   XlsxSheetDescriptor,
@@ -31,6 +34,39 @@ function readAnchorPoint(node: Element | null): SpreadsheetAnchorPoint {
     rowOffset: emuToPx(
       Number(textContent(childByLocalName(node, 'rowOff')) || 0),
     ),
+  };
+}
+
+/** 按源顺序读取 XLSX 支持的双单元格和单单元格绘图锚点。 */
+function readDrawingAnchorNodes(root: Element) {
+  return Array.from(root.children).filter(
+    (node) =>
+      node.localName === 'twoCellAnchor' || node.localName === 'oneCellAnchor',
+  );
+}
+
+function readDrawingExtent(anchorNode: Element) {
+  const extent = childByLocalName(anchorNode, 'ext');
+  if (!extent) return undefined;
+  return {
+    width: emuToPx(Number(attr(extent, 'cx')) || 0),
+    height: emuToPx(Number(attr(extent, 'cy')) || 0),
+  };
+}
+
+function anchorPointAtAxes(
+  x: number,
+  y: number,
+  rowAxis: SpreadsheetAxisIndex,
+  columnAxis: SpreadsheetAxisIndex,
+): SpreadsheetAnchorPoint {
+  const column = columnAxis.findIndexAtOffset(x);
+  const row = rowAxis.findIndexAtOffset(y);
+  return {
+    column,
+    columnOffset: Math.max(0, x - columnAxis.offsetAt(column)),
+    row,
+    rowOffset: Math.max(0, y - rowAxis.offsetAt(row)),
   };
 }
 
@@ -73,39 +109,76 @@ export async function loadXlsxDrawingObjects(
   const document = parseXml(xml);
   const drawingRels =
     context.relationships[drawingRelationshipPath(drawingPath)] ?? {};
-  const anchors = childrenByLocalName(
-    document.documentElement,
-    'twoCellAnchor',
-  ).map((anchorNode) => ({
-    anchorNode,
-    from: readAnchorPoint(childByLocalName(anchorNode, 'from')),
-    to: readAnchorPoint(childByLocalName(anchorNode, 'to')),
-  }));
-  const rowCount = Math.max(
-    1,
-    ...anchors.flatMap(({ from, to }) => [from.row, to.row]),
+  const rawAnchors = readDrawingAnchorNodes(document.documentElement).map(
+    (anchorNode) => ({
+      anchorNode,
+      from: readAnchorPoint(childByLocalName(anchorNode, 'from')),
+      to: childByLocalName(anchorNode, 'to')
+        ? readAnchorPoint(childByLocalName(anchorNode, 'to'))
+        : undefined,
+      extent: readDrawingExtent(anchorNode),
+    }),
   );
-  const columnCount = Math.max(
+  const estimatedRowCount = Math.max(
     1,
-    ...anchors.flatMap(({ from, to }) => [from.column, to.column]),
+    ...rawAnchors.map(({ from, to, extent }) =>
+      to
+        ? Math.max(from.row, to.row)
+        : from.row +
+          Math.ceil(
+            (from.rowOffset + (extent?.height ?? 0)) / layout.defaultRowHeight,
+          ),
+    ),
+  );
+  const estimatedColumnCount = Math.max(
+    1,
+    ...rawAnchors.map(({ from, to, extent }) =>
+      to
+        ? Math.max(from.column, to.column)
+        : from.column +
+          Math.ceil(
+            (from.columnOffset + (extent?.width ?? 0)) /
+              layout.defaultColumnWidth,
+          ),
+    ),
   );
   const rowAxis = createSpreadsheetAxisIndex(
-    Math.max(layout.rowCount, rowCount),
+    Math.max(layout.rowCount, estimatedRowCount),
     layout.defaultRowHeight,
     layout.rows,
   );
   const columnAxis = createSpreadsheetAxisIndex(
-    Math.max(layout.columnCount, columnCount),
+    Math.max(layout.columnCount, estimatedColumnCount),
     layout.defaultColumnWidth,
     layout.columns,
   );
+  const anchors = rawAnchors.flatMap(({ anchorNode, from, to, extent }) => {
+    const x = columnAxis.offsetAt(from.column) + from.columnOffset;
+    const y = rowAxis.offsetAt(from.row) + from.rowOffset;
+    if (to) return [{ anchorNode, from, to, x, y }];
+    if (!extent) return [];
+    return [
+      {
+        anchorNode,
+        from,
+        to: anchorPointAtAxes(
+          x + extent.width,
+          y + extent.height,
+          rowAxis,
+          columnAxis,
+        ),
+        x,
+        y,
+      },
+    ];
+  });
+  const rowCount = Math.max(1, ...anchors.map(({ to }) => to.row));
+  const columnCount = Math.max(1, ...anchors.map(({ to }) => to.column));
   const images: SpreadsheetImage[] = [];
   const charts: SpreadsheetChart[] = [];
   const chartTasks: Promise<void>[] = [];
 
-  anchors.forEach(({ anchorNode, from, to }, index) => {
-    const x = columnAxis.offsetAt(from.column) + from.columnOffset;
-    const y = rowAxis.offsetAt(from.row) + from.rowOffset;
+  anchors.forEach(({ anchorNode, from, to, x, y }, index) => {
     const right = columnAxis.offsetAt(to.column) + to.columnOffset;
     const bottom = rowAxis.offsetAt(to.row) + to.rowOffset;
     const name = attr(descendantByLocalName(anchorNode, 'cNvPr'), 'name');
@@ -128,6 +201,7 @@ export async function loadXlsxDrawingObjects(
         y,
         width: Math.max(1, right - x),
         height: Math.max(1, bottom - y),
+        hyperlink: parseXlsxDrawingHyperlink(anchorNode, drawingRels),
       });
     }
 

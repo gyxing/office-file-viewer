@@ -31,6 +31,8 @@ export type OfficeFileViewerMessages = {
   };
   /** 预览器工具栏相关文案。 */
   toolbar: {
+    /** 工具栏区域的无障碍名称。 */
+    region: string;
     /** 打开文件按钮文案。 */
     selectFile: string;
     /** 上一张幻灯片按钮文案。 */
@@ -122,6 +124,8 @@ export type OfficeFileViewerMessages = {
   };
   /** 演示文稿预览相关文案。 */
   presentation: {
+    /** 幻灯片缩略图导航区域的无障碍名称。 */
+    thumbnailsRegion: string;
     /** 当前处理或展示的幻灯片。 */
     slide: (index: number) => string;
     /** 演示文稿包含的幻灯片数量。 */
@@ -132,6 +136,62 @@ export type OfficeFileViewerMessages = {
     resizeNotes: string;
     /** 没有演讲者备注时显示的文案。 */
     emptyNotes: string;
+  };
+  /** 内容图片预览、下载和右键菜单相关文案。 */
+  imagePreview: {
+    /** 图片预览弹层的无障碍名称。 */
+    region: string;
+    /** 图片右键菜单的无障碍名称。 */
+    contextMenu: string;
+    /** 为可交互图片生成操作说明。 */
+    openLabel: (name?: string) => string;
+    /** 打开图片预览操作文案。 */
+    preview: string;
+    /** 下载原始图片操作文案。 */
+    download: string;
+    /** 顺时针旋转图片操作文案。 */
+    rotate: string;
+    /** 恢复图片初始显示状态的操作文案。 */
+    reset: string;
+    /** 关闭图片预览操作文案。 */
+    close: string;
+    /** 缩小图片操作文案。 */
+    zoomOut: string;
+    /** 放大图片操作文案。 */
+    zoomIn: string;
+    /** 当前图片缩放比例的无障碍名称。 */
+    zoomLevel: string;
+    /** 图片资源正在加载时显示的文案。 */
+    loading: string;
+    /** 图片资源加载失败时显示的文案。 */
+    loadFailed: string;
+    /** 重新加载图片资源的操作文案。 */
+    retry: string;
+    /** 图片下载失败时生成提示文案的函数。 */
+    downloadFailed: (reason: string) => string;
+  };
+  /** 文档超链接激活、触屏确认和降级相关文案。 */
+  hyperlink: {
+    /** 超链接右键菜单的无障碍名称。 */
+    contextMenu: string;
+    /** 打开外部链接的操作文案。 */
+    open: string;
+    /** 跳转到文档内部目标的操作文案。 */
+    jump: string;
+    /** 复制外部链接地址的操作文案。 */
+    copy: string;
+    /** 链接地址复制失败时显示的文案。 */
+    copyFailed: string;
+    /** 根据当前平台修饰键生成鼠标激活提示。 */
+    activationHint: (modifier: 'Ctrl' | 'Command') => string;
+    /** 触屏首次点击链接时显示的确认提示。 */
+    touchConfirm: string;
+    /** 内部链接目标不存在时报告的说明。 */
+    targetNotFound: string;
+    /** 链接因安全策略被拦截时报告的说明。 */
+    blocked: string;
+    /** 源格式链接暂时无法可靠解析时报告的说明。 */
+    unsupported: string;
   };
   /** 文档图片区域相关文案。 */
   document: {

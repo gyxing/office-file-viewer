@@ -11,6 +11,7 @@ import {
 import type {
   SpreadsheetCell,
   SpreadsheetColumnMetric,
+  SpreadsheetHyperlinkRange,
   SpreadsheetMerge,
   SpreadsheetRowMetric,
 } from '../spreadsheet/types';
@@ -31,6 +32,10 @@ import {
   resolveStyle,
   resolveXlsxMaxDigitWidth,
 } from './xlsxCellFormatting';
+import {
+  applyStaticXlsxFormulaHyperlink,
+  parseXlsxHyperlink,
+} from './parseXlsxHyperlinks';
 
 /** 单个 Sheet 流式解析后的稀疏结构。 */
 export type ParsedXlsxSheetStream = {
@@ -50,6 +55,8 @@ export type ParsedXlsxSheetStream = {
   cellImages: readonly WpsCellImagePlacement[];
   /** 当前工作表绘图部件的关系标识。 */
   drawingRelationshipId?: string;
+  /** 当前工作表声明的稀疏超链接范围。 */
+  hyperlinks: readonly SpreadsheetHyperlinkRange[];
 };
 
 /** 控制 Sheet 解析期间的 tile 输出，避免大 Sheet 聚合全部单元格。 */
@@ -134,6 +141,9 @@ export async function parseXlsxSheetStream(
   const pendingColumns: PendingColumnMetric[] = [];
   const merges: SpreadsheetMerge[] = [];
   const cellImages: WpsCellImagePlacement[] = [];
+  const hyperlinks: SpreadsheetHyperlinkRange[] = [];
+  const sheetRelationships =
+    context.relationships[descriptor.relsPath] ?? {};
   let rowCount = 1;
   let columnCount = 1;
   let declaredRowCount = Math.max(1, descriptor.rowCount);
@@ -254,6 +264,12 @@ export async function parseXlsxSheetStream(
       } else if (event.localName === 'drawing') {
         drawingRelationshipId =
           event.attributes.get('r:id') ?? event.attributes.get('id');
+      } else if (event.localName === 'hyperlink') {
+        const hyperlink = parseXlsxHyperlink(
+          event.attributes,
+          sheetRelationships,
+        );
+        if (hyperlink) hyperlinks.push(hyperlink);
       }
       continue;
     }
@@ -277,7 +293,7 @@ export async function parseXlsxSheetStream(
 
     const rawValue = pendingCell.value;
     const cellImageId = readWpsCellImageId(pendingCell.formula, rawValue);
-    const cell: SpreadsheetCell = {
+    const cell: SpreadsheetCell = applyStaticXlsxFormulaHyperlink({
       ref: pendingCell.ref,
       rowIndex: pendingCell.rowIndex,
       columnIndex: pendingCell.columnIndex,
@@ -295,7 +311,7 @@ export async function parseXlsxSheetStream(
       styleId: pendingCell.styleId,
       style: resolveStyle(pendingCell.styleId, context.styles),
       formula: pendingCell.formula || undefined,
-    };
+    });
     if (cell.value || cell.formula || hasVisibleEmptyCellStyle(cell)) {
       rowCount = Math.max(rowCount, cell.rowIndex);
       columnCount = Math.max(columnCount, cell.columnIndex);
@@ -404,5 +420,6 @@ export async function parseXlsxSheetStream(
       };
     }),
     drawingRelationshipId,
+    hyperlinks,
   };
 }

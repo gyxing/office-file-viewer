@@ -17,6 +17,8 @@ export type OfficeRelationship = {
   target: string;
   /** 关系定义的目标内容类型。 */
   type?: string;
+  /** External 表示目标位于 OOXML 包之外。 */
+  targetMode?: string;
 };
 
 /** 按关系文件路径和关系标识组织的 OOXML 关系。 */
@@ -89,7 +91,10 @@ export function normalizeRelationshipTarget(relsPath: string, target: string) {
   const baseDir = relsPath
     .replace(/\/_rels\/[^/]+\.rels$/, '')
     .replace(/\/[^/]+\.rels$/, '');
-  const parts = `${baseDir}/${target}`.split('/');
+  // OPC 以“/”开头的 Target 从包根目录解析，不能再拼接关系文件所在目录。
+  const parts = (
+    target.startsWith('/') ? target.slice(1) : `${baseDir}/${target}`
+  ).split('/');
   const normalized: string[] = [];
   parts.forEach((part) => {
     if (!part || part === '.') return;

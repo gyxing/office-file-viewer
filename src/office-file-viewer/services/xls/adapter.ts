@@ -1,3 +1,4 @@
+import type { OfficeArtHyperlinkTarget } from '../../shared/officeart';
 import type { PortableResource } from '../parsing/protocol/messages';
 import type {
   SpreadsheetCell,
@@ -8,7 +9,14 @@ import type {
   SpreadsheetSheet,
   SpreadsheetWorkbook,
 } from '../spreadsheet/types';
+import {
+  applyStaticXlsxFormulaHyperlink,
+  applyXlsxHyperlinkRanges,
+  createSpreadsheetExternalHyperlink,
+  internalHyperlink,
+} from '../xlsx/parseXlsxHyperlinks';
 import { BIFF8_RECORD } from './biff8/constants';
+import { decodeBiff8Formula } from './biff8/formulas';
 import { formatBiff8Value } from './biff8/numberFormats';
 import { parseBiff8Charts } from './chart/parseCharts';
 import { createPortableImageResource } from './drawing/createPortableImageResource';
@@ -39,6 +47,21 @@ const DEFAULT_COLUMN_PIXELS = 64;
 const DEFAULT_ROW_PIXELS = 20;
 /** 一英寸包含的 EMU 数量。 */
 const EMUS_PER_INCH = 914400;
+
+/** 将宿主无关的 OfficeArt 目标转换为电子表格内部或外部链接。 */
+export function spreadsheetHyperlinkFromOfficeArt(
+  source: OfficeArtHyperlinkTarget | undefined,
+) {
+  if (!source) return undefined;
+  if (source.target) {
+    const target =
+      source.location && !source.target.includes('#')
+        ? `${source.target}#${source.location}`
+        : source.target;
+    return createSpreadsheetExternalHyperlink(target);
+  }
+  return source.location ? internalHyperlink(source.location) : undefined;
+}
 
 function columnLabel(index: number) {
   let value = index;
@@ -249,6 +272,10 @@ function computeUsedRange(sheet: Biff8Worksheet) {
     maxRow = Math.max(maxRow, merge.endRow);
     maxColumn = Math.max(maxColumn, merge.endColumn);
   }
+  for (const hyperlink of sheet.hyperlinks) {
+    maxRow = Math.max(maxRow, hyperlink.endRow - 1);
+    maxColumn = Math.max(maxColumn, hyperlink.endColumn - 1);
+  }
   return { maxRow, maxColumn };
 }
 
@@ -272,7 +299,7 @@ export function adaptBiff8Cell(
     xfIndex === undefined ? undefined : workbook.globals.cellFormats[xfIndex];
   const rawValue = source?.value;
   const format = xf ? workbook.globals.formats.get(xf.formatIndex) : undefined;
-  return {
+  return applyStaticXlsxFormulaHyperlink({
     ref: cellRef(row, column),
     rowIndex: row + 1,
     columnIndex: column + 1,
@@ -285,7 +312,7 @@ export function adaptBiff8Cell(
     style: resolveCellStyle(xf, workbook),
     formula: source?.formula,
     formulaTokens: source?.formulaTokens,
-  };
+  });
 }
 
 /** 把源数据适配为 `adaptMerges` 返回的标准模型。 */
@@ -378,6 +405,7 @@ function adaptWorksheet(
     };
   });
   const merges = adaptMerges(sheet, cells);
+  applyXlsxHyperlinkRanges(cells, sheet.hyperlinks);
   const endRef = cellRef(maxRow, maxColumn);
   return {
     id: sheet.descriptor.id,
@@ -397,6 +425,7 @@ function adaptWorksheet(
     columns,
     rows,
     merges,
+    hyperlinks: sheet.hyperlinks,
     images: [],
     charts: [],
   };
@@ -504,6 +533,7 @@ export function adaptBiff8WorksheetSparse(
       endColumn: merge.endColumn + 1,
     };
   });
+  applyXlsxHyperlinkRanges(cellByRef, sheet.hyperlinks);
   return {
     rowCount,
     columnCount,
@@ -520,7 +550,25 @@ export function adaptBiff8WorksheetSparse(
     columns: [...columnMetrics.values()],
     cells,
     merges,
+    hyperlinks: sheet.hyperlinks,
   };
+}
+
+/** 把 BIFF8 静态定义名称解码为工作簿内部导航可消费的地址。 */
+export function adaptBiff8DefinedNames(globals: Biff8Workbook['globals']) {
+  return Object.fromEntries(
+    globals.definedNames.flatMap((definedName) => {
+      const decoded = decodeBiff8Formula(definedName.tokens, {
+        row: 0,
+        column: 0,
+        definedNames: globals.definedNames,
+        sheets: globals.sheets,
+        externalSheets: globals.externalSheets,
+      });
+      const location = decoded.formula?.replace(/^=/, '');
+      return location ? [[definedName.name, location] as const] : [];
+    }),
+  );
 }
 
 /** 将 BIFF8 中间模型适配为 XLSX 预览器复用的通用工作簿。 */
@@ -530,6 +578,7 @@ export function adaptBiff8Workbook(source: Biff8Workbook): SpreadsheetWorkbook {
       const sheet = adaptBiff8Sheet(source, descriptor);
       return sheet ? [sheet] : [];
     }),
+    definedNames: adaptBiff8DefinedNames(source.globals),
     warnings: source.warnings.length ? source.warnings : undefined,
   };
 }
@@ -763,6 +812,7 @@ export async function attachBiff8DrawingImages(
           y: from.y,
           width: Math.max(1, to.x - from.x),
           height: Math.max(1, to.y - from.y),
+          hyperlink: spreadsheetHyperlinkFromOfficeArt(image.hyperlink),
         });
       } catch (error) {
         warnings.push({
@@ -817,6 +867,7 @@ export async function attachBiff8DrawingImages(
         y: from.y,
         width,
         height,
+        hyperlink: spreadsheetHyperlinkFromOfficeArt(shape.hyperlink),
       });
     }
   }
@@ -877,6 +928,7 @@ export function attachBiff8Charts(
         y: from.y,
         width: Math.max(1, to.x - from.x),
         height: Math.max(1, to.y - from.y),
+        hyperlink: spreadsheetHyperlinkFromOfficeArt(item.hyperlink),
       });
       if (item.previewImageId) {
         targetSheet.images = targetSheet.images.filter(

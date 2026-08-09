@@ -7,6 +7,7 @@ import {
   type OfficeResourceSource,
 } from '../../services/resource-store';
 import { OfficeChartView } from '../../shared/chart/OfficeChartView';
+import { useOfficeHyperlink } from '../../shared/hyperlink';
 import { ImageRenderer } from './renderers/ImageRenderer';
 import { colorWithOpacity } from './renderers/paint';
 import { ShapeRenderer } from './renderers/ShapeRenderer';
@@ -22,10 +23,13 @@ type PptxSlideProps = {
   zoom: number;
   /** 内容变化时用于刷新渲染结果的键。 */
   renderKey?: string;
+  /** 是否允许幻灯片内部对象响应链接交互。 */
+  interactive?: boolean;
 };
 
 const ChartFrame = memo(function ChartFrame({
   element,
+  interactive,
 }: {
   /** 当前负责渲染的演示文稿元素。 */
   element: Extract<
@@ -35,7 +39,14 @@ const ChartFrame = memo(function ChartFrame({
       type: 'chart';
     }
   >;
+  /** 是否允许当前图表响应链接交互。 */
+  interactive: boolean;
 }) {
+  const hyperlinkProps = useOfficeHyperlink<HTMLDivElement>({
+    hyperlink: element.hyperlink,
+    source: { type: 'shape', id: element.id },
+    interactive,
+  });
   const snapshot = useOfficeResourceUrl(element.snapshotSource);
   const chart = useMemo(
     () =>
@@ -55,7 +66,11 @@ const ChartFrame = memo(function ChartFrame({
   );
 
   return (
-    <div className="office-file-pptx-chart-frame" style={frameStyle}>
+    <div
+      {...hyperlinkProps}
+      className="office-file-pptx-chart-frame"
+      style={frameStyle}
+    >
       <OfficeChartView
         chart={chart}
         width={element.width}
@@ -66,7 +81,12 @@ const ChartFrame = memo(function ChartFrame({
 });
 
 /** 渲染PPTX幻灯片。 */
-function PptxSlideComponent({ slide, zoom, renderKey }: PptxSlideProps) {
+function PptxSlideComponent({
+  slide,
+  zoom,
+  renderKey,
+  interactive = true,
+}: PptxSlideProps) {
   const scale = zoom / 100;
   const backgroundSource = useMemo<OfficeResourceSource | undefined>(
     () =>
@@ -121,6 +141,7 @@ function PptxSlideComponent({ slide, zoom, renderKey }: PptxSlideProps) {
                   key={element.id}
                   element={element}
                   renderKey={slideRenderKey}
+                  interactive={interactive}
                 />
               );
             case 'shape':
@@ -129,14 +150,33 @@ function PptxSlideComponent({ slide, zoom, renderKey }: PptxSlideProps) {
                   key={element.id}
                   element={element}
                   renderKey={slideRenderKey}
+                  interactive={interactive}
                 />
               );
             case 'image':
-              return <ImageRenderer key={element.id} element={element} />;
+              return (
+                <ImageRenderer
+                  key={element.id}
+                  element={element}
+                  interactive={interactive}
+                />
+              );
             case 'table':
-              return <TableRenderer key={element.id} element={element} />;
+              return (
+                <TableRenderer
+                  key={element.id}
+                  element={element}
+                  interactive={interactive}
+                />
+              );
             case 'chart':
-              return <ChartFrame key={element.id} element={element} />;
+              return (
+                <ChartFrame
+                  key={element.id}
+                  element={element}
+                  interactive={interactive}
+                />
+              );
             case 'unsupported':
               return <UnsupportedRenderer key={element.id} element={element} />;
             default:

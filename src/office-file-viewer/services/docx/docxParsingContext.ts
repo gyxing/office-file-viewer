@@ -19,6 +19,7 @@ import {
   parseXml,
 } from '../../shared/ooxml/xml';
 import type { OfficeResourceSource } from '../resource-store/types';
+import type { WordBookmarkTarget } from '../word/types';
 import {
   readDocxNumbering,
   readDocxNumberingReference,
@@ -75,6 +76,8 @@ export type DocxParseContext = {
   styles: DocxStyleCatalog;
   /** 解析过程中已收集的图片资源。 */
   images: DocxImage[];
+  /** 解析过程中按源名称收集的书签定位信息。 */
+  bookmarks: Record<string, WordBookmarkTarget>;
   /** 下一张图片使用的零基索引。 */
   imageIndex: number;
   /** 图表在所属图表集合中的索引。 */
@@ -1123,6 +1126,7 @@ export function createDocxParseContext(
     numbering: readDocxNumbering(entries),
     styles,
     images: [],
+    bookmarks: {},
     imageIndex: 0,
     chartIndex: 0,
     shapeIndex: 0,

@@ -1,4 +1,5 @@
 import type { OfficeChartModel } from '../../shared/ooxml/charts';
+import type { OfficeHyperlink } from '../../shared/hyperlink';
 import type { OfficeResourceSource } from '../resource-store';
 
 /** 描述电子表格标准模型过程中可继续处理的警告。 */
@@ -17,6 +18,8 @@ export type SpreadsheetWarning = {
 export type SpreadsheetWorkbook = {
   /** 按工作簿顺序排列的工作表。 */
   sheets: SpreadsheetSheet[];
+  /** 工作簿级定义名称到静态目标地址的映射。 */
+  definedNames?: Record<string, string>;
   /** 解析时产生但不阻止继续预览的警告；未提供表示没有警告。 */
   warnings?: SpreadsheetWarning[];
   /** 工作簿持有且需要在销毁时释放的浏览器资源。 */
@@ -73,6 +76,24 @@ export type SpreadsheetSheet = {
   images: SpreadsheetImage[];
   /** 工作表包含的浮动图表。 */
   charts: SpreadsheetChart[];
+  /** 工作表声明的稀疏超链接范围。 */
+  hyperlinks?: SpreadsheetHyperlinkRange[];
+};
+
+/** 工作表中一个可绑定到单元格窗口的超链接范围。 */
+export type SpreadsheetHyperlinkRange = {
+  /** 源文件声明的 A1 范围。 */
+  ref: string;
+  /** 范围起始行索引。 */
+  startRow: number;
+  /** 范围起始列索引。 */
+  startColumn: number;
+  /** 范围结束行索引。 */
+  endRow: number;
+  /** 范围结束列索引。 */
+  endColumn: number;
+  /** 范围内单元格共享的标准超链接。 */
+  hyperlink: OfficeHyperlink;
 };
 
 /** 工作表列的位置、宽度和隐藏状态。 */
@@ -129,6 +150,8 @@ export type SpreadsheetCell = {
   rowSpan?: number;
   /** 是否因合并区域而隐藏该非主单元格。 */
   hiddenByMerge?: boolean;
+  /** 源文件为单元格声明的超链接。 */
+  hyperlink?: OfficeHyperlink;
 };
 
 /** 工作表合并区域及其行列边界。 */
@@ -179,6 +202,8 @@ export type SpreadsheetImage = {
   width: number;
   /** 高度，单位为标准化渲染像素。 */
   height: number;
+  /** 源文件为图片声明的超链接。 */
+  hyperlink?: OfficeHyperlink;
 };
 
 /** 工作表浮动图表的模型、锚点和显示尺寸。 */
@@ -201,6 +226,8 @@ export type SpreadsheetChart = {
   width: number;
   /** 高度，单位为标准化渲染像素。 */
   height: number;
+  /** 源文件为图表对象声明的超链接。 */
+  hyperlink?: OfficeHyperlink;
 };
 
 /** 描述单元格从源文件读取的对角边框；方向始终相对于完整单元格矩形。 */

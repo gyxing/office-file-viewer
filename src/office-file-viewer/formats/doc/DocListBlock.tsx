@@ -29,7 +29,11 @@ function DocListBlockComponent({ block }: DocListBlockProps) {
           className="office-file-doc-list__item"
           style={itemStyle}
         >
-          <DocInlineContent inlines={item.inlines} fallback={item.text} />
+          <DocInlineContent
+            inlines={item.inlines}
+            fallback={item.text}
+            sourceId={item.id}
+          />
         </li>
       ))}
     </Tag>

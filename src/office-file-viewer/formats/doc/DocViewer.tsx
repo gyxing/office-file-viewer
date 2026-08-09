@@ -4,6 +4,7 @@ import {
   paginateDocBlocks,
   type PaginatedDocPage,
 } from '../../services/doc/docPagination';
+import { docBookmarkMarkerIdsFromBlock } from '../../services/doc/readDocBookmarks';
 import type { DocDocument } from '../../services/doc/types';
 import type { OfficeFileViewerPreviewState } from '../../services/parsing/internalTypes';
 import { collectWordPerformanceStats } from '../../services/word/collectWordPerformanceStats';
@@ -11,6 +12,7 @@ import { createMaterializedWordPageSource } from '../../services/word/createMate
 import { createMemoryWordOutlineProvider } from '../../services/word/createMemoryWordOutlineProvider';
 import { useExternalStoreSnapshot } from '../../shared/react/useExternalStoreSnapshot';
 import { OfficePreviewEmpty } from '../common/OfficePreviewEmpty';
+import { useWordTargetNavigation } from '../word-hyperlink/useWordTargetNavigation';
 import { useWordOutlinePresence } from '../word-outline/useWordOutlinePresence';
 import { WordOutlineSidebar } from '../word-outline/WordOutlineSidebar';
 import type { WordPageNavigationController } from '../word-pages/types';
@@ -127,6 +129,7 @@ function DocViewerComponent({
           docPage.blocks.flatMap((block) => [
             block.id,
             ...(block.sourceBlockId ? [block.sourceBlockId] : []),
+            ...docBookmarkMarkerIdsFromBlock(block),
           ]),
       }),
     [materializedPages, page?.minHeight],
@@ -176,6 +179,15 @@ function DocViewerComponent({
   const { profile: materializedProfile, reportPaginationDuration } =
     useWordPerformanceProfile(documentSessionId, performanceStats);
   const profile = source?.getPerformanceProfile() ?? materializedProfile;
+  useWordTargetNavigation({
+    bookmarks: documentMetadata?.bookmarks,
+    scrollContainerRef,
+    pageMode: profile.pageMode,
+    pageSource,
+    blockPageIndex,
+    pageNavigationControllerRef,
+    documentSessionId,
+  });
   useEffect(() => {
     if (!source) reportPaginationDuration(pagination.durationMs);
   }, [pagination.durationMs, reportPaginationDuration, source]);

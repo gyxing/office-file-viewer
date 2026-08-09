@@ -1,3 +1,4 @@
+import type { OfficeArtHyperlinkTarget } from '../../../shared/officeart';
 import type { SpreadsheetWarning } from '../../spreadsheet/types';
 export type { OfficeArtRecord } from '../../../shared/officeart';
 
@@ -50,6 +51,8 @@ export type Biff8DrawingImage = {
   compressed?: boolean;
   /** 解析时产生但不阻止继续预览的警告。 */
   warnings: SpreadsheetWarning[];
+  /** OfficeArt 形状属性中声明的超链接目标。 */
+  hyperlink?: OfficeArtHyperlinkTarget;
 };
 
 /** BIFF8 OfficeArt 形状及其锚点和外观。 */
@@ -72,6 +75,8 @@ export type Biff8DrawingShape = {
   lineWidth?: number;
   /** 对象在工作表或画布中的定位锚点。 */
   anchor: Biff8Anchor;
+  /** OfficeArt 形状属性中声明的超链接目标。 */
+  hyperlink?: OfficeArtHyperlinkTarget;
 };
 
 /** 完成 DIB 解码的 RGBA 位图。 */

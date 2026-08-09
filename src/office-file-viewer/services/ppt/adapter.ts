@@ -22,8 +22,10 @@ export function adaptPptSlide(
   slide: PptSlideModel,
   masters: Map<number, PptMasterModel>,
 ): SlideModel {
-  const masterElements =
-    masters.get(slide.masterId ?? Number.NaN)?.elements ?? [];
+  const masterElements = (
+    masters.get(slide.masterId ?? Number.NaN)?.elements ?? []
+  ).filter((element) => element.type !== 'text' || !element.placeholderType);
+  // 母版标题/正文占位符只提供编辑提示和默认样式，不能作为放映正文继承到每一页。
   const inherited = masterElements.map((element, index) =>
     cloneMasterElement(element, slide.id, index),
   );

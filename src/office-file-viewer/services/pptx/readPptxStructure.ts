@@ -10,6 +10,7 @@ import {
   descendantByLocalName,
   parseXml,
 } from '../../shared/ooxml/xml';
+import type { OfficeArchiveResourcePolicy } from '../../shared/resource/OfficeResourcePolicy';
 import {
   convertOfficeImageBlob,
   officeImageMimeType,
@@ -107,8 +108,9 @@ export function createPptxArchiveProfile(
 export async function profilePptxArchive(
   file: File,
   signal?: AbortSignal,
+  resourcePolicy?: OfficeArchiveResourcePolicy,
 ): Promise<ProfiledPptxArchive> {
-  const reader = await openOfficeArchive(file, { signal });
+  const reader = await openOfficeArchive(file, { signal, resourcePolicy });
   try {
     return {
       reader,
@@ -212,14 +214,16 @@ export async function readPptxStructure(
   );
   const descriptors: PptxSlideDescriptor[] = slideIds.map((node, index) => {
     const relId = attr(node, 'r:id');
-    const target = relId ? presentationRels[relId] : undefined;
+    const target = relId ? presentationRels[relId]?.target : undefined;
     const slidePath = target ?? `ppt/slides/slide${index + 1}.xml`;
     const relsPath = slidePath
       .replace(/^ppt\/slides\//, 'ppt/slides/_rels/')
       .concat('.rels');
     const notesPath = Object.values(
       packageState.relationships[relsPath] ?? {},
-    ).find((value) => value.includes('notesSlides/'));
+    ).find((relationship) =>
+      relationship.target.includes('notesSlides/'),
+    )?.target;
     const slideSize =
       archiveEntries.find((entry) => entry.path === slidePath)
         ?.uncompressedSize ?? 0;

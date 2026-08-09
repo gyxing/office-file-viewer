@@ -80,7 +80,11 @@ function DocParagraphBlockComponent({ block }: DocParagraphBlockProps) {
       {tocInlines ? (
         <>
           <span className="office-file-doc-paragraph__toc-title">
-            <DocInlineContent inlines={tocInlines.left} fallback="" />
+            <DocInlineContent
+              inlines={tocInlines.left}
+              fallback=""
+              sourceId={`${block.id}-toc-left`}
+            />
           </span>
           <span
             className="office-file-doc-paragraph__toc-leader"
@@ -88,13 +92,18 @@ function DocParagraphBlockComponent({ block }: DocParagraphBlockProps) {
             aria-hidden="true"
           />
           <span className="office-file-doc-paragraph__toc-page">
-            <DocInlineContent inlines={tocInlines.right} fallback="" />
+            <DocInlineContent
+              inlines={tocInlines.right}
+              fallback=""
+              sourceId={`${block.id}-toc-right`}
+            />
           </span>
         </>
       ) : (
         <DocInlineContent
           inlines={block.inlines}
           fallback={block.text}
+          sourceId={block.id}
           preserveBlockTypography={isTitle || isHeading}
         />
       )}

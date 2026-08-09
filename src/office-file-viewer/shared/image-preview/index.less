@@ -1,0 +1,213 @@
+.office-file-previewable-image[data-office-image-previewable='true'] {
+  cursor: zoom-in;
+}
+
+.office-file-previewable-image:focus-visible {
+  outline: 2px solid var(--office-file-control-hover);
+  outline-offset: 2px;
+}
+
+.office-file-image-context-menu-layer,
+.office-file-image-preview-layer {
+  position: absolute;
+  inset: 0;
+}
+
+.office-file-image-context-menu-layer {
+  z-index: var(--office-file-overlay-z-index);
+}
+
+.office-file-image-context-menu {
+  position: absolute;
+  box-sizing: border-box;
+  width: 168px;
+  padding: 4px;
+  overflow: hidden;
+  color: #1f2937;
+  background: #fff;
+  border: 1px solid #dfe4ec;
+  border-radius: 7px;
+  box-shadow: 0 8px 24px rgb(15 23 42 / 22%);
+}
+
+.office-file-image-context-menu__item {
+  display: flex;
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 10px;
+  align-items: center;
+  gap: 8px;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.office-file-image-context-menu__item:hover,
+.office-file-image-context-menu__item:focus-visible {
+  color: #0958d9;
+  background: #eaf4ff;
+  outline: 0;
+}
+
+.office-file-image-context-menu__item:disabled {
+  color: #a8afb9;
+  background: transparent;
+  cursor: wait;
+}
+
+.office-file-image-context-menu__item .office-file-icon {
+  flex: none;
+  font-size: 16px;
+}
+
+.office-file-image-context-menu__error {
+  padding: 6px 10px;
+  color: #cf1322;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.office-file-image-preview-layer {
+  z-index: calc(var(--office-file-overlay-z-index) + 10);
+  color: #f8fafc;
+  background: rgb(8 15 29 / 78%);
+  animation: office-file-image-preview-enter 160ms ease-out;
+}
+
+.office-file-image-preview-dialog {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  outline: 0;
+}
+
+.office-file-image-preview-dialog__header {
+  display: flex;
+  min-height: 56px;
+  padding: 10px 14px;
+  align-items: center;
+  justify-content: space-between;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  background: rgb(8 15 29 / 50%);
+  border-bottom: 1px solid rgb(255 255 255 / 12%);
+}
+
+.office-file-image-preview-dialog__title {
+  flex: 1 1 180px;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.office-file-image-preview-dialog__toolbar {
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.office-file-image-preview-dialog__toolbar .office-file-button {
+  color: #f8fafc;
+  background: rgb(255 255 255 / 9%);
+  border-color: rgb(255 255 255 / 24%);
+}
+
+.office-file-image-preview-dialog__toolbar
+  .office-file-button:not(:disabled):hover {
+  color: #fff;
+  background: rgb(255 255 255 / 17%);
+  border-color: rgb(255 255 255 / 44%);
+}
+
+.office-file-image-preview-dialog__toolbar .office-file-button:disabled {
+  color: rgb(248 250 252 / 38%);
+  background: rgb(255 255 255 / 4%);
+  border-color: rgb(255 255 255 / 12%);
+}
+
+.office-file-image-preview-dialog__zoom {
+  width: 48px;
+  color: #f8fafc;
+  font-size: 13px;
+  text-align: center;
+}
+
+.office-file-image-preview-dialog__viewport {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  cursor: default;
+  touch-action: none;
+}
+
+.office-file-image-preview-dialog__image {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  max-width: none;
+  max-height: none;
+  user-select: none;
+  cursor: grab;
+  pointer-events: auto;
+  will-change: transform;
+}
+
+.office-file-image-preview-dialog__viewport[data-dragging='true']
+  .office-file-image-preview-dialog__image {
+  cursor: grabbing;
+}
+
+.office-file-image-preview-dialog__status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+  color: #e2e8f0;
+}
+
+.office-file-image-preview-dialog__error {
+  flex: none;
+  padding: 7px 14px;
+  color: #ffccc7;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
+  background: rgb(207 19 34 / 22%);
+}
+
+@keyframes office-file-image-preview-enter {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .office-file-image-preview-layer {
+    animation: none;
+  }
+}

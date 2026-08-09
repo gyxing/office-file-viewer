@@ -1,5 +1,6 @@
 import type { OfficeEntryMap } from '../../shared/ooxml/archive';
 import type { OfficeArchiveReader } from '../../shared/ooxml/OfficeArchiveReader';
+import type { OfficeRelationship } from '../../shared/ooxml/media';
 import type {
   GradientFill,
   PresentationSlideDescriptor,
@@ -12,7 +13,10 @@ import type {
 import type { OfficeResourceSource } from '../resource-store';
 
 /** PPTX 包内关系文件按路径组织的目标映射。 */
-export type RelationshipMap = Record<string, Record<string, string>>;
+export type RelationshipMap = Record<
+  string,
+  Record<string, OfficeRelationship>
+>;
 
 /** PPTX 包解析期间共享且可按需补充的轻量状态。 */
 export type PptxPackageState = {

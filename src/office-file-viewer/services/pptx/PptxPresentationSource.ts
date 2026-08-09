@@ -1,3 +1,4 @@
+import type { OfficeArchiveResourcePolicy } from '../../shared/resource/OfficeResourcePolicy';
 import { createContentStore } from '../content-store/createContentStore';
 import type { OfficeContentStore } from '../content-store/types';
 import type { OfficeSourcePreviewFactory } from '../parsing/formatParserRegistry';
@@ -286,14 +287,18 @@ export async function createPptxPresentationSourceFromArchive(
 /** 仅在 PPTX 画像命中大文件阈值时创建按页预览源。 */
 export const tryCreatePptxSourcePreview: OfficeSourcePreviewFactory = async (
   file,
-  { documentSession, emitProgress, emitPartial },
+  { documentSession, emitProgress, emitPartial, resourcePolicy },
 ) => {
   emitProgress({
     stage: 'container',
     percent: 0.02,
     message: '正在读取 PPTX 包目录',
   });
-  const archive = await profilePptxArchive(file, documentSession.signal);
+  const archive = await profilePptxArchive(
+    file,
+    documentSession.signal,
+    resourcePolicy,
+  );
   if (archive.profile.performance.slideMode !== 'lazy') {
     await archive.reader.close();
     return undefined;
@@ -331,8 +336,9 @@ export async function createPptxPresentationSource(
   file: File,
   sessionId: string,
   signal?: AbortSignal,
+  resourcePolicy?: OfficeArchiveResourcePolicy,
 ) {
-  const archive = await profilePptxArchive(file, signal);
+  const archive = await profilePptxArchive(file, signal, resourcePolicy);
   try {
     return await createPptxPresentationSourceFromArchive(
       archive,

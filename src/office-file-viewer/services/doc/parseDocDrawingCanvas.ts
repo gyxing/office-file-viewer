@@ -105,6 +105,8 @@ const LINE_FLAGS = 0x01ff;
 const CUSTOM_VERTICES = 0x0145;
 /** OfficeArt 自定义几何路径段属性的编号。 */
 const CUSTOM_SEGMENTS = 0x0146;
+/** OfficeArt 形状超链接复合属性的编号。 */
+const SHAPE_HYPERLINK = 0x0382;
 
 /** 安全读取小端无符号 32 位整数。 */
 function readUint32(bytes: Uint8Array, offset: number) {
@@ -154,6 +156,17 @@ function readProperties(record: OfficeArtRecord | undefined) {
 /** 查找形状容器内指定类型的直属记录。 */
 function child(record: OfficeArtRecord, type: number) {
   return record.children?.find((item) => item.type === type);
+}
+
+function containsShapeHyperlink(records: readonly OfficeArtRecord[]): boolean {
+  return records.some(
+    (record) =>
+      ((record.type === OFFICE_ART_RECORD.FOPT ||
+        record.type === OFFICE_ART_RECORD.SECONDARY_FOPT ||
+        record.type === OFFICE_ART_RECORD.TERTIARY_FOPT) &&
+        readProperties(record).has(SHAPE_HYPERLINK)) ||
+      Boolean(record.children && containsShapeHyperlink(record.children)),
+  );
 }
 
 /** 读取 OfficeArt 布尔属性的“是否使用”和实际值位。 */
@@ -734,6 +747,8 @@ export type DocDrawingCanvasExtraction = {
   images: DocImage[];
   /** 按绘图顺序排列的图片或空占位。 */
   slots: Array<DocImage | undefined>;
+  /** 当前 SVG 画布结构无法精确绑定子形状交互时产生的提示。 */
+  warnings: string[];
 };
 
 /**
@@ -749,7 +764,16 @@ export function extractDocDrawingCanvases(
 ): DocDrawingCanvasExtraction {
   const anchors = parseSpaAnchors(tableStream, fib);
   const drawingRecords = parseMainDrawingRecords(tableStream, fib);
-  const emptyResult: DocDrawingCanvasExtraction = { images: [], slots: [] };
+  const warnings = containsShapeHyperlink(drawingRecords)
+    ? [
+        'UNSUPPORTED_HYPERLINK: DOC/WPS OfficeArt 子形状链接未绑定；当前画布以单张 SVG 图片渲染，不能安全扩大点击区域。',
+      ]
+    : [];
+  const emptyResult: DocDrawingCanvasExtraction = {
+    images: [],
+    slots: [],
+    warnings,
+  };
   if (!anchors.length || !drawingRecords.length) return emptyResult;
 
   const images: DocImage[] = [];
@@ -819,5 +843,5 @@ export function extractDocDrawingCanvases(
     index = Math.max(index + 1, nextIndex);
   }
 
-  return { images, slots };
+  return { images, slots, warnings };
 }

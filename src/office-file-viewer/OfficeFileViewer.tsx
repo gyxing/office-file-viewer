@@ -18,7 +18,16 @@ import {
   isSpreadsheetPreviewKind,
   type ParsedOfficeFile,
 } from './services/preview';
+import type { OfficeFileViewerWarning } from './services/previewWarnings';
 import { OfficeResourceStoreProvider } from './services/resource-store';
+import {
+  OfficeHyperlinkProvider,
+  type OfficeHyperlinkActivateEvent,
+} from './shared/hyperlink';
+import {
+  OfficeImagePreviewProvider,
+  type OfficeFileViewerImagePreviewConfig,
+} from './shared/image-preview';
 import { OfficeParseStatus } from './shell/ParseStatus';
 import {
   OfficePreviewStage,
@@ -32,8 +41,15 @@ import {
 } from './shell/Toolbar';
 import { OFFICE_DEFAULT_ZOOM } from './shell/constants';
 import { useOfficeViewerController } from './shell/controller/useOfficeViewerController';
+import type {
+  OfficeFileViewerViewState,
+  OfficeFileViewerViewStateChange,
+} from './shell/viewState';
 
-export type { OfficeFileViewerUri } from './services/input/normalizeOfficeFileUri';
+export type {
+  OfficeFileViewerUri,
+  OfficeFileViewerUriLoader,
+} from './services/input/normalizeOfficeFileUri';
 
 /** Office文件预览器组件属性。 */
 export type OfficeFileViewerProps = {
@@ -45,6 +61,15 @@ export type OfficeFileViewerProps = {
   defaultFileName?: string;
   /** 组件首次渲染时采用的缩放比例。 */
   defaultZoom?: number;
+  /** 非受控模式下各视图字段的统一初始值。 */
+  defaultViewState?: Partial<OfficeFileViewerViewState>;
+  /** 由宿主按字段控制的视图状态。 */
+  viewState?: Partial<OfficeFileViewerViewState>;
+  /** 用户请求改变视图状态时触发。 */
+  onViewStateChange?: (
+    state: OfficeFileViewerViewState,
+    change: OfficeFileViewerViewStateChange,
+  ) => void;
   /** 非受控模式下演讲者备注是否默认展开。 */
   defaultShowSpeakerNotes?: boolean;
   /** 受控模式下演讲者备注是否展开。 */
@@ -63,8 +88,16 @@ export type OfficeFileViewerProps = {
   onPreviewReady?: (info: OfficePreviewReadyInfo, file: File) => void;
   /** 文件加载或解析失败时触发的回调。 */
   onError?: (error: Error, file?: File) => void;
+  /** 解析降级或格式兼容警告产生时触发。 */
+  onWarning?: (warning: OfficeFileViewerWarning, file: File) => void;
   /** 传递给底层解析会话的运行配置。 */
   parseOptions?: OfficeParseOptions;
+  /** 控制内容图片的双击预览、下载和自定义右键菜单，默认全部开启。 */
+  imagePreview?: OfficeFileViewerImagePreviewConfig;
+  /** 是否启用源文档声明的超链接，默认开启。 */
+  hyperlink?: boolean;
+  /** 链接被有效激活时触发，可阻止组件执行默认导航。 */
+  onHyperlinkActivate?: (event: OfficeHyperlinkActivateEvent) => void;
   /** 解析阶段或完成度变化时触发的进度回调。 */
   onParseProgress?: (progress: ParseProgress) => void;
 };
@@ -74,6 +107,9 @@ function OfficeFileViewerContent({
   uri,
   defaultFileName,
   defaultZoom = OFFICE_DEFAULT_ZOOM,
+  defaultViewState,
+  viewState,
+  onViewStateChange,
   defaultShowSpeakerNotes = false,
   showSpeakerNotes,
   onSpeakerNotesVisibilityChange,
@@ -83,7 +119,11 @@ function OfficeFileViewerContent({
   onFileParsed,
   onPreviewReady,
   onError,
+  onWarning,
   parseOptions,
+  imagePreview,
+  hyperlink = true,
+  onHyperlinkActivate,
   onParseProgress,
 }: Omit<OfficeFileViewerProps, 'locale'>) {
   const messages = useOfficeFileViewerMessages();
@@ -91,12 +131,16 @@ function OfficeFileViewerContent({
     useOfficeViewerController({
       uri,
       defaultZoom,
+      defaultViewState,
+      viewState,
+      onViewStateChange,
       defaultShowSpeakerNotes,
       showSpeakerNotes,
       onSpeakerNotesVisibilityChange,
       onFileParsed,
       onPreviewReady,
       onError,
+      onWarning,
       parseOptions,
       onParseProgress,
       messages,
@@ -205,7 +249,11 @@ function OfficeFileViewerContent({
   );
   let previewStageState: OfficePreviewStageState;
   if (error) {
-    previewStageState = { kind: 'error', message: error };
+    previewStageState = {
+      kind: 'error',
+      message: error,
+      retry: meta.canRetry ? actions.retry : undefined,
+    };
   } else if (loading && !meta.hasRenderableContent) {
     previewStageState = { kind: 'loading', tip: meta.loadingTip };
   } else if (!preview) {
@@ -249,33 +297,53 @@ function OfficeFileViewerContent({
       ref={viewerRef}
       className={['office-file-viewer', className].filter(Boolean).join(' ')}
       style={viewerStyle}
+      tabIndex={-1}
     >
-      <div className="office-file-viewer__layout">
-        <OfficeToolbar
-          fileName={displayedFileName}
+      <OfficeResourceStoreProvider store={resourceStore}>
+        <OfficeHyperlinkProvider
+          containerRef={viewerRef}
+          enabled={hyperlink}
+          file={meta.currentFile}
           previewKind={meta.previewKind}
-          formatControls={formatControls}
-          zoomControls={zoomControls}
-          fullscreenControls={fullscreenControls}
-          onSelectFile={actions.selectFile}
-        />
-        <div className="office-file-viewer__content">
-          <OfficeResourceStoreProvider store={resourceStore}>
-            <OfficePreviewStage
-              state={previewStageState}
-              onCloseWordOutline={actions.closeWordOutline}
-              onSelectSlide={actions.selectSlide}
-              onSelectSheet={actions.selectSheet}
-            />
-          </OfficeResourceStoreProvider>
-          <OfficeParseStatus
-            progress={
-              loading && meta.hasRenderableContent ? parseProgress : undefined
-            }
-            warning={partialWarning}
-          />
-        </div>
-      </div>
+          sourceUrl={meta.sourceUrl}
+          sessionKey={preview?.sessionId}
+          onActivate={onHyperlinkActivate}
+          onWarning={onWarning}
+        >
+          <OfficeImagePreviewProvider
+            config={imagePreview}
+            sessionKey={preview?.sessionId}
+            containerRef={viewerRef}
+          >
+            <div className="office-file-viewer__layout">
+              <OfficeToolbar
+                fileName={displayedFileName}
+                previewKind={meta.previewKind}
+                formatControls={formatControls}
+                zoomControls={zoomControls}
+                fullscreenControls={fullscreenControls}
+                onSelectFile={actions.selectFile}
+              />
+              <div className="office-file-viewer__content">
+                <OfficePreviewStage
+                  state={previewStageState}
+                  onCloseWordOutline={actions.closeWordOutline}
+                  onSelectSlide={actions.selectSlide}
+                  onSelectSheet={actions.selectSheet}
+                />
+                <OfficeParseStatus
+                  progress={
+                    loading && meta.hasRenderableContent
+                      ? parseProgress
+                      : undefined
+                  }
+                  warning={partialWarning}
+                />
+              </div>
+            </div>
+          </OfficeImagePreviewProvider>
+        </OfficeHyperlinkProvider>
+      </OfficeResourceStoreProvider>
     </div>
   );
 }

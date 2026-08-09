@@ -1,6 +1,7 @@
 import React, { memo, useMemo } from 'react';
 import type { DocxShapeItem } from '../../services/docx/types';
 import { useOfficeResourceUrl } from '../../services/resource-store/useOfficeResourceUrl';
+import { useOfficeHyperlink } from '../../shared/hyperlink';
 import { DocxChartView } from './DocxChartView';
 import { DocxParagraph } from './DocxParagraph';
 import { DocxTableBlock } from './DocxTableBlock';
@@ -26,6 +27,10 @@ function DocxShapeItemRendererComponent({ item }: DocxShapeItemRendererProps) {
   const image = useOfficeResourceUrl(item.imageSrc);
   const path = useMemo(() => resolveShapePath(item), [item]);
   const drawAsSvg = Boolean(path) || item.kind === 'line';
+  const hyperlinkProps = useOfficeHyperlink<HTMLDivElement>({
+    hyperlink: item.hyperlink,
+    source: { type: 'shape', id: item.id },
+  });
   const justifyContent =
     item.textVerticalAlign === 'middle'
       ? 'center'
@@ -35,6 +40,7 @@ function DocxShapeItemRendererComponent({ item }: DocxShapeItemRendererProps) {
 
   return (
     <div
+      {...hyperlinkProps}
       className="office-file-docx-shape__item"
       data-resource-error={image.error ? 'true' : undefined}
       style={{

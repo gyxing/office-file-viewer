@@ -1,13 +1,4 @@
 import {
-  DocPaginationState,
-  type PaginatedDocPage,
-} from './docPagination';
-import {
-  createTimeBudget,
-  throwIfAborted,
-  yieldToMainThread,
-} from '../performance/mainThreadScheduler';
-import {
   resolveDocBlockResources,
   resolveDocMetadataResources,
 } from '../parsing/assembly/DocumentAssembler';
@@ -16,6 +7,11 @@ import type {
   PortableDocMetadata,
   PortableResource,
 } from '../parsing/protocol/messages';
+import {
+  createTimeBudget,
+  throwIfAborted,
+  yieldToMainThread,
+} from '../performance/mainThreadScheduler';
 import { WordPerformanceStatsCollector } from '../word/collectWordPerformanceStats';
 import { createProgressiveWordOutlineProvider } from '../word/createMemoryWordOutlineProvider';
 import { createWordPerformanceProfile } from '../word/performance';
@@ -29,6 +25,8 @@ import type {
 import { WordPageStore } from '../word/WordPageStore';
 import type { WordPreviewSource } from '../word/WordPreviewSource';
 import { estimateDocBlockBytes } from './chunkDocBlocks';
+import { DocPaginationState, type PaginatedDocPage } from './docPagination';
+import { docBookmarkMarkerIdsFromBlock } from './readDocBookmarks';
 import type { DocBlock, DocDocument } from './types';
 
 /** DOC 页面数据源的预览摘要。 */
@@ -251,6 +249,7 @@ export class DocWordPageSource
           page.blocks.flatMap((block) => [
             block.id,
             ...(block.sourceBlockId ? [block.sourceBlockId] : []),
+            ...docBookmarkMarkerIdsFromBlock(block),
           ]),
         ),
       ];

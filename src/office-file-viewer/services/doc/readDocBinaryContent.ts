@@ -17,6 +17,7 @@ import {
   readDocParagraphStyleChain,
   type DocStyleOutlineCatalog,
 } from './parseDocStyleOutline';
+import { readDocBookmarks } from './readDocBookmarks';
 import type { DocPage, DocTableBlock, DocTextStyle } from './types';
 
 function mergeBinaryTextStyle(
@@ -118,6 +119,12 @@ export function readDocFib(wordDocument: Uint8Array): DocFib {
     lcbPlcfBtePapx: readFibField(wordDocument, 262),
     fcSttbfFfn: readFibField(wordDocument, 274),
     lcbSttbfFfn: readFibField(wordDocument, 278),
+    fcSttbfBkmk: readFibField(wordDocument, 322),
+    lcbSttbfBkmk: readFibField(wordDocument, 326),
+    fcPlcfBkf: readFibField(wordDocument, 330),
+    lcbPlcfBkf: readFibField(wordDocument, 334),
+    fcPlcfBkl: readFibField(wordDocument, 338),
+    lcbPlcfBkl: readFibField(wordDocument, 342),
     fcClx: readFibField(wordDocument, 418),
     lcbClx: readFibField(wordDocument, 422),
     fcPlcSpaMom: readFibField(wordDocument, 474),
@@ -1421,6 +1428,8 @@ function readPieceSegment(
 ): DocTextSegment {
   return {
     text: readPieceText(wordDocument, piece),
+    charStart: piece.charStart,
+    charEnd: piece.charEnd,
     style,
   };
 }
@@ -1455,6 +1464,7 @@ export function readDocBinaryContent(input: {
     fib.fcPlfLfo,
     fib.lcbPlfLfo,
   );
+  const bookmarkResult = readDocBookmarks(tableStream, fib);
   const sections = readDocSections(wordDocument, tableStream, fib);
   const normalStyle = readInheritedParagraphStyle(
     new Uint8Array([0, 0]),
@@ -1486,6 +1496,8 @@ export function readDocBinaryContent(input: {
     normalStyle,
     outlineCatalog,
     numbering,
+    bookmarks: bookmarkResult.bookmarks,
+    bookmarkWarnings: bookmarkResult.warnings,
   };
 }
 

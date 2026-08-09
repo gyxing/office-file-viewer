@@ -1,7 +1,12 @@
 // TextRenderer 渲染 PPTX 文本框，并处理文本框形状、渐变填充、段落和 run 样式。
 import type { CSSProperties } from 'react';
 import React, { memo } from 'react';
-import type { TextElement, TextStyle } from '../../../services/pptx/types';
+import type {
+  TextElement,
+  TextRun,
+  TextStyle,
+} from '../../../services/pptx/types';
+import { useOfficeHyperlink } from '../../../shared/hyperlink';
 import {
   colorWithOpacity,
   gradientToSvgEndpoints,
@@ -16,6 +21,8 @@ type TextRendererProps = {
   element: TextElement;
   /** 内容变化时用于刷新渲染结果的键。 */
   renderKey: string;
+  /** 是否允许当前文本框及文字片段响应链接交互。 */
+  interactive: boolean;
 };
 
 function shadowToCss(element: TextElement) {
@@ -66,9 +73,83 @@ function lineStyle(dash?: string) {
   return 'dashed';
 }
 
+/** 渲染单个文字片段，使链接 Hook 不违反 React 循环调用约束。 */
+function TextRunRenderer({
+  run,
+  boxStyle,
+  sourceId,
+  interactive,
+}: {
+  /** 当前文字片段。 */
+  run: TextRun;
+  /** 文本框继承的基础样式。 */
+  boxStyle: TextStyle;
+  /** 当前片段在文稿中的稳定来源标识。 */
+  sourceId: string;
+  /** 是否允许当前文字片段响应链接交互。 */
+  interactive: boolean;
+}) {
+  const hyperlinkProps = useOfficeHyperlink<HTMLSpanElement>({
+    hyperlink: run.hyperlink,
+    source: { type: 'text', id: sourceId },
+    interactive,
+  });
+  const runStyle = run.style ?? {};
+  const underline = runStyle.underline ?? boxStyle.underline;
+  const strike = runStyle.strike ?? boxStyle.strike;
+  return (
+    <span
+      {...hyperlinkProps}
+      style={{
+        ...resolveTextPaintStyle(
+          runStyle.textFill ?? boxStyle.textFill,
+          runStyle.color ?? boxStyle.color ?? '#172033',
+          runStyle.opacity ?? boxStyle.opacity,
+        ),
+        fontFamily: runStyle.fontFamily ?? boxStyle.fontFamily,
+        fontSize: runStyle.fontSize ?? boxStyle.fontSize,
+        fontWeight: runStyle.bold ?? boxStyle.bold ? 700 : 400,
+        fontStyle: runStyle.italic ?? boxStyle.italic ? 'italic' : 'normal',
+        textDecoration:
+          [
+            underline ? 'underline' : '',
+            strike && strike !== 'none' ? 'line-through' : '',
+          ]
+            .filter(Boolean)
+            .join(' ') || 'none',
+        textTransform:
+          runStyle.allCaps ?? boxStyle.allCaps ? 'uppercase' : undefined,
+        fontVariant:
+          runStyle.smallCaps ?? boxStyle.smallCaps ? 'small-caps' : undefined,
+        verticalAlign:
+          runStyle.baseline && runStyle.baseline > 0
+            ? 'super'
+            : runStyle.baseline && runStyle.baseline < 0
+            ? 'sub'
+            : undefined,
+        letterSpacing: runStyle.charSpace ?? boxStyle.charSpace ?? 0,
+      }}
+    >
+      {run.text}
+    </span>
+  );
+}
+
 /** 渲染文本渲染器。 */
-function TextRendererComponent({ element, renderKey }: TextRendererProps) {
+function TextRendererComponent({
+  element,
+  renderKey,
+  interactive,
+}: TextRendererProps) {
   const style = element.boxStyle ?? {};
+  const hyperlinkProps = useOfficeHyperlink<HTMLDivElement>({
+    hyperlink: element.hyperlink,
+    source: {
+      type: element.hyperlinkSourceType ?? 'shape',
+      id: element.id,
+    },
+    interactive,
+  });
   const isVectorShape = Boolean(element.path);
   const fillPaint = element.fill;
   const isGradientFill = isGradientPaint(fillPaint);
@@ -79,6 +160,7 @@ function TextRendererComponent({ element, renderKey }: TextRendererProps) {
 
   return (
     <div
+      {...hyperlinkProps}
       style={{
         position: 'absolute',
         left: element.x,
@@ -233,50 +315,15 @@ function TextRendererComponent({ element, renderKey }: TextRendererProps) {
               {paragraph.bullet.char ?? '\u2022'}
             </span>
           ) : null}
-          {paragraph.runs.map((run, runIndex) => {
-            const runStyle = run.style ?? {};
-            const underline = runStyle.underline ?? style.underline;
-            const strike = runStyle.strike ?? style.strike;
-            return (
-              <span
-                key={runIndex}
-                style={{
-                  ...resolveTextPaintStyle(
-                    runStyle.textFill ?? style.textFill,
-                    runStyle.color ?? style.color ?? '#172033',
-                    runStyle.opacity ?? style.opacity,
-                  ),
-                  fontFamily: runStyle.fontFamily ?? style.fontFamily,
-                  fontSize: runStyle.fontSize ?? style.fontSize,
-                  fontWeight: runStyle.bold ?? style.bold ? 700 : 400,
-                  fontStyle:
-                    runStyle.italic ?? style.italic ? 'italic' : 'normal',
-                  textDecoration:
-                    [
-                      underline ? 'underline' : '',
-                      strike && strike !== 'none' ? 'line-through' : '',
-                    ]
-                      .filter(Boolean)
-                      .join(' ') || 'none',
-                  textTransform:
-                    runStyle.allCaps ?? style.allCaps ? 'uppercase' : undefined,
-                  fontVariant:
-                    runStyle.smallCaps ?? style.smallCaps
-                      ? 'small-caps'
-                      : undefined,
-                  verticalAlign:
-                    runStyle.baseline && runStyle.baseline > 0
-                      ? 'super'
-                      : runStyle.baseline && runStyle.baseline < 0
-                      ? 'sub'
-                      : undefined,
-                  letterSpacing: runStyle.charSpace ?? style.charSpace ?? 0,
-                }}
-              >
-                {run.text}
-              </span>
-            );
-          })}
+          {paragraph.runs.map((run, runIndex) => (
+            <TextRunRenderer
+              key={runIndex}
+              run={run}
+              boxStyle={style}
+              sourceId={`${element.id}:${paragraphIndex}:${runIndex}`}
+              interactive={interactive}
+            />
+          ))}
         </div>
       ))}
     </div>

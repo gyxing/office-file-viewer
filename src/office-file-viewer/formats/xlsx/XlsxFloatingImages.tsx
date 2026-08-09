@@ -7,6 +7,8 @@ import {
   type OfficeResourceSource,
 } from '../../services/resource-store';
 import type { XlsxImage, XlsxSheet } from '../../services/xlsx/types';
+import { useOfficeHyperlink } from '../../shared/hyperlink';
+import { OfficePreviewableImage } from '../../shared/image-preview';
 import {
   getXlsxMeasuredAnchorRect,
   XLSX_ROW_HEADER_WIDTH,
@@ -44,6 +46,10 @@ function XlsxFloatingImage({
     [image.src],
   );
   const resource = useOfficeResourceUrl(source);
+  const hyperlinkProps = useOfficeHyperlink<HTMLImageElement>({
+    hyperlink: image.hyperlink,
+    source: { type: 'image', id: image.id },
+  });
   const imageStyle = useMemo<CSSProperties>(
     () => ({
       left: XLSX_ROW_HEADER_WIDTH + rect.x,
@@ -55,7 +61,11 @@ function XlsxFloatingImage({
   );
 
   return (
-    <img
+    <OfficePreviewableImage
+      {...hyperlinkProps}
+      previewId={image.id}
+      previewName={image.name}
+      previewSource={source}
       className="office-file-xlsx-sheet-grid__floating-image"
       src={resource.url}
       alt={image.alt ?? ''}

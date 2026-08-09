@@ -25,6 +25,10 @@ import {
   readDocFib,
   readDocStorySegments,
 } from './readDocBinaryContent';
+import {
+  attachDocBookmarkMarkers,
+  buildDocBookmarkTargets,
+} from './readDocBookmarks';
 import type {
   DocBlock,
   DocDocument,
@@ -143,6 +147,7 @@ function buildDocDocument(
     paragraphs,
     images,
     outline,
+    bookmarks: buildDocBookmarkTargets(blocks),
     warnings,
   };
 }
@@ -253,6 +258,8 @@ export async function parseDocCore(
     numbering,
     paragraphRuns,
     drawingTextBoxRanges,
+    bookmarks,
+    bookmarkWarnings,
   } = binaryContent;
   const dominantSection = [...sections].sort(
     (left, right) =>
@@ -282,6 +289,7 @@ export async function parseDocCore(
       ? documentGridLinePitch * defaultLineMultiplier
       : undefined;
   warnings.push(...outlineCatalog.warnings);
+  warnings.push(...bookmarkWarnings);
   await context.checkpoint({
     stage: 'resources',
     percent: 0.5,
@@ -361,11 +369,9 @@ export async function parseDocCore(
       (block): block is DocParagraphBlock => block.type === 'paragraph',
     );
   }
-  const segments = readDocStorySegments(
-    wordDocument,
-    binaryContent,
-    0,
-    fib.ccpText,
+  const segments = attachDocBookmarkMarkers(
+    readDocStorySegments(wordDocument, binaryContent, 0, fib.ccpText),
+    bookmarks,
   );
   const drawingCanvases = extractDocDrawingCanvases(
     tableStream,
@@ -378,6 +384,7 @@ export async function parseDocCore(
       paragraphAnchors: buildDocDrawingParagraphAnchors(segments),
     },
   );
+  warnings.push(...drawingCanvases.warnings);
   const drawingImages = drawingCanvases.images;
   await flushDocResources(resources, context.output);
   const metadataDocument = buildDocDocument(

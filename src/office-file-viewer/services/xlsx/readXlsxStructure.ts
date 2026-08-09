@@ -10,8 +10,10 @@ import {
   attr,
   childByLocalName,
   childrenByLocalName,
+  descendantsByLocalName,
   parseXml,
 } from '../../shared/ooxml/xml';
+import type { OfficeArchiveResourcePolicy } from '../../shared/resource/OfficeResourcePolicy';
 import {
   createSpreadsheetPerformanceProfile,
   type SpreadsheetPerformanceProfile,
@@ -94,8 +96,9 @@ async function readTextEntries(
 export async function profileXlsxArchive(
   file: File,
   signal?: AbortSignal,
+  resourcePolicy?: OfficeArchiveResourcePolicy,
 ): Promise<ProfiledXlsxArchive> {
-  const reader = await openOfficeArchive(file, { signal });
+  const reader = await openOfficeArchive(file, { signal, resourcePolicy });
   try {
     const entries = reader.list();
     return {
@@ -140,6 +143,14 @@ export async function readXlsxStructure(
   });
   const workbookXml = values.get('xl/workbook.xml') ?? '';
   const workbook = parseXml(workbookXml);
+  const definedNames = Object.fromEntries(
+    descendantsByLocalName(workbook.documentElement, 'definedName')
+      .map((node) => [attr(node, 'name'), node.textContent?.trim()] as const)
+      .filter(
+        (entry): entry is readonly [string, string] =>
+          Boolean(entry[0] && entry[1]),
+      ),
+  );
   const workbookRels = relationships['xl/_rels/workbook.xml.rels'] ?? {};
   const sheetEntries = childrenByLocalName(
     childByLocalName(workbook.documentElement, 'sheets'),
@@ -203,6 +214,7 @@ export async function readXlsxStructure(
     theme,
     sharedStrings: createXlsxSharedStringSource(reader),
     descriptors,
+    definedNames,
   };
   return {
     context,
