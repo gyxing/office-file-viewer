@@ -10,10 +10,16 @@ export function readRelationships(xml: string, relsPath: string) {
       const id = attr(node, 'Id');
       const target = attr(node, 'Target');
       if (!id || !target) return;
+      const targetMode = attr(node, 'TargetMode');
       relationships[id] = {
         id,
-        target: normalizeRelationshipTarget(relsPath, target),
+        // 外部关系不是压缩包路径，规范化会破坏相对 URL 和文件地址。
+        target:
+          targetMode?.toLowerCase() === 'external'
+            ? target
+            : normalizeRelationshipTarget(relsPath, target),
         type: attr(node, 'Type'),
+        targetMode,
       };
     },
   );

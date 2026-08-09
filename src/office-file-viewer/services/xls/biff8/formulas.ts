@@ -133,6 +133,7 @@ const FIXED_FUNCTIONS: Record<number, FunctionInfo> = {
   234: { name: 'ATANH', arity: 1 },
   279: { name: 'EVEN', arity: 1 },
   280: { name: 'ODD', arity: 1 },
+  359: { name: 'HYPERLINK', arity: 2 },
 };
 
 /** Excel 错误值编号到可读错误文本的映射。 */

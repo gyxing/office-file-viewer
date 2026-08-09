@@ -32,6 +32,17 @@ function rangeIntersectsObject(
   );
 }
 
+function cellReference(row: number, column: number) {
+  let current = column;
+  let label = '';
+  while (current > 0) {
+    current -= 1;
+    label = String.fromCharCode(65 + (current % 26)) + label;
+    current = Math.floor(current / 26);
+  }
+  return `${label}${row}`;
+}
+
 /** 为完整工作簿创建零拷贝 Source 适配器。 */
 export function createMaterializedSpreadsheetSource(
   workbook: SpreadsheetWorkbook,
@@ -60,6 +71,7 @@ export function createMaterializedSpreadsheetSource(
   const snapshot: SpreadsheetSourceSnapshot = {
     revision: 1,
     sheets: descriptors,
+    definedNames: workbook.definedNames,
   };
   const sheetById = new Map(workbook.sheets.map((sheet) => [sheet.id, sheet]));
 
@@ -120,16 +132,45 @@ export function createMaterializedSpreadsheetSource(
       const rows = sheet.rows.filter(
         (row) => row.index >= range.startRow && row.index <= range.endRow,
       );
-      const data: SpreadsheetRangeData = {
-        revision: 1,
-        range,
-        cells: rows.flatMap((row) =>
-          row.cells.filter(
+      const cells = rows.flatMap((row) =>
+        row.cells
+          .filter(
             (cell) =>
               cell.columnIndex >= range.startColumn &&
               cell.columnIndex <= range.endColumn,
-          ),
-        ),
+          )
+          .map((cell) => ({ ...cell })),
+      );
+      const cellByRef = new Map(cells.map((cell) => [cell.ref, cell]));
+      (sheet.hyperlinks ?? []).forEach((rangeLink) => {
+        const startRow = Math.max(range.startRow, rangeLink.startRow);
+        const endRow = Math.min(range.endRow, rangeLink.endRow);
+        const startColumn = Math.max(range.startColumn, rangeLink.startColumn);
+        const endColumn = Math.min(range.endColumn, rangeLink.endColumn);
+        for (let row = startRow; row <= endRow; row += 1) {
+          for (let column = startColumn; column <= endColumn; column += 1) {
+            const ref = cellReference(row, column);
+            const cell = cellByRef.get(ref);
+            if (cell) {
+              cell.hyperlink = rangeLink.hyperlink;
+            } else {
+              const linkedCell = {
+                ref,
+                rowIndex: row,
+                columnIndex: column,
+                value: '',
+                hyperlink: rangeLink.hyperlink,
+              };
+              cells.push(linkedCell);
+              cellByRef.set(ref, linkedCell);
+            }
+          }
+        }
+      });
+      const data: SpreadsheetRangeData = {
+        revision: 1,
+        range,
+        cells,
         rows: rows.map((row) => ({
           index: row.index,
           height: row.height,

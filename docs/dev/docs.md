@@ -92,7 +92,7 @@ import { OfficeFileViewer } from 'office-file-viewer';
 export default function OfficePreview() {
   return (
     <OfficeFileViewer
-      uri={async () => fetch('/files/demo.xlsx')}
+      uri={async (signal) => fetch('/files/demo.xlsx', { signal })}
       parseOptions={{ worker: 'auto' }}
       onParseProgress={(progress) => {
         const percent =
@@ -106,6 +106,9 @@ export default function OfficePreview() {
       }}
       onFileParsed={(parsed, file) => {
         console.info('Parsing completed', parsed.kind, file.name);
+      }}
+      onWarning={(warning, file) => {
+        console.warn('Preview warning', file.name, warning.code);
       }}
       onError={(error, file) => {
         console.error('Preview failed', file?.name, error);
@@ -130,10 +133,11 @@ export default function EnglishOfficePreview() {
 ## `uri` file sources
 
 ```ts | pure
-type OfficeFileViewerUri =
-  | File
-  | string
-  | (() => Promise<File | Blob | string | Response>);
+type OfficeFileViewerUriLoader = (
+  signal?: AbortSignal,
+) => Promise<File | Blob | string | Response>;
+
+type OfficeFileViewerUri = File | string | OfficeFileViewerUriLoader;
 ```
 
 Remote source rules:
@@ -142,9 +146,10 @@ Remote source rules:
 - URLs should preferably end with a supported Office extension.
 - An extensionless URL must expose a filename through `Content-Disposition` or a supported MIME type through `Content-Type`.
 - An explicitly unsupported URL extension is rejected before download, even if its response body contains an Office file.
-- Changing `uri` cancels the previous URL download through `AbortController`.
-- A custom async loader cannot be forcibly cancelled, but a stale result cannot replace the latest source.
+- Changing `uri` cancels the previous URL download and parse.
+- An async loader receives an optional `AbortSignal`; pass it to `fetch` or another cancellable API. Existing zero-argument loaders remain compatible, and stale results cannot replace the latest source.
 - Manually selecting a file also invalidates an in-flight remote or parsing result.
+- After loading or parsing fails, the built-in error state can reload the most recent source.
 
 <a id="component-api"></a>
 
@@ -156,6 +161,9 @@ Remote source rules:
 | `uri`                            | `OfficeFileViewerUri`                                | -                 | File source to preload; the file picker is shown when omitted    |
 | `defaultFileName`                | `string`                                             | Localized message | Fallback name when the source does not provide a usable filename |
 | `defaultZoom`                    | `number`                                             | `100`             | Initial zoom percentage, clamped from `25` to `300`              |
+| `defaultViewState`               | `Partial<OfficeFileViewerViewState>`                 | -                 | Initial values for uncontrolled view fields                      |
+| `viewState`                      | `Partial<OfficeFileViewerViewState>`                 | -                 | Per-field control of zoom, page, sidebars, and display mode      |
+| `onViewStateChange`              | `(state, change) => void`                            | -                 | Called when the user requests a view-state change                |
 | `defaultShowSpeakerNotes`        | `boolean`                                            | `false`           | Initial speaker-notes state in uncontrolled mode                 |
 | `showSpeakerNotes`               | `boolean`                                            | -                 | Controlled speaker-notes visibility                              |
 | `onSpeakerNotesVisibilityChange` | `(visible: boolean) => void`                         | -                 | Called when the presentation notes visibility changes            |
@@ -165,28 +173,124 @@ Remote source rules:
 | `onFileParsed`                   | `(parsed: ParsedOfficeFile, file: File) => void`     | -                 | Called once when the complete materialized result is available   |
 | `onPreviewReady`                 | `(info: OfficePreviewReadyInfo, file: File) => void` | -                 | Called once when the first usable preview is ready               |
 | `onError`                        | `(error: Error, file?: File) => void`                | -                 | Called when loading, parsing, or a viewer operation fails        |
-| `parseOptions`                   | `OfficeParseOptions`                                 | `{}`              | Worker strategy and optional Worker factory                      |
+| `onWarning`                      | `(warning, file) => void`                            | -                 | Called for non-fatal parse degradation or retained partial views |
+| `parseOptions`                   | `OfficeParseOptions`                                 | `{}`              | Worker strategy and optional resource limits                     |
+| `imagePreview`                   | `boolean \| OfficeFileViewerImagePreviewOptions`     | `true`            | Content-image preview, download, and context-menu configuration  |
+| `hyperlink`                      | `boolean`                                            | `true`            | Enables hyperlinks explicitly declared by the source document    |
+| `onHyperlinkActivate`            | `(event: OfficeHyperlinkActivateEvent) => void`      | -                 | Called on valid activation and can prevent default navigation    |
 | `onParseProgress`                | `(progress: ParseProgress) => void`                  | -                 | Called when the current parse stage or progress changes          |
 
-### Controlled speaker notes
+### Content-image preview
 
-Use `showSpeakerNotes` with `onSpeakerNotesVisibilityChange` for controlled state. Use `defaultShowSpeakerNotes` only for the initial state in uncontrolled mode. The control is relevant to PPT/PPTX files when speaker notes are available.
+Visible content images in DOC, DOCX, WPS, XLS, and XLSX support double-click, `Enter`, or Space to open the preview layer by default. The layer provides fit-to-window display, `10%` to `500%` zoom, panning, clockwise rotation, reset, and download. The custom image context menu contains only Preview and Download.
+
+```ts | pure
+type OfficeFileViewerImagePreviewOptions = {
+  download?: boolean;
+  contextMenu?: boolean;
+};
+
+type OfficeFileViewerImagePreviewConfig =
+  | boolean
+  | OfficeFileViewerImagePreviewOptions;
+```
+
+Omit the prop or pass `true` to enable every capability. Pass `false` to disable the additional image interactions. Object configuration can disable download or the custom context menu independently:
+
+```tsx | pure
+<OfficeFileViewer
+  uri={file}
+  imagePreview={{ download: false, contextMenu: true }}
+/>
+```
+
+When `contextMenu` is disabled, double-click and keyboard preview remain available and the browser-native context menu is restored. Decorative header images, backgrounds, watermarks, page drawing layers, charts, and PPT/PPTX images are outside this interaction scope.
+
+### Office hyperlinks
+
+The viewer handles only links explicitly declared by the source Office file on text, cells, images, shapes, or action buttons. It does not turn ordinary URL text into links. To prevent accidental navigation while reading, activate a link with `Ctrl + click` on Windows and Linux or `Command + click` on macOS. A focused link can be activated with `Enter`; touch devices require a second tap within the confirmation window. Text, cell, shape, and button links also provide a context menu for direct opening or internal navigation, with copy support for safe external targets. Local paths, restricted targets, and images keep their existing context-menu behavior.
+
+```tsx | pure
+import {
+  OfficeFileViewer,
+  type OfficeHyperlinkActivateEvent,
+} from 'office-file-viewer';
+
+export default function OfficePreview({ file }: { file: File }) {
+  const handleHyperlinkActivate = (event: OfficeHyperlinkActivateEvent) => {
+    console.info(event.sourceType, event.sourceId, event.hyperlink);
+
+    // Hand navigation to application routing, authorization, or audit logic.
+    if (event.hyperlink.kind === 'external') {
+      event.preventDefault();
+    }
+  };
+
+  return (
+    <OfficeFileViewer
+      uri={file}
+      hyperlink
+      onHyperlinkActivate={handleHyperlinkActivate}
+    />
+  );
+}
+```
+
+`OfficeHyperlinkActivateEvent` exposes `hyperlink`, `file`, `previewKind`, `sourceType`, `sourceId`, `defaultPrevented`, and `preventDefault()`. Default behavior is:
+
+- `http` and `https` open in a new tab; `mailto` and `tel` are delegated to the browser or operating system.
+- Word bookmarks, Excel sheets/cells/defined names, and PowerPoint slide actions navigate inside the current viewer.
+- Local paths, UNC paths, and relative targets without a reliable remote source URL are reported to the callback only and are not opened automatically.
+- `javascript`, `data`, `vbscript`, and unknown executable protocols are always blocked from default execution; a host callback cannot bypass this boundary.
+- Modifier-click activates an image link; ordinary double-click and the context menu continue to follow the content-image preview configuration.
+
+Set `hyperlink={false}` to remove link focus, hints, and activation behavior without changing source colors, underlines, or layout.
+
+### Unified view state
+
+Use `defaultViewState` for uncontrolled initial values. `viewState` controls only the fields that are present, while omitted fields remain internally managed:
+
+```ts | pure
+type OfficeFileViewerViewState = {
+  zoom: number;
+  activeSlideIndex: number;
+  activeSheetId?: string;
+  wordOutlineVisible: boolean;
+  speakerNotesVisible: boolean;
+  spreadsheetViewMode: 'source' | 'reading';
+};
+```
+
+The first `onViewStateChange` argument is the complete view state after applying the request. The second is a single-field `{ key, value }` change. Invalid zoom values fall back and are clamped from `25` to `300`; slide indices and worksheet IDs are validated against the current file.
+
+The legacy `defaultZoom`, `defaultShowSpeakerNotes`, `showSpeakerNotes`, and `onSpeakerNotesVisibilityChange` props remain compatible. When both APIs are provided, matching fields in `defaultViewState` override legacy defaults, and `viewState.speakerNotesVisible` overrides `showSpeakerNotes`.
 
 ### Callback timing
 
 - `onPreviewReady` fires when either a complete model (`mode: 'materialized'`) or an on-demand source (`mode: 'source'`) can render its first usable preview.
 - `onFileParsed` fires after the complete materialized result is ready; progressive intermediate results do not trigger it.
 - `onParseProgress` can fire many times and may omit exact counts or `percent`.
-- `onError` can receive no `file` when an error occurs before a usable file has been resolved.
+- `onWarning` uses stable `code`, `previewKind`, and `source` fields to distinguish parser warnings from retained partial previews; it does not replace `onError`.
+- `onError` can receive no `file` when an error occurs before a usable file has been resolved. Resource-policy failures can be inspected through `OfficeResourceLimitError.code`.
 
 ## Parsing configuration and progress
 
 ```ts | pure
 type WorkerMode = 'auto' | 'always' | 'never';
 
+type OfficeParseResourcePolicy = {
+  maxFileBytes?: number;
+  maxArchiveEntries?: number;
+  maxArchiveEntryBytes?: number;
+  maxArchiveInflatedBytes?: number;
+  maxCompressionRatio?: number;
+  timeoutMs?: number;
+};
+
 type OfficeParseOptions = {
   worker?: WorkerMode;
   workerFactory?: () => Worker;
+  resourcePolicy?: OfficeParseResourcePolicy;
 };
 ```
 
@@ -197,6 +301,27 @@ type OfficeParseOptions = {
 | `'never'`  | Always parses on the main thread                               | Always parses on the main thread                                   |
 
 Each active legacy-format session owns its Worker. The viewer cancels and disposes the current session when the source changes or the component unmounts. `workerFactory` is intended for hosts with special asset paths or Content Security Policy requirements; most applications should use the built-in factory.
+
+### Resource limits
+
+No file-size, timeout, or OOXML-archive limits are enabled by default, so the library does not reject valid business files without host input. Configure limits for untrusted files according to the target device and application boundary:
+
+```tsx | pure
+<OfficeFileViewer
+  parseOptions={{
+    resourcePolicy: {
+      maxFileBytes: 100 * 1024 * 1024,
+      maxArchiveEntries: 10_000,
+      maxArchiveEntryBytes: 64 * 1024 * 1024,
+      maxArchiveInflatedBytes: 512 * 1024 * 1024,
+      maxCompressionRatio: 500,
+      timeoutMs: 120_000,
+    },
+  }}
+/>
+```
+
+`maxFileBytes` and `timeoutMs` apply to every format. Archive entry, inflated-size, and compression-ratio limits apply to DOCX, XLSX, and PPTX. Every configured value must be finite and greater than zero. When a limit is hit, `onError` receives an `OfficeResourceLimitError` with `code`, `limit`, `actual`, and an optional `path`. `timeoutMs` requests cancellation; synchronous main-thread parsing can observe it only after yielding control.
 
 Progress uses normalized values from `0` to `1` when `percent` is available:
 
@@ -297,21 +422,22 @@ try {
 
 ## Supported formats and interactions
 
-| Document type      | Extension | Main parser coverage                                                                                                                           |
-| ------------------ | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| Word OOXML         | `.docx`   | Paragraphs, lists, tables, images, charts, shapes, links, styles, and theme colors                                                             |
-| Word 97-2003       | `.doc`    | Binary document structure, text runs, tables, lists, formatting, images, and basic page-level OfficeArt floating layers                        |
-| WPS Writer         | `.wps`    | Reuses the DOC binary pipeline, prioritizing readable content and resource extraction                                                          |
-| Excel OOXML        | `.xlsx`   | Worksheets, values, styles, merged cells, dimensions, floating images, and charts                                                              |
-| Excel 97-2003      | `.xls`    | BIFF8 cells, formatting, merged ranges, dimensions, OfficeArt images, and charts                                                               |
-| PowerPoint OOXML   | `.pptx`   | Master/layout inheritance, text, shapes, images, tables, backgrounds, effects, speaker notes, slide-number/date-time fields, and common charts |
-| PowerPoint 97-2003 | `.ppt`    | Binary records, masters, text, shapes, images, embedded charts, embedded DrawingML-compatible text, speaker notes, and static fallbacks        |
+| Document type      | Extension | Main parser coverage                                                                                                   |
+| ------------------ | --------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Word OOXML         | `.docx`   | Paragraphs, lists, tables, images, charts, shapes, links, styles, and theme colors                                     |
+| Word 97-2003       | `.doc`    | Binary structure, text runs, tables, lists, formatting, images, field links, body bookmarks, and OfficeArt layers      |
+| WPS Writer         | `.wps`    | Reuses the DOC binary pipeline, prioritizing readable content, field links, body bookmarks, and document resources     |
+| Excel OOXML        | `.xlsx`   | Worksheets, values, styles, merged cells, dimensions, floating images, charts, and links                               |
+| Excel 97-2003      | `.xls`    | BIFF8 cells, formatting, merged ranges, dimensions, OfficeArt images, charts, and links                                |
+| PowerPoint OOXML   | `.pptx`   | Master/layout inheritance, text, shapes, images, tables, links, backgrounds, effects, notes, fields, and common charts |
+| PowerPoint 97-2003 | `.ppt`    | Binary records, masters, text, shapes, images, links, embedded charts, compatible text, speaker notes, and fallbacks   |
 
 Common chart coverage includes line, column, pie, doughnut, area, scatter, bubble, radar, and map charts. Embedded document snapshots are used when possible for unsupported or damaged chart content.
 
 Viewer interactions include:
 
 - Zoom from `25%` to `300%` using manual numeric input, common presets, and `10%` step controls.
+- Visible content images in DOC/DOCX/WPS and XLS/XLSX support preview, zoom, rotation, download, and a custom context menu.
 - The DOC/DOCX/WPS outline is hidden by default, appears only when usable headings exist, and can be resized horizontally when opened.
 - Worksheet tabs plus Original layout and Reading mode for XLS/XLSX.
 - Slide and thumbnail navigation for PPT/PPTX; previous/next controls are hidden for a single-slide deck.
@@ -336,6 +462,7 @@ The display-mode selector appears only for XLS/XLSX previews:
 ### Rendering boundaries
 
 - Legacy DOC/WPS, XLS, and PPT parsing prioritizes readable content. Complex pagination, anchors, text wrapping, OfficeArt effects, and animations may differ from desktop applications.
+- Page-level DOC/WPS OfficeArt canvases are currently displayed as a single SVG image, so independent link hit areas for child shapes cannot be retained precisely. These links emit a non-fatal degradation warning; field links and body bookmarks are unaffected.
 - OOXML files can contain unsupported macros, ActiveX controls, OLE objects, SmartArt, vendor extensions, or complex animations. Such content may be ignored, degraded, or represented by an embedded static snapshot.
 - The viewer is read-only. It does not edit, save, convert, print-layout, or export Office files to PDF or images.
 - Externally linked images and dynamic map data can still require network access. If map data fails, an embedded snapshot is used when available; otherwise the viewer shows an explicit failure state.
@@ -346,7 +473,7 @@ The component targets modern browsers and depends on APIs such as `File`, `fetch
 
 Workers reduce main-thread parsing work for supported legacy formats, but they do not eliminate the memory cost of the source file or parsed model. DOCX, XLSX, and PPTX currently parse on the main thread, so very large or complex files can briefly make the UI less responsive.
 
-The library does not impose a maximum source size, ZIP entry count, individual entry size, or total decompressed size. Hosts should set limits appropriate to their devices and threat model.
+The library does not enable a maximum source size, ZIP entry count, individual entry size, or total decompressed size by default. For untrusted files, hosts should configure `parseOptions.resourcePolicy` according to their devices and threat model.
 
 ### Untrusted files and remote access
 

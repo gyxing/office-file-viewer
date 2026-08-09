@@ -61,6 +61,8 @@ export type OfficePreviewStageState =
       kind: 'error';
       /** 阻止继续预览的错误说明。 */
       message: string;
+      /** 最近文件来源仍可用时触发重新加载。 */
+      retry?: () => void;
     }
   | {
       kind: 'presentation';
@@ -124,7 +126,9 @@ function OfficePreviewStageComponent({
 }: OfficePreviewStageProps) {
   if (state.kind === 'empty') return <OfficePreviewEmpty />;
   if (state.kind === 'loading') return <OfficeLoading tip={state.tip} />;
-  if (state.kind === 'error') return <OfficeError message={state.message} />;
+  if (state.kind === 'error') {
+    return <OfficeError message={state.message} onRetry={state.retry} />;
+  }
 
   let content: ReactElement;
   switch (state.kind) {

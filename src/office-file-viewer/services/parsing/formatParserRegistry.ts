@@ -1,3 +1,4 @@
+import type { OfficeParseResourcePolicy } from '../../shared/resource/OfficeResourcePolicy';
 import type { OfficeDocumentSession } from '../session';
 import {
   OFFICE_FORMAT_METADATA,
@@ -26,6 +27,8 @@ export type OfficeSourcePreviewContext = {
   emitProgress(progress: ParseProgress): void;
   /** 向界面发送已经可以展示的按需预览快照。 */
   emitPartial(preview: OfficeFileViewerPreviewState): void;
+  /** 当前解析会话采用的可选资源上限。 */
+  resourcePolicy?: OfficeParseResourcePolicy;
 };
 
 /** 在大文件满足按需加载条件时创建预览源，否则交回普通解析流程。 */

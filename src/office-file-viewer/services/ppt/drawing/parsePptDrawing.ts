@@ -13,6 +13,7 @@ import type {
   ThemeModel,
 } from '../../presentation/types';
 import { PptRecordReader } from '../binary/PptRecordReader';
+import { readPptInteractiveHyperlink } from '../document/readHyperlinks';
 import { createPptStaticPreviewCard } from '../images';
 import { parsePptTextGroups } from '../text';
 import type { PptParseContext } from '../types';
@@ -230,6 +231,34 @@ async function parseShape(
   const lineWidth = properties.get(0x01cb)?.value;
   const rotation = properties.get(0x0004)?.value;
   const adjustValue = properties.get(PPT_GEOMETRY_ADJUST_PROPERTY_ID)?.value;
+  const clientData = findChild(record, OFFICE_ART_RECORD.CLIENT_DATA);
+  let externalObjectId: number | undefined;
+  let hyperlink: ReturnType<typeof readPptInteractiveHyperlink>;
+  if (clientData) {
+    try {
+      const clientRecords = Array.from(
+        new PptRecordReader(clientData.data).records(),
+      );
+      hyperlink = clientRecords
+        .map((clientRecord) =>
+          readPptInteractiveHyperlink(clientRecord, context),
+        )
+        .find((value) => Boolean(value));
+      const externalObjectRecord = clientRecords.find(
+        (clientRecord) =>
+          clientRecord.type === 0x0bc1 && clientRecord.data.length >= 4,
+      );
+      if (externalObjectRecord) {
+        externalObjectId = new DataView(
+          externalObjectRecord.data.buffer,
+          externalObjectRecord.data.byteOffset,
+          externalObjectRecord.data.byteLength,
+        ).getUint32(0, true);
+      }
+    } catch {
+      // ClientData 损坏时仍继续恢复形状主体，避免一个交互记录影响整页预览。
+    }
+  }
   const common = {
     id: `ppt-shape-${shapeId}`,
     x: anchor.x,
@@ -241,6 +270,12 @@ async function parseShape(
     flipV: Boolean(flags & 0x0080),
     zIndex: index,
     shape,
+    hyperlink,
+    hyperlinkSourceType: hyperlink
+      ? shapeType >= 189 && shapeType <= 200
+        ? ('button' as const)
+        : ('shape' as const)
+      : undefined,
     shadow: readPptShadow(properties),
     // 二进制 PPT 的圆角调节值以 21600 为基准；0 必须保留，避免误用渲染默认值。
     borderRadius:
@@ -270,26 +305,6 @@ async function parseShape(
   };
 
   const blipIndex = properties.get(0x0104)?.value;
-  const clientData = findChild(record, OFFICE_ART_RECORD.CLIENT_DATA);
-  let externalObjectId: number | undefined;
-  if (clientData) {
-    try {
-      for (const clientRecord of new PptRecordReader(
-        clientData.data,
-      ).records()) {
-        if (clientRecord.type === 0x0bc1 && clientRecord.data.length >= 4) {
-          externalObjectId = new DataView(
-            clientRecord.data.buffer,
-            clientRecord.data.byteOffset,
-            clientRecord.data.byteLength,
-          ).getUint32(0, true);
-          break;
-        }
-      }
-    } catch {
-      // ClientData 损坏时仍可继续使用同一形状的图片预览。
-    }
-  }
   const embeddedChart = externalObjectId
     ? context.charts.get(externalObjectId)
     : undefined;
@@ -303,6 +318,7 @@ async function parseShape(
       height: common.height,
       rotate: common.rotate,
       zIndex: common.zIndex,
+      hyperlink: common.hyperlink,
       chart: embeddedChart.chart,
       chartId: `ppt-chart-${externalObjectId}`,
     };
@@ -336,6 +352,7 @@ async function parseShape(
       flipH: common.flipH,
       flipV: common.flipV,
       zIndex: common.zIndex,
+      hyperlink: common.hyperlink,
       src: imageSource,
       alt: `PowerPoint 图片 ${blipIndex}`,
     };
@@ -351,6 +368,7 @@ async function parseShape(
       height: common.height,
       rotate: common.rotate,
       zIndex: common.zIndex,
+      hyperlink: common.hyperlink,
       src: createPptStaticPreviewCard(
         '嵌入对象',
         `PowerPoint 对象 ${externalObjectId}`,

@@ -9,6 +9,7 @@ import {
   OFFICE_MIN_ZOOM,
   OFFICE_ZOOM_LEVELS,
 } from './constants';
+import { normalizeOfficeZoom } from './normalizeOfficeZoom';
 
 /** 工具栏通用缩放能力。 */
 export type ZoomControls = {
@@ -46,7 +47,7 @@ function normalizeZoomInput(value: string): number | undefined {
   if (!value || !/^\d+$/.test(value)) return undefined;
   const parsedValue = Number(value);
   if (!Number.isFinite(parsedValue)) return undefined;
-  return Math.min(OFFICE_MAX_ZOOM, Math.max(OFFICE_MIN_ZOOM, parsedValue));
+  return normalizeOfficeZoom(parsedValue);
 }
 
 /** 提供可输入、可选择并带固定百分号后缀的缩放操作。 */

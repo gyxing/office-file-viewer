@@ -1,4 +1,7 @@
-import type { SpreadsheetWarning } from '../spreadsheet/types';
+import type {
+  SpreadsheetHyperlinkRange,
+  SpreadsheetWarning,
+} from '../spreadsheet/types';
 import type { Biff8Record } from './biff8/Biff8Reader';
 
 /** BIFF8 工作表子流支持的内容类型。 */
@@ -249,6 +252,8 @@ export type Biff8Worksheet = {
   chartSubstreams: Biff8ChartSubstream[];
   /** 工作表级 OfficeArt 绘图记录。 */
   drawingRecords: Biff8RecordSequence[];
+  /** 工作表声明的 BIFF8 超链接范围。 */
+  hyperlinks: SpreadsheetHyperlinkRange[];
   /** 解析时产生但不阻止继续预览的警告。 */
   warnings: SpreadsheetWarning[];
 };

@@ -32,4 +32,6 @@ export type XlsxPackageContext = {
   sharedStrings: XlsxSharedStringSource;
   /** 按源顺序排列的轻量描述信息。 */
   descriptors: XlsxSheetDescriptor[];
+  /** 工作簿级定义名称到静态目标地址的映射。 */
+  definedNames: Record<string, string>;
 };

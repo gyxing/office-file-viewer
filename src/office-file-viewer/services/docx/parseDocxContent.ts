@@ -1,3 +1,4 @@
+import type { OfficeHyperlink } from '../../shared/hyperlink';
 import { readXml } from '../../shared/ooxml/archive';
 import type { OfficeTheme } from '../../shared/ooxml/theme';
 import {
@@ -27,6 +28,10 @@ import {
 } from './docxParsingContext';
 import type { DocxBlockParseOperations } from './parseDocxBlock';
 import { createDocxDrawingParser } from './parseDocxDrawing';
+import {
+  parseDocxFieldHyperlink,
+  parseDocxHyperlinkElement,
+} from './parseDocxHyperlink';
 import { nextDocxNumberPrefix } from './parseDocxNumbering';
 import type {
   DocxBlock,
@@ -54,11 +59,43 @@ const DOCX_FLOW_TABLE_TOP_OFFSET = 8;
 /** DOCX 表格缺少边缘设置时使用的默认修正量。 */
 const DOCX_DEFAULT_TABLE_EDGE_OFFSET = 7;
 
+/** 复杂域解析时保留的指令和已确定链接。 */
+type DocxFieldState = {
+  /** 当前字段累计读取的指令文本。 */
+  instruction: string;
+  /** 字段进入结果区后可绑定到可见内容的链接。 */
+  hyperlink?: OfficeHyperlink;
+};
+
+function applyHyperlinkToInline(
+  inline: DocxInline,
+  hyperlink: OfficeHyperlink | undefined,
+): DocxInline {
+  if (!hyperlink) return inline;
+  if (inline.type === 'text') return { ...inline, hyperlink };
+  if (inline.type === 'image') {
+    return { ...inline, image: { ...inline.image, hyperlink } };
+  }
+  if (inline.type === 'shape') {
+    return { ...inline, shape: { ...inline.shape, hyperlink } };
+  }
+  return inline;
+}
+
+function currentFieldHyperlink(fieldStack: readonly DocxFieldState[]) {
+  for (let index = fieldStack.length - 1; index >= 0; index -= 1) {
+    if (fieldStack[index].hyperlink) return fieldStack[index].hyperlink;
+  }
+  return undefined;
+}
+
 /** 将单个 run 的文本、换行和绘图子节点转换为行内模型。 */
 function parseRun(
   runNode: Element,
   paragraphStyle: DocxTextStyle | undefined,
   context: ParseContext,
+  fieldStack: DocxFieldState[],
+  wrapperHyperlink?: OfficeHyperlink,
 ): DocxInline[] {
   const runStyle = mergeTextStyle(
     inlineInheritedStyle(paragraphStyle),
@@ -71,8 +108,31 @@ function parseRun(
   const inlines: DocxInline[] = [];
 
   Array.from(runNode.children).forEach((child) => {
+    if (matchesLocalName(child, 'fldChar')) {
+      const fieldType =
+        attr(child, 'w:fldCharType') ?? attr(child, 'fldCharType');
+      if (fieldType === 'begin') fieldStack.push({ instruction: '' });
+      if (fieldType === 'separate' && fieldStack.length) {
+        const field = fieldStack[fieldStack.length - 1];
+        field.hyperlink = parseDocxFieldHyperlink(field.instruction);
+      }
+      if (fieldType === 'end') fieldStack.pop();
+      return;
+    }
+    if (matchesLocalName(child, 'instrText')) {
+      const field = fieldStack[fieldStack.length - 1];
+      if (field) field.instruction += textContent(child);
+      return;
+    }
+    const activeHyperlink =
+      wrapperHyperlink ?? currentFieldHyperlink(fieldStack);
     if (matchesLocalName(child, 't')) {
-      inlines.push({ type: 'text', text: textContent(child), style: runStyle });
+      inlines.push({
+        type: 'text',
+        text: textContent(child),
+        style: runStyle,
+        hyperlink: activeHyperlink,
+      });
       return;
     }
     if (matchesLocalName(child, 'tab')) {
@@ -84,7 +144,9 @@ function parseRun(
       return;
     }
     const drawingInline = drawingParser.parseRunChild(child, context);
-    if (drawingInline) inlines.push(drawingInline);
+    if (drawingInline) {
+      inlines.push(applyHyperlinkToInline(drawingInline, activeHyperlink));
+    }
   });
 
   return inlines;
@@ -105,12 +167,31 @@ function readParagraphRunChildren(
   parentNode: Element,
   paragraphStyle: DocxTextStyle | undefined,
   context: ParseContext,
+  blockId: string,
+  fieldStack: DocxFieldState[],
+  wrapperHyperlink?: OfficeHyperlink,
 ) {
   const inlines: DocxInline[] = [];
 
   Array.from(parentNode.children).forEach((child) => {
     if (matchesLocalName(child, 'r')) {
-      inlines.push(...parseRun(child, paragraphStyle, context));
+      inlines.push(
+        ...parseRun(
+          child,
+          paragraphStyle,
+          context,
+          fieldStack,
+          wrapperHyperlink,
+        ),
+      );
+      return;
+    }
+    if (matchesLocalName(child, 'bookmarkStart')) {
+      const name = attr(child, 'w:name') ?? attr(child, 'name');
+      if (!name) return;
+      const markerId = `word-bookmark-${name}`;
+      context.bookmarks[name] = { name, targetBlockId: blockId, markerId };
+      inlines.push({ type: 'bookmark', name, markerId });
       return;
     }
     if (matchesLocalName(child, 'del') || matchesLocalName(child, 'moveFrom')) {
@@ -120,21 +201,64 @@ function readParagraphRunChildren(
       const content = childByLocalName(child, 'sdtContent');
       if (content) {
         inlines.push(
-          ...readParagraphRunChildren(content, paragraphStyle, context),
+          ...readParagraphRunChildren(
+            content,
+            paragraphStyle,
+            context,
+            blockId,
+            fieldStack,
+            wrapperHyperlink,
+          ),
         );
       }
       return;
     }
+    if (matchesLocalName(child, 'hyperlink')) {
+      const hyperlink = parseDocxHyperlinkElement(child, context.documentRels);
+      inlines.push(
+        ...readParagraphRunChildren(
+          child,
+          paragraphStyle,
+          context,
+          blockId,
+          fieldStack,
+          hyperlink ?? wrapperHyperlink,
+        ),
+      );
+      return;
+    }
+    if (matchesLocalName(child, 'fldSimple')) {
+      const instruction = attr(child, 'w:instr') ?? attr(child, 'instr') ?? '';
+      const hyperlink = parseDocxFieldHyperlink(instruction);
+      inlines.push(
+        ...readParagraphRunChildren(
+          child,
+          paragraphStyle,
+          context,
+          blockId,
+          fieldStack,
+          hyperlink ?? wrapperHyperlink,
+        ),
+      );
+      return;
+    }
     if (
-      matchesLocalName(child, 'hyperlink') ||
       matchesLocalName(child, 'ins') ||
       matchesLocalName(child, 'moveTo') ||
       matchesLocalName(child, 'smartTag') ||
       matchesLocalName(child, 'customXml') ||
-      matchesLocalName(child, 'fldSimple') ||
       matchesLocalName(child, 'sdtContent')
     ) {
-      inlines.push(...readParagraphRunChildren(child, paragraphStyle, context));
+      inlines.push(
+        ...readParagraphRunChildren(
+          child,
+          paragraphStyle,
+          context,
+          blockId,
+          fieldStack,
+          wrapperHyperlink,
+        ),
+      );
     }
   });
 
@@ -145,8 +269,9 @@ function readParagraphRuns(
   pNode: Element,
   paragraphStyle: DocxTextStyle | undefined,
   context: ParseContext,
+  blockId: string,
 ) {
-  return readParagraphRunChildren(pNode, paragraphStyle, context);
+  return readParagraphRunChildren(pNode, paragraphStyle, context, blockId, []);
 }
 
 function textFromInlines(inlines: DocxInline[]) {
@@ -165,7 +290,7 @@ function parseParagraph(
 ): DocxParagraphBlock {
   const pPr = childByLocalName(pNode, 'pPr');
   const style = resolveParagraphStyle(pPr, context.styles, context.theme);
-  const inlines = readParagraphRuns(pNode, style.style, context);
+  const inlines = readParagraphRuns(pNode, style.style, context, id);
   const sourceText = textFromInlines(inlines).trim();
   const numberingReference = style.numbering
     ? {

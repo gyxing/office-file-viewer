@@ -1,4 +1,5 @@
 // OfficeNotice 展示预览器统一的错误或警告状态。
+import type { ReactNode } from 'react';
 import React, { memo } from 'react';
 
 /** Office提示组件属性。 */
@@ -9,6 +10,8 @@ type OfficeNoticeProps = {
   title: string;
   /** 补充说明内容。 */
   description: string;
+  /** 提示下方可选的恢复操作。 */
+  action?: ReactNode;
 };
 
 /** 展示不阻断预览流程的提示信息。 */
@@ -16,6 +19,7 @@ function OfficeNoticeComponent({
   type,
   title,
   description,
+  action,
 }: OfficeNoticeProps) {
   return (
     <div
@@ -28,6 +32,9 @@ function OfficeNoticeComponent({
       <div className="office-file-notice__content">
         <div className="office-file-notice__title">{title}</div>
         <div className="office-file-notice__description">{description}</div>
+        {action ? (
+          <div className="office-file-notice__action">{action}</div>
+        ) : null}
       </div>
     </div>
   );

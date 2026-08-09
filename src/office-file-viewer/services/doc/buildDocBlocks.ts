@@ -5,6 +5,7 @@ import type {
   DocTableCellLayout,
   DocTextSegment,
 } from './docParseTypes';
+import { parseDocFieldHyperlink } from './parseDocHyperlinks';
 import { nextDocNumberPrefix } from './parseDocNumbering';
 import type {
   DocBlock,
@@ -197,7 +198,7 @@ function preserveDocFieldResultSegments(segments: DocTextSegment[]) {
     chunks: DocFieldTextChunk[],
   ) => {
     chunks.forEach((chunk) => {
-      if (!chunk.text) return;
+      if (!chunk.text && !chunk.segment.bookmarkMarkers?.length) return;
       const previous = target[target.length - 1];
       if (previous?.segment === chunk.segment) {
         previous.text += chunk.text;
@@ -217,13 +218,43 @@ function preserveDocFieldResultSegments(segments: DocTextSegment[]) {
       appendTo(frame.instruction, chunks);
     }
   };
-  const visibleFieldValue = (frame: FieldFrame) =>
-    frame.result.length
-      ? frame.result
+  const visibleFieldValue = (frame: FieldFrame) => {
+    const hyperlink = parseDocFieldHyperlink(
+      frame.instruction.map((chunk) => chunk.text).join(''),
+    );
+    const visible = frame.result.length
+      ? frame.result.map((chunk) => ({
+          ...chunk,
+          segment: hyperlink ? { ...chunk.segment, hyperlink } : chunk.segment,
+        }))
       : frame.instruction.flatMap((chunk) => {
           const anchors = chunk.text.match(/[\u0001\u0008]/g)?.join('') ?? '';
           return anchors ? [{ ...chunk, text: anchors }] : [];
         });
+    const markers = [...frame.instruction, ...frame.result]
+      .flatMap((chunk) => chunk.segment.bookmarkMarkers ?? [])
+      .filter(
+        (marker, index, items) =>
+          items.findIndex((item) => item.markerId === marker.markerId) ===
+          index,
+      );
+    if (!markers.length) return visible;
+    const first = visible[0] ?? frame.result[0] ?? frame.instruction[0];
+    if (!first) return visible;
+    if (!visible.length) {
+      return [
+        {
+          text: '',
+          segment: { ...first.segment, bookmarkMarkers: markers },
+        },
+      ];
+    }
+    visible[0] = {
+      ...visible[0],
+      segment: { ...visible[0].segment, bookmarkMarkers: markers },
+    };
+    return visible;
+  };
 
   segments.forEach((segment) => {
     let textStart = 0;
@@ -283,7 +314,7 @@ function normalizeDocTextSegments(
 
     return normalizedText
       .split(/(\n|\f|\u0001|\u0008)/)
-      .map((text): DocImageSegment => {
+      .map((text, textIndex): DocImageSegment => {
         if (text === '\u0001') {
           const image = images[imageIndex];
           if (image) imageIndex += 1;
@@ -305,6 +336,9 @@ function normalizeDocTextSegments(
             tableOffsetLeft: segment.tableOffsetLeft,
             tableWidth: segment.tableWidth,
             tableCellLayouts: segment.tableCellLayouts,
+            hyperlink: segment.hyperlink,
+            bookmarkMarkers:
+              textIndex === 0 ? segment.bookmarkMarkers : undefined,
           };
         }
         if (text === '\u0008') {
@@ -329,6 +363,9 @@ function normalizeDocTextSegments(
             tableOffsetLeft: segment.tableOffsetLeft,
             tableWidth: segment.tableWidth,
             tableCellLayouts: segment.tableCellLayouts,
+            hyperlink: segment.hyperlink,
+            bookmarkMarkers:
+              textIndex === 0 ? segment.bookmarkMarkers : undefined,
           };
         }
         return {
@@ -348,11 +385,15 @@ function normalizeDocTextSegments(
           tableOffsetLeft: segment.tableOffsetLeft,
           tableWidth: segment.tableWidth,
           tableCellLayouts: segment.tableCellLayouts,
+          hyperlink: segment.hyperlink,
+          bookmarkMarkers:
+            textIndex === 0 ? segment.bookmarkMarkers : undefined,
         };
       })
       .filter(
         (item) =>
           item.image ||
+          item.bookmarkMarkers?.length ||
           (item.text.length &&
             item.text !== '\u0001' &&
             item.text !== '\u0008'),
@@ -375,12 +416,20 @@ function sameInlineStyle(left?: DocTextStyle, right?: DocTextStyle) {
   return JSON.stringify(left ?? {}) === JSON.stringify(right ?? {});
 }
 
+function sameInlineHyperlink(left: DocTextInline, right: DocTextInline) {
+  if (left.type !== 'text' || right.type !== 'text') return false;
+  return (
+    JSON.stringify(left.hyperlink ?? null) ===
+    JSON.stringify(right.hyperlink ?? null)
+  );
+}
+
 /** 合并 `mergeAdjacentInlines` 接收的多份数据。 */
 function mergeAdjacentInlines(inlines: DocTextInline[]) {
   const merged: DocTextInline[] = [];
 
   inlines.forEach((inline) => {
-    if (inline.type === 'image') {
+    if (inline.type !== 'text') {
       merged.push({ ...inline });
       return;
     }
@@ -388,7 +437,8 @@ function mergeAdjacentInlines(inlines: DocTextInline[]) {
     const previous = merged[merged.length - 1];
     if (
       previous?.type === 'text' &&
-      sameInlineStyle(previous.style, inline.style)
+      sameInlineStyle(previous.style, inline.style) &&
+      sameInlineHyperlink(previous, inline)
     ) {
       previous.text += inline.text;
       return;
@@ -404,7 +454,7 @@ function trimInlines(inlines: DocTextInline[]) {
     .map((inline) => ({ ...inline }))
     .filter(
       (inline) =>
-        inline.type === 'image' ||
+        inline.type !== 'text' ||
         (inline.type === 'text' && inline.text.length),
     );
 
@@ -455,7 +505,7 @@ function splitTableCells(line: DocLine): PendingTableCell[] {
     );
 
   line.inlines.forEach((inline) => {
-    if (inline.type === 'image') {
+    if (inline.type !== 'text') {
       current.push(inline);
       return;
     }
@@ -507,6 +557,10 @@ function sliceLineInlines(line: DocLine, start: number) {
 
   line.inlines.forEach((inline) => {
     if (inline.type === 'image') return;
+    if (inline.type === 'bookmark') {
+      result.push(inline);
+      return;
+    }
     const inlineStart = offset;
     const inlineEnd = inlineStart + inline.text.length;
     offset = inlineEnd;
@@ -1259,7 +1313,7 @@ export async function buildDocBlocksFromSegments(
           : undefined,
       );
       await flushList();
-      if (line.inlines.some((inline) => inline.type === 'image')) {
+      if (line.inlines.some((inline) => inline.type !== 'text')) {
         const imageStyle =
           pendingBlockSpacingBefore > 0
             ? {
@@ -1377,6 +1431,9 @@ export async function buildDocBlocksFromSegments(
 
   for (let index = 0; index < normalizedSegments.length; index += 1) {
     const segment = normalizedSegments[index];
+    for (const marker of segment.bookmarkMarkers ?? []) {
+      currentLineInlines.push({ type: 'bookmark', ...marker });
+    }
     if (segment.text === '\f') {
       const line = makeLine(segment);
       resetLine();
@@ -1400,6 +1457,7 @@ export async function buildDocBlocksFromSegments(
           type: 'text',
           text: '\n',
           style: segment.style,
+          hyperlink: segment.hyperlink,
         });
         currentLineSegments.push(segment);
         continue;
@@ -1437,6 +1495,7 @@ export async function buildDocBlocksFromSegments(
         type: 'text',
         text: segment.text,
         style: segment.style,
+        hyperlink: segment.hyperlink,
       });
       currentLineSegments.push(segment);
     }

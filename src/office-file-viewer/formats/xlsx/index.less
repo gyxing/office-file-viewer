@@ -292,6 +292,11 @@
   pointer-events: none;
 }
 
+/* 仅在图片预览启用时接收指针事件，关闭功能后不阻断表格交互。 */
+.office-file-xlsx-sheet-grid__floating-image[data-office-image-previewable='true'] {
+  pointer-events: auto;
+}
+
 .office-file-xlsx-sheet-grid__floating-chart {
   position: absolute;
   z-index: 5;

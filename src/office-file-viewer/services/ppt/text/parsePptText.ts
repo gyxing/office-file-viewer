@@ -3,6 +3,10 @@ import type {
   TextRun,
   TextStyle,
 } from '../../presentation/types';
+import {
+  readPptTextHyperlinkRanges,
+  type PptTextHyperlinkRange,
+} from '../document/readHyperlinks';
 import type { PptParseContext, PptRecord } from '../types';
 import { mergePptTextStyles } from './mergeTextStyles';
 import { readPptTextAtoms } from './readTextAtoms';
@@ -37,23 +41,38 @@ function paragraphStyleAt(
   return runs.length ? runs[runs.length - 1] : undefined;
 }
 
+function hyperlinkAt(
+  ranges: readonly PptTextHyperlinkRange[],
+  position: number,
+) {
+  return ranges.find((range) => position >= range.begin && position < range.end)
+    ?.hyperlink;
+}
+
 function appendRuns(
   text: string,
   start: number,
   characterRuns: PptCharacterStyleRun[],
   baseStyle: TextStyle,
+  hyperlinkRanges: readonly PptTextHyperlinkRange[],
 ) {
   const runs: TextRun[] = [];
   let cursor = 0;
   while (cursor < text.length) {
     const style = styleAt(characterRuns, start + cursor);
+    const hyperlink = hyperlinkAt(hyperlinkRanges, start + cursor);
     let end = cursor + 1;
-    while (end < text.length && styleAt(characterRuns, start + end) === style) {
+    while (
+      end < text.length &&
+      styleAt(characterRuns, start + end) === style &&
+      hyperlinkAt(hyperlinkRanges, start + end) === hyperlink
+    ) {
       end += 1;
     }
     runs.push({
       text: text.slice(cursor, end),
       style: mergePptTextStyles(baseStyle, style),
+      hyperlink,
     });
     cursor = end;
   }
@@ -65,6 +84,7 @@ function buildParagraphs(
   text: string,
   defaults: PptTextDefaults,
   styles: ReturnType<typeof readPptTextStyles>,
+  hyperlinkRanges: readonly PptTextHyperlinkRange[],
 ) {
   const paragraphs: TextParagraph[] = [];
   const baseStyle = mergePptTextStyles(
@@ -77,7 +97,13 @@ function buildParagraphs(
     const paragraphRun = paragraphStyleAt(styles.paragraphs, position);
     const paragraphStyle = mergePptTextStyles(baseStyle, paragraphRun?.style);
     paragraphs.push({
-      runs: appendRuns(value, position, styles.characters, paragraphStyle),
+      runs: appendRuns(
+        value,
+        position,
+        styles.characters,
+        paragraphStyle,
+        hyperlinkRanges,
+      ),
       style: paragraphStyle,
       level: paragraphRun?.level ?? 0,
       bullet: paragraphStyle.bullet,
@@ -93,7 +119,8 @@ export function parsePptTextGroups(
   defaults: PptTextDefaults,
   context: PptParseContext,
 ): PptParsedText[] {
-  return readPptTextAtoms(records, context).map((group) => ({
+  const hyperlinkRanges = readPptTextHyperlinkRanges(records, context);
+  return readPptTextAtoms(records, context).map((group, groupIndex) => ({
     textType: group.textType,
     paragraphs: buildParagraphs(
       group.text,
@@ -104,6 +131,7 @@ export function parsePptTextGroups(
         defaults,
         context,
       ),
+      hyperlinkRanges.filter((range) => range.groupIndex === groupIndex),
     ),
   }));
 }

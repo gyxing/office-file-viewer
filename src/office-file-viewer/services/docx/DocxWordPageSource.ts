@@ -103,6 +103,7 @@ export class DocxWordPageSource
       page: metadata.page,
       images: [],
       outline: [],
+      bookmarks: {},
       preserveSectionPagination: metadata.preserveSectionPagination,
       characterSpacingControl: metadata.characterSpacingControl,
     };
@@ -139,13 +140,18 @@ export class DocxWordPageSource
     }
   }
 
-  finishParsing(result: { title: string; images: DocxDocument['images'] }) {
+  finishParsing(result: {
+    title: string;
+    images: DocxDocument['images'];
+    bookmarks: NonNullable<DocxDocument['bookmarks']>;
+  }) {
     this.throwIfUnavailable();
     if (!this.summary) throw new Error('DOCX Source 尚未收到元数据');
     this.summary = {
       ...this.summary,
       title: result.title,
       images: result.images,
+      bookmarks: result.bookmarks,
     };
     this.parsingCompleted = true;
     this.tryComplete();

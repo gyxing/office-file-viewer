@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react';
 import React, { memo, useMemo } from 'react';
 import type { XlsxChart, XlsxSheet } from '../../services/xlsx/types';
 import { OfficeChartView } from '../../shared/chart/OfficeChartView';
+import { useOfficeHyperlink } from '../../shared/hyperlink';
 import {
   getXlsxMeasuredAnchorRect,
   XLSX_ROW_HEADER_WIDTH,
@@ -31,6 +32,10 @@ function XlsxFloatingChart({
   /** 浏览器最终计算出的列标题行高度。 */
   columnHeaderHeight: number;
 }) {
+  const hyperlinkProps = useOfficeHyperlink<HTMLDivElement>({
+    hyperlink: chart.hyperlink,
+    source: { type: 'shape', id: chart.id },
+  });
   const chartStyle = useMemo<CSSProperties>(
     () => ({
       left: XLSX_ROW_HEADER_WIDTH + rect.x,
@@ -43,6 +48,7 @@ function XlsxFloatingChart({
 
   return (
     <div
+      {...hyperlinkProps}
       className="office-file-xlsx-sheet-grid__floating-chart"
       style={chartStyle}
     >

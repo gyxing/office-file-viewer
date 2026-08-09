@@ -1,18 +1,19 @@
 .office-file-pptx-viewer {
   display: flex;
+  min-width: 0;
   height: 100%;
+  min-height: 0;
   overflow: hidden;
   background: #eef1f6;
 }
 
 .office-file-pptx-viewer__sidebar {
-  position: sticky;
-  top: 56px;
   display: flex;
-  flex: 0 0 292px;
+  flex: 0 1 clamp(212px, 24%, 292px);
   flex-direction: column;
-  width: 292px;
+  min-width: 0;
   height: 100%;
+  min-height: 0;
   overflow: hidden;
   background: #fff;
   border-right: 1px solid #dde3ec;
@@ -31,13 +32,9 @@
 
 .office-file-pptx-viewer__thumbnail-list {
   flex: 1 1 auto;
+  min-height: 0;
   padding: 16px;
   overflow-y: auto;
-}
-
-.office-file-pptx-viewer__thumbnail-list[data-thumbnail-mode='virtual'] {
-  // 未显式约束 Viewer 高度时仍以当前浏览器视口形成可滚动窗口，避免虚拟列表被内容反向撑高。
-  max-height: calc(100vh - 112px);
 }
 
 .office-file-pptx-viewer__thumbnail-button {
@@ -48,7 +45,13 @@
   cursor: pointer;
   background: transparent;
   border: 0;
+  border-radius: 8px;
+  outline: none;
   text-align: left;
+}
+
+.office-file-pptx-viewer__thumbnail-button:focus-visible {
+  box-shadow: 0 0 0 2px rgba(47, 111, 237, 35%);
 }
 
 .office-file-pptx-viewer__workspace {

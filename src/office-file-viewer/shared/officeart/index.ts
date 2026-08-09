@@ -2,6 +2,10 @@
 export { OFFICE_ART_RECORD } from './constants';
 export { OfficeArtParseError } from './OfficeArtParseError';
 export { parseOfficeArtRecords } from './parseOfficeArt';
+export {
+  parseOfficeArtHyperlink,
+  type OfficeArtHyperlinkTarget,
+} from './parseOfficeArtHyperlink';
 export type {
   DecodedBitmap,
   OfficeArtImageFormat,

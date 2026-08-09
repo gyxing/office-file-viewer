@@ -1,6 +1,7 @@
 // ShapeRenderer 渲染 PPTX 基础图形和自定义路径图形。
 import React, { memo } from 'react';
 import type { ShapeElement } from '../../../services/pptx/types';
+import { useOfficeHyperlink } from '../../../shared/hyperlink';
 import {
   colorWithOpacity,
   gradientToSvgEndpoints,
@@ -15,6 +16,8 @@ type ShapeRendererProps = {
   element: ShapeElement;
   /** 内容变化时用于刷新渲染结果的键。 */
   renderKey: string;
+  /** 是否允许当前形状响应链接交互。 */
+  interactive: boolean;
 };
 
 function lineStyle(dash?: string) {
@@ -24,7 +27,19 @@ function lineStyle(dash?: string) {
 }
 
 /** 渲染形状渲染器。 */
-function ShapeRendererComponent({ element, renderKey }: ShapeRendererProps) {
+function ShapeRendererComponent({
+  element,
+  renderKey,
+  interactive,
+}: ShapeRendererProps) {
+  const hyperlinkProps = useOfficeHyperlink<HTMLDivElement>({
+    hyperlink: element.hyperlink,
+    source: {
+      type: element.hyperlinkSourceType ?? 'shape',
+      id: element.id,
+    },
+    interactive,
+  });
   const fillPaint = element.fill;
   const isGradientFill = isGradientPaint(fillPaint);
   const gradientId = isGradientFill
@@ -49,6 +64,7 @@ function ShapeRendererComponent({ element, renderKey }: ShapeRendererProps) {
 
   return (
     <div
+      {...hyperlinkProps}
       style={{
         position: 'absolute',
         left: element.x,

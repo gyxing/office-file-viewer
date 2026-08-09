@@ -235,7 +235,11 @@ function OfficeToolbarComponent({
   };
 
   return (
-    <div className="office-file-toolbar">
+    <div
+      className="office-file-toolbar"
+      role="toolbar"
+      aria-label={messages.toolbar.region}
+    >
       <div className="office-file-toolbar__file-info">
         <OfficeFileTypeIcon
           className="office-file-toolbar__filename-icon"

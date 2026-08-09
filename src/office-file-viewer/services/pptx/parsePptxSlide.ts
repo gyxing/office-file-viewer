@@ -1,5 +1,8 @@
 import { parseOfficeChartXml } from '../../shared/ooxml/charts';
-import { resolvePackageMediaRef } from '../../shared/ooxml/media';
+import {
+  resolvePackageMediaRef,
+  type OfficeRelationship,
+} from '../../shared/ooxml/media';
 import { emuToPx } from '../../shared/ooxml/units';
 import { parseWpsWebExtensionChartModel } from '../../shared/ooxml/wpsChart';
 import {
@@ -23,6 +26,11 @@ import {
   formatPptxTextField,
   type PptxTextFieldContext,
 } from './formatPptxTextField';
+import {
+  hasPptxHyperlinkAction,
+  parsePptxHyperlink,
+  type PptxSlideTargetMap,
+} from './parsePptxHyperlink';
 import { parsePptxSpeakerNotes } from './parseSpeakerNotes';
 import type {
   LayoutDefinition,
@@ -700,7 +708,7 @@ function resolveWebExtensionSnapshot(
     .replace(/^ppt\/webExtensions\//, 'ppt/webExtensions/_rels/')
     .concat('.rels');
   const target = embed
-    ? packageState.relationships[relsPath]?.[embed]
+    ? packageState.relationships[relsPath]?.[embed]?.target
     : undefined;
   return resolveMediaRef(target, packageState);
 }
@@ -710,7 +718,7 @@ export function readPptxSlideBackground(
   bgNode: Element | null,
   theme: ThemeModel,
   packageState: PackageState,
-  slideRels?: Record<string, string>,
+  slideRels?: Record<string, OfficeRelationship>,
 ): SlideBackground | undefined {
   if (!bgNode) return undefined;
   const bgPr = childByLocalName(bgNode, 'bgPr');
@@ -719,7 +727,7 @@ export function readPptxSlideBackground(
   const fill = parseColorNode(solidFill, theme);
   const blip = descendantByLocalName(bgPr, 'blip');
   const embed = attr(blip, 'r:embed') ?? attr(blip, 'embed');
-  const target = embed ? slideRels?.[embed] : undefined;
+  const target = embed ? slideRels?.[embed]?.target : undefined;
   return {
     fill,
     fillOpacity: parseAlphaNode(solidFill),
@@ -831,17 +839,31 @@ function transformGroupedElement(
   };
 }
 
+/** 读取图形、图片或图表自身非可视属性中的点击链接。 */
+function parsePptxObjectHyperlink(
+  node: Element,
+  relationships: Record<string, OfficeRelationship>,
+  slideTargets?: PptxSlideTargetMap,
+) {
+  return parsePptxHyperlink(
+    descendantByLocalName(node, 'cNvPr'),
+    relationships,
+    slideTargets,
+  );
+}
+
 function parseGroupElement(
   node: Element,
   index: number,
   theme: ThemeModel,
   packageState: PackageState,
-  rels: Record<string, string>,
+  rels: Record<string, OfficeRelationship>,
   sourcePrefix: string,
   placeholderStyles?: Record<string, PlaceholderStyle>,
   tableStyles?: TableStyleMap,
   includePlaceholders = true,
   fieldContext?: PptxTextFieldContext,
+  slideTargets?: PptxSlideTargetMap,
 ) {
   const spPr = childByLocalName(node, 'grpSpPr');
   const xfrm = childByLocalName(spPr, 'xfrm');
@@ -870,6 +892,7 @@ function parseGroupElement(
     tableStyles,
     includePlaceholders,
     fieldContext,
+    slideTargets,
   );
   return childElements.map((element) => {
     const translated = transformGroupedElement(element, {
@@ -895,12 +918,13 @@ export function parsePptxVisualTree(
   spTree: Element | null,
   theme: ThemeModel,
   packageState: PackageState,
-  rels: Record<string, string>,
+  rels: Record<string, OfficeRelationship>,
   sourcePrefix: string,
   placeholderStyles?: Record<string, PlaceholderStyle>,
   tableStyles?: TableStyleMap,
   includePlaceholders = true,
   fieldContext?: PptxTextFieldContext,
+  slideTargets?: PptxSlideTargetMap,
 ) {
   const elements: SlideElement[] = [];
   const nodes = childrenByLocalName(spTree, 'sp')
@@ -923,11 +947,13 @@ export function parsePptxVisualTree(
         rels,
       );
       if (chart) {
+        chart.hyperlink = parsePptxObjectHyperlink(node, rels, slideTargets);
         chart.id = `${sourcePrefix}-${chart.id}`;
         elements.push(chart);
         return;
       }
       const image = parseImageElement(node, elementIndex, packageState, rels);
+      image.hyperlink = parsePptxObjectHyperlink(node, rels, slideTargets);
       image.id = `${sourcePrefix}-${image.id}`;
       elements.push(image);
       return;
@@ -945,8 +971,16 @@ export function parsePptxVisualTree(
       const element =
         chart ??
         (tbl
-          ? parseTableElement(node, elementIndex, theme, tableStyles)
+          ? parseTableElement(
+              node,
+              elementIndex,
+              theme,
+              tableStyles,
+              rels,
+              slideTargets,
+            )
           : parseUnsupportedElement(elementIndex, 'Unsupported graphic frame'));
+      element.hyperlink = parsePptxObjectHyperlink(node, rels, slideTargets);
       element.id = `${sourcePrefix}-${element.id}`;
       elements.push(element);
       return;
@@ -964,6 +998,7 @@ export function parsePptxVisualTree(
         tableStyles,
         includePlaceholders,
         fieldContext,
+        slideTargets,
       );
       elements.push(...groupElements);
       return;
@@ -1010,6 +1045,7 @@ export function parsePptxVisualTree(
     }
     if (imageFill) {
       const image = parseImageElement(node, elementIndex, packageState, rels);
+      image.hyperlink = parsePptxObjectHyperlink(node, rels, slideTargets);
       image.id = `${sourcePrefix}-image-fill-${elementIndex}`;
       elements.push(image);
       // 图片填充是形状的视觉底层；仅当文本框确有内容时继续叠加文字。
@@ -1024,8 +1060,17 @@ export function parsePptxVisualTree(
             theme,
             inherited,
             fieldContext,
+            rels,
+            slideTargets,
           )
-        : parseShapeElement(node, elementIndex, theme, inherited),
+        : parseShapeElement(
+            node,
+            elementIndex,
+            theme,
+            inherited,
+            rels,
+            slideTargets,
+          ),
     );
     elements[elements.length - 1].id = `${sourcePrefix}-${
       elements[elements.length - 1].id
@@ -1054,6 +1099,8 @@ export function parsePptxTextElement(
   theme: ThemeModel,
   inherited?: PlaceholderStyle,
   fieldContext?: PptxTextFieldContext,
+  relationships: Record<string, OfficeRelationship> = {},
+  slideTargets?: PptxSlideTargetMap,
 ): TextElement {
   const spPr = childByLocalName(node, 'spPr');
   const xfrm = childByLocalName(spPr, 'xfrm');
@@ -1093,6 +1140,11 @@ export function parsePptxTextElement(
           const runProps = childByLocalName(child, 'rPr');
           runs.push({
             text: textContent(childByLocalName(child, 't')),
+            hyperlink: parsePptxHyperlink(
+              runProps,
+              relationships,
+              slideTargets,
+            ),
             style: mergeTextStyles(
               defaultRunStyle,
               readDefaultRunStyle(runProps, theme),
@@ -1110,6 +1162,11 @@ export function parsePptxTextElement(
           runs.push({
             text: formatPptxTextField(child, storedText, fieldContext),
             fieldType: attr(child, 'type'),
+            hyperlink: parsePptxHyperlink(
+              runProps,
+              relationships,
+              slideTargets,
+            ),
             style: mergeTextStyles(
               defaultRunStyle,
               readDefaultRunStyle(runProps, theme),
@@ -1153,6 +1210,12 @@ export function parsePptxTextElement(
     {};
   const fallbackStyle = mergeTextStyles(inherited?.text, bodyStyle);
 
+  const objectProperties = descendantByLocalName(node, 'cNvPr');
+  const hyperlink = parsePptxHyperlink(
+    objectProperties,
+    relationships,
+    slideTargets,
+  );
   return {
     id: `text-${index}`,
     type: 'text',
@@ -1162,6 +1225,12 @@ export function parsePptxTextElement(
     height: emuValue(ext, 'cy') ?? inherited?.height ?? 0,
     placeholderType: inherited?.type,
     placeholderIdx: inherited?.idx,
+    hyperlink,
+    hyperlinkSourceType: hyperlink
+      ? hasPptxHyperlinkAction(objectProperties)
+        ? 'button'
+        : 'shape'
+      : undefined,
     paragraphs,
     shape: visual.shape,
     path: visual.path,
@@ -1202,11 +1271,19 @@ function parseShapeElement(
   index: number,
   theme: ThemeModel,
   inherited?: PlaceholderStyle,
+  relationships: Record<string, OfficeRelationship> = {},
+  slideTargets?: PptxSlideTargetMap,
 ): ShapeElement {
   const spPr = childByLocalName(node, 'spPr');
   const xfrm = childByLocalName(spPr, 'xfrm');
   const ph = descendantByLocalName(node, 'ph');
   const visual = readShapeVisualStyle(spPr, theme);
+  const objectProperties = descendantByLocalName(node, 'cNvPr');
+  const hyperlink = parsePptxHyperlink(
+    objectProperties,
+    relationships,
+    slideTargets,
+  );
 
   return {
     id: `shape-${index}`,
@@ -1233,6 +1310,12 @@ function parseShapeElement(
     shadow: visual.shadow ?? inherited?.shadow,
     placeholderType: attr(ph, 'type') ?? inherited?.type,
     placeholderIdx: attr(ph, 'idx') ?? inherited?.idx,
+    hyperlink,
+    hyperlinkSourceType: hyperlink
+      ? hasPptxHyperlinkAction(objectProperties)
+        ? 'button'
+        : 'shape'
+      : undefined,
     borderRadius: visual.borderRadius,
   };
 }
@@ -1241,7 +1324,7 @@ function parseImageElement(
   node: Element,
   index: number,
   packageState: PackageState,
-  slideRels: Record<string, string>,
+  slideRels: Record<string, OfficeRelationship>,
 ): ImageElement {
   const xfrm = childByLocalName(childByLocalName(node, 'spPr') ?? node, 'xfrm');
   const blip = descendantByLocalName(node, 'blip');
@@ -1253,7 +1336,7 @@ function parseImageElement(
     attr(svgBlip, 'embed') ??
     attr(blip, 'r:embed') ??
     attr(blip, 'embed');
-  const target = embed ? slideRels[embed] : undefined;
+  const target = embed ? slideRels[embed]?.target : undefined;
   const resolved = resolveMediaRef(target, packageState);
   const crop: ImageCrop | undefined = srcRect
     ? {
@@ -1292,12 +1375,12 @@ function parseWpsWebExtensionChart(
   node: Element,
   index: number,
   packageState: PackageState,
-  rels: Record<string, string>,
+  rels: Record<string, OfficeRelationship>,
 ): ChartElement | undefined {
   // 关系和位置属于 PPTX 包装层，WPS JSON 到图表模型的转换由共享适配器负责。
   const webExtensionRef = descendantByLocalName(node, 'webExtensionRef');
   const relId = attr(webExtensionRef, 'r:id') ?? attr(webExtensionRef, 'id');
-  const target = relId ? rels[relId] : undefined;
+  const target = relId ? rels[relId]?.target : undefined;
   const webExtensionPath = resolveXmlTarget(target, packageState);
   const xml = webExtensionPath
     ? (packageState.entries.get(webExtensionPath) as string | undefined)
@@ -1340,11 +1423,11 @@ function parseChartElement(
   index: number,
   theme: ThemeModel,
   packageState: PackageState,
-  rels: Record<string, string>,
+  rels: Record<string, OfficeRelationship>,
 ): ChartElement | undefined {
   const chartNode = descendantByLocalName(node, 'chart');
   const relId = attr(chartNode, 'r:id') ?? attr(chartNode, 'id');
-  const target = relId ? rels[relId] : undefined;
+  const target = relId ? rels[relId]?.target : undefined;
   const chartPath = resolveXmlTarget(target, packageState);
   const xml = chartPath
     ? (packageState.entries.get(chartPath) as string | undefined)
@@ -1369,7 +1452,12 @@ function parseChartElement(
   };
 }
 
-function parseTableCellText(cellNode: Element, theme: ThemeModel) {
+function parseTableCellText(
+  cellNode: Element,
+  theme: ThemeModel,
+  relationships: Record<string, OfficeRelationship>,
+  slideTargets?: PptxSlideTargetMap,
+) {
   const txBody = childByLocalName(cellNode, 'txBody');
   const paragraphs = childrenByLocalName(txBody, 'p').map((paragraphNode) => {
     const paragraphProps = childByLocalName(paragraphNode, 'pPr');
@@ -1388,6 +1476,7 @@ function parseTableCellText(cellNode: Element, theme: ThemeModel) {
             textContent(childByLocalName(child, 't')) ||
             child.textContent ||
             '',
+          hyperlink: parsePptxHyperlink(runProps, relationships, slideTargets),
           style: mergeTextStyles(
             defaultRunStyle,
             readDefaultRunStyle(runProps, theme),
@@ -1500,6 +1589,8 @@ function parseTableElement(
   index: number,
   theme: ThemeModel,
   tableStyles?: TableStyleMap,
+  relationships: Record<string, OfficeRelationship> = {},
+  slideTargets?: PptxSlideTargetMap,
 ): TableElement {
   const xfrm = childByLocalName(node, 'xfrm');
   const off = childByLocalName(xfrm, 'off');
@@ -1524,6 +1615,8 @@ function parseTableElement(
         const { text, paragraphs, firstRunStyle } = parseTableCellText(
           cellNode,
           theme,
+          relationships,
+          slideTargets,
         );
         const explicitBorder = parseTableBorder(tcPr, theme);
         const styled = resolveTableCellStyle(
@@ -1611,12 +1704,12 @@ function parseUnsupportedElement(
 
 /** 查找 `findLayoutForSlide` 对应的目标数据。 */
 function findLayoutForSlide(
-  slideRels: Record<string, string>,
+  slideRels: Record<string, OfficeRelationship>,
   layoutDefinitions: LayoutDefinition[],
 ) {
-  const layoutTarget = Object.values(slideRels).find((target) =>
-    target.includes('slideLayout'),
-  );
+  const layoutTarget = Object.values(slideRels).find((relationship) =>
+    relationship.target.includes('slideLayout'),
+  )?.target;
   if (!layoutTarget) return undefined;
   const layoutPath = layoutTarget.startsWith('ppt/')
     ? layoutTarget
@@ -1655,6 +1748,7 @@ export function parseSlideXml(
   layoutDefinitions: LayoutDefinition[],
   masterDefinitions: MasterDefinition[],
   tableStyles?: TableStyleMap,
+  slideTargets?: PptxSlideTargetMap,
 ): SlideModel {
   const doc = parseXml(xml);
   const slide = doc.documentElement;
@@ -1715,6 +1809,7 @@ export function parseSlideXml(
       tableStyles,
       true,
       { slideNumber: index },
+      slideTargets,
     ),
   );
 

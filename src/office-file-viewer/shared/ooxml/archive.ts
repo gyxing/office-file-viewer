@@ -48,6 +48,7 @@ export async function openOfficeArchive(
     zipModule,
     useCompressionStream,
     options.signal,
+    options.resourcePolicy,
   );
 }
 

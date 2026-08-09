@@ -33,7 +33,11 @@ import {
   loadWpsCellImages,
   readWpsCellImagePlacement,
 } from '../spreadsheet/wpsCellImages';
-import { adaptBiff8WorksheetSparse } from './adapter';
+import {
+  adaptBiff8DefinedNames,
+  adaptBiff8WorksheetSparse,
+  spreadsheetHyperlinkFromOfficeArt,
+} from './adapter';
 import { BIFF8_RECORD } from './biff8/constants';
 import { parseBiff8WorksheetChunks } from './biff8/parseWorksheetChunks';
 import { parseBiff8Charts, readBiff8ChartSubstream } from './chart/parseCharts';
@@ -86,6 +90,7 @@ function emptyStructure(descriptor: XlsSheetDescriptor) {
     merges: [],
     images: [],
     charts: [],
+    hyperlinks: [],
   };
 }
 
@@ -185,6 +190,7 @@ async function loadXlsObjects(
         alt: drawing.alt,
         src,
         ...anchorGeometry(drawing.anchor, sparse),
+        hyperlink: spreadsheetHyperlinkFromOfficeArt(drawing.hyperlink),
       });
     }
   }
@@ -205,6 +211,7 @@ async function loadXlsObjects(
         title: item.title,
         chart: item.chart,
         ...anchorGeometry(item.anchor, sparse),
+        hyperlink: spreadsheetHyperlinkFromOfficeArt(item.hyperlink),
       });
     });
   }
@@ -357,6 +364,7 @@ export class XlsSpreadsheetSource implements SpreadsheetSource {
     return {
       revision: this.revision,
       sheets: this.snapshotDescriptors,
+      definedNames: adaptBiff8DefinedNames(this.structure.globals),
     };
   }
 
@@ -503,6 +511,7 @@ export class XlsSpreadsheetSource implements SpreadsheetSource {
           merges: sparse.merges,
           images: [...objects.images, ...cellImages],
           charts: objects.charts,
+          hyperlinks: sparse.hyperlinks,
         });
         await Promise.all(
           groupTiles(sheetId, revision, sparse.cells).map((tile) =>

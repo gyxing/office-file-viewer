@@ -22,6 +22,12 @@ import {
   type WpsCellImagePlacement,
 } from '../spreadsheet/wpsCellImages';
 import { mergeXlsxPreviewImages } from './loadXlsxOlePreviewImages';
+import {
+  applyStaticXlsxFormulaHyperlink,
+  applyXlsxHyperlinkRanges,
+  parseXlsxDrawingHyperlink,
+  parseXlsxHyperlink,
+} from './parseXlsxHyperlinks';
 import type {
   XlsxCell,
   XlsxChart,
@@ -216,6 +222,84 @@ function readAnchorPoint(node: Element | null) {
   };
 }
 
+/** 按源顺序读取 XLSX 支持的双单元格和单单元格绘图锚点。 */
+function readDrawingAnchorNodes(root: Element) {
+  return Array.from(root.children).filter(
+    (node) =>
+      node.localName === 'twoCellAnchor' || node.localName === 'oneCellAnchor',
+  );
+}
+
+function readDrawingExtent(anchorNode: Element) {
+  const extent = childByLocalName(anchorNode, 'ext');
+  if (!extent) return undefined;
+  return {
+    width: emuToPx(Number(attr(extent, 'cx')) || 0),
+    height: emuToPx(Number(attr(extent, 'cy')) || 0),
+  };
+}
+
+/** 将绝对像素位置重新映射为单元格锚点，供 oneCellAnchor 补齐终点。 */
+function anchorPointAtPosition(
+  x: number,
+  y: number,
+  columns: XlsxColumn[],
+  rowHeights: Map<number, number>,
+  metrics: SheetMetrics,
+) {
+  let column = 1;
+  let columnStart = 0;
+  while (column < MAX_RENDERED_EMPTY_COLUMNS) {
+    const width = getColumnWidth(columns, column, metrics);
+    if (columnStart + width > x) break;
+    columnStart += width;
+    column += 1;
+  }
+  let row = 1;
+  let rowStart = 0;
+  while (row < MAX_RENDERED_EMPTY_ROWS) {
+    const height = getRowHeight(rowHeights, row, metrics);
+    if (rowStart + height > y) break;
+    rowStart += height;
+    row += 1;
+  }
+  return {
+    column,
+    columnOffset: Math.max(0, x - columnStart),
+    row,
+    rowOffset: Math.max(0, y - rowStart),
+  };
+}
+
+function resolveDrawingAnchorGeometry(
+  anchorNode: Element,
+  columns: XlsxColumn[],
+  rowHeights: Map<number, number>,
+  metrics: SheetMetrics,
+) {
+  const from = readAnchorPoint(childByLocalName(anchorNode, 'from'));
+  const start = anchorPosition(from, columns, rowHeights, metrics);
+  const toNode = childByLocalName(anchorNode, 'to');
+  if (toNode) {
+    const to = readAnchorPoint(toNode);
+    return {
+      from,
+      to,
+      start,
+      end: anchorPosition(to, columns, rowHeights, metrics),
+    };
+  }
+  const extent = readDrawingExtent(anchorNode);
+  if (!extent) return undefined;
+  const end = { x: start.x + extent.width, y: start.y + extent.height };
+  return {
+    from,
+    to: anchorPointAtPosition(end.x, end.y, columns, rowHeights, metrics),
+    start,
+    end,
+  };
+}
+
 /** 解析并确定 `resolveMediaRef` 对应的引用或配置。 */
 function resolveMediaRef(
   target: string | undefined,
@@ -263,19 +347,38 @@ function readDrawingBounds(
   sheetNode: Element,
   sheetPath: string,
   packageState: MaterializedXlsxPackageState,
+  metrics: SheetMetrics,
 ) {
   const drawing = readDrawingXml(sheetNode, sheetPath, packageState);
   if (!drawing) return undefined;
   const drawingDoc = parseXml(drawing.drawingXml);
   let maxRow = 0;
   let maxColumn = 0;
-  childrenByLocalName(drawingDoc.documentElement, 'twoCellAnchor').forEach(
-    (anchorNode) => {
-      const to = readAnchorPoint(childByLocalName(anchorNode, 'to'));
+  readDrawingAnchorNodes(drawingDoc.documentElement).forEach((anchorNode) => {
+    const toNode = childByLocalName(anchorNode, 'to');
+    if (toNode) {
+      const to = readAnchorPoint(toNode);
       maxRow = Math.max(maxRow, to.row);
       maxColumn = Math.max(maxColumn, to.column);
-    },
-  );
+      return;
+    }
+    const from = readAnchorPoint(childByLocalName(anchorNode, 'from'));
+    const extent = readDrawingExtent(anchorNode);
+    if (!extent) return;
+    // 精确行列尺寸尚未建立，先按默认尺寸扩展边界，后续再用真实度量计算终点。
+    maxRow = Math.max(
+      maxRow,
+      from.row +
+        Math.ceil((from.rowOffset + extent.height) / metrics.defaultRowHeight),
+    );
+    maxColumn = Math.max(
+      maxColumn,
+      from.column +
+        Math.ceil(
+          (from.columnOffset + extent.width) / metrics.defaultColumnWidth,
+        ),
+    );
+  });
   return maxRow || maxColumn ? { maxRow, maxColumn } : undefined;
 }
 
@@ -309,7 +412,7 @@ function readSheetCharts(
   const drawingRels = packageState.relationships[drawingRelPath] ?? {};
   const drawingDoc = parseXml(drawing.drawingXml);
 
-  return childrenByLocalName(drawingDoc.documentElement, 'twoCellAnchor')
+  return readDrawingAnchorNodes(drawingDoc.documentElement)
     .map((anchorNode, index): XlsxChart | undefined => {
       const graphicFrame = childByLocalName(anchorNode, 'graphicFrame');
       const chartNode = descendantByLocalName(graphicFrame, 'chart');
@@ -321,10 +424,13 @@ function readSheetCharts(
         : undefined;
       if (!xml) return undefined;
 
-      const startPoint = readAnchorPoint(childByLocalName(anchorNode, 'from'));
-      const endPoint = readAnchorPoint(childByLocalName(anchorNode, 'to'));
-      const start = anchorPosition(startPoint, columns, rowHeights, metrics);
-      const end = anchorPosition(endPoint, columns, rowHeights, metrics);
+      const geometry = resolveDrawingAnchorGeometry(
+        anchorNode,
+        columns,
+        rowHeights,
+        metrics,
+      );
+      if (!geometry) return undefined;
       const chart = parseOfficeChartXml(xml, packageState.theme);
       const name = attr(descendantByLocalName(anchorNode, 'cNvPr'), 'name');
 
@@ -332,12 +438,13 @@ function readSheetCharts(
         id: `${drawing.drawingPath}-chart-${index + 1}`,
         title: name,
         chart,
-        from: startPoint,
-        to: endPoint,
-        x: start.x,
-        y: start.y,
-        width: Math.max(1, end.x - start.x),
-        height: Math.max(1, end.y - start.y),
+        from: geometry.from,
+        to: geometry.to,
+        x: geometry.start.x,
+        y: geometry.start.y,
+        width: Math.max(1, geometry.end.x - geometry.start.x),
+        height: Math.max(1, geometry.end.y - geometry.start.y),
+        hyperlink: parseXlsxDrawingHyperlink(anchorNode, drawingRels),
       };
     })
     .filter(Boolean) as XlsxChart[];
@@ -360,18 +467,21 @@ function readSheetImages(
   const drawingRels = packageState.relationships[drawingRelPath] ?? {};
   const drawingDoc = parseXml(drawing.drawingXml);
 
-  return childrenByLocalName(drawingDoc.documentElement, 'twoCellAnchor')
+  return readDrawingAnchorNodes(drawingDoc.documentElement)
     .map((anchorNode, index): XlsxImage | undefined => {
-      const from = readAnchorPoint(childByLocalName(anchorNode, 'from'));
-      const to = readAnchorPoint(childByLocalName(anchorNode, 'to'));
+      const geometry = resolveDrawingAnchorGeometry(
+        anchorNode,
+        columns,
+        rowHeights,
+        metrics,
+      );
+      if (!geometry) return undefined;
       const blip = descendantByLocalName(anchorNode, 'blip');
       const embed = attr(blip, 'r:embed') ?? attr(blip, 'embed');
       const target = embed ? drawingRels[embed]?.target : undefined;
       const src = resolveMediaRef(target, packageState);
       if (!src) return undefined;
 
-      const start = anchorPosition(from, columns, rowHeights, metrics);
-      const end = anchorPosition(to, columns, rowHeights, metrics);
       const name = attr(descendantByLocalName(anchorNode, 'cNvPr'), 'name');
 
       return {
@@ -379,12 +489,13 @@ function readSheetImages(
         name,
         alt: name,
         src,
-        from,
-        to,
-        x: start.x,
-        y: start.y,
-        width: Math.max(1, end.x - start.x),
-        height: Math.max(1, end.y - start.y),
+        from: geometry.from,
+        to: geometry.to,
+        x: geometry.start.x,
+        y: geometry.start.y,
+        width: Math.max(1, geometry.end.x - geometry.start.x),
+        height: Math.max(1, geometry.end.y - geometry.start.y),
+        hyperlink: parseXlsxDrawingHyperlink(anchorNode, drawingRels),
       };
     })
     .filter(Boolean) as XlsxImage[];
@@ -624,7 +735,7 @@ export function parseMaterializedXlsxSheet(
     const value = readCellValue(cellNode, sharedStrings);
     const formula = textContent(childByLocalName(cellNode, 'f'));
     const cellImageId = readWpsCellImageId(formula, value.value);
-    const cell: XlsxCell = {
+    const cell: XlsxCell = applyStaticXlsxFormulaHyperlink({
       ref,
       rowIndex: address.row,
       columnIndex: address.column,
@@ -634,7 +745,7 @@ export function parseMaterializedXlsxSheet(
       styleId,
       style: resolveStyle(styleId, styleBook),
       formula: formula || undefined,
-    };
+    });
     if (cellImageId) {
       cellImagePlacements.push({
         imageId: cellImageId,
@@ -647,6 +758,23 @@ export function parseMaterializedXlsxSheet(
     maxColumn = Math.max(maxColumn, address.column);
   });
 
+  const sheetRelationshipPath = sheetInfo.path
+    .replace(/^xl\/worksheets\//, 'xl/worksheets/_rels/')
+    .concat('.rels');
+  const sheetRelationships =
+    packageState.relationships[sheetRelationshipPath] ?? {};
+  const hyperlinks = descendantsByLocalName(sheetNode, 'hyperlink').flatMap(
+    (node) => {
+      const attributes = new Map<string, string>();
+      Array.from(node.attributes).forEach((attribute) =>
+        attributes.set(attribute.name, attribute.value),
+      );
+      const hyperlink = parseXlsxHyperlink(attributes, sheetRelationships);
+      return hyperlink ? [hyperlink] : [];
+    },
+  );
+  applyXlsxHyperlinkRanges(cells, hyperlinks);
+
   const merges = readMerges(sheetNode);
   merges.forEach((merge) => {
     maxRow = Math.max(maxRow, merge.endRow);
@@ -657,6 +785,7 @@ export function parseMaterializedXlsxSheet(
     sheetNode,
     sheetInfo.path,
     packageState,
+    metrics,
   );
   if (drawingBounds) {
     // 图片/图表可能锚定在没有单元格内容的区域，需要扩展表格范围保证它们可见。
@@ -763,5 +892,6 @@ export function parseMaterializedXlsxSheet(
       rowHeights,
       metrics,
     ),
+    hyperlinks,
   };
 }

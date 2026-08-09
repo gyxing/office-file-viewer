@@ -1,5 +1,12 @@
 // PptxThumbnailPane 渲染幻灯片缩略图列表，并负责切换当前页。
-import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
+import React, {
+  memo,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from 'react';
 import { useOfficeFileViewerMessages } from '../../locale';
 import type {
   PresentationSlideDescriptor,
@@ -9,7 +16,10 @@ import type {
 } from '../../services/presentation/types';
 import { PptxThumbnail } from './PptxThumbnail';
 import { PptxThumbnailPlaceholder } from './PptxThumbnailPlaceholder';
-import { VirtualPptxThumbnailList } from './VirtualPptxThumbnailList';
+import {
+  getPresentationThumbnailNavigationTarget,
+  VirtualPptxThumbnailList,
+} from './VirtualPptxThumbnailList';
 
 /** PPTX缩略图面板组件属性。 */
 type PptxThumbnailPaneProps = {
@@ -109,6 +119,7 @@ function PptxThumbnailPaneComponent({
   onSelectSlide,
 }: PptxThumbnailPaneProps) {
   const messages = useOfficeFileViewerMessages();
+  const buttonRefs = useRef<Record<number, HTMLButtonElement | null>>({});
   const handleSelect = useCallback(
     (index: number, descriptor: PresentationSlideDescriptor) => {
       if (descriptor.status === 'error') {
@@ -118,6 +129,22 @@ function PptxThumbnailPaneComponent({
       onSelectSlide(index);
     },
     [onSelectSlide, source],
+  );
+  const handleThumbnailKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+      const targetIndex = getPresentationThumbnailNavigationTarget(
+        event.key,
+        index,
+        snapshot.slideCount,
+      );
+      if (targetIndex === undefined) return;
+      event.preventDefault();
+      handleSelect(targetIndex, snapshot.slides[targetIndex]);
+      window.requestAnimationFrame(() =>
+        buttonRefs.current[targetIndex]?.focus(),
+      );
+    },
+    [handleSelect, snapshot.slideCount, snapshot.slides],
   );
   const renderThumbnail = useCallback(
     (descriptor: PresentationSlideDescriptor, index: number) => (
@@ -133,7 +160,10 @@ function PptxThumbnailPaneComponent({
   );
 
   return (
-    <aside className="office-file-pptx-viewer__sidebar">
+    <aside
+      className="office-file-pptx-viewer__sidebar"
+      aria-label={messages.presentation.thumbnailsRegion}
+    >
       <div className="office-file-pptx-viewer__sidebar-header">
         <div className="office-file-pptx-viewer__slide-count">
           {messages.presentation.slideCount(snapshot.slideCount)}
@@ -154,6 +184,9 @@ function PptxThumbnailPaneComponent({
         >
           {snapshot.slides.map((descriptor, index) => (
             <button
+              ref={(node) => {
+                buttonRefs.current[index] = node;
+              }}
               key={descriptor.id}
               type="button"
               aria-label={
@@ -164,8 +197,12 @@ function PptxThumbnailPaneComponent({
                   : messages.presentation.slide(descriptor.index)
               }
               aria-current={index === activeIndex ? 'page' : undefined}
+              aria-posinset={index + 1}
+              aria-setsize={snapshot.slideCount}
+              tabIndex={index === activeIndex ? 0 : -1}
               className="office-file-pptx-viewer__thumbnail-button"
               onClick={() => handleSelect(index, descriptor)}
+              onKeyDown={(event) => handleThumbnailKeyDown(event, index)}
             >
               <ThumbnailContent
                 source={source}

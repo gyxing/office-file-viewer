@@ -3,6 +3,7 @@ import type {
   OfficeArchiveEntry,
   OfficeArchiveReader,
 } from '../../shared/ooxml/OfficeArchiveReader';
+import type { OfficeArchiveResourcePolicy } from '../../shared/resource/OfficeResourcePolicy';
 import { OFFICE_LARGE_FILE_THRESHOLDS } from '../performance/officePerformanceThresholds';
 
 /** DOCX 压缩包的大文件判定指标。 */
@@ -62,8 +63,9 @@ export function createDocxArchiveProfile(
 export async function profileDocxArchive(
   file: File,
   signal?: AbortSignal,
+  resourcePolicy?: OfficeArchiveResourcePolicy,
 ): Promise<ProfiledDocxArchive> {
-  const reader = await openOfficeArchive(file, { signal });
+  const reader = await openOfficeArchive(file, { signal, resourcePolicy });
   try {
     const entries = reader.list();
     return {

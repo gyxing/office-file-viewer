@@ -28,6 +28,10 @@ import {
   type PreviewKind,
 } from '../../services/preview';
 import {
+  collectOfficePreviewWarnings,
+  type OfficeFileViewerWarning,
+} from '../../services/previewWarnings';
+import {
   createOfficeResourceStore,
   type OfficeResourceStore,
 } from '../../services/resource-store';
@@ -36,17 +40,21 @@ import {
   type OfficeDocumentSession,
 } from '../../services/session';
 import type { SpreadsheetSource } from '../../services/spreadsheet/SpreadsheetSource';
-import type { SpreadsheetViewMode } from '../../services/spreadsheet/viewMode';
+import {
+  DEFAULT_SPREADSHEET_VIEW_MODE,
+  type SpreadsheetViewMode,
+} from '../../services/spreadsheet/viewMode';
 import type {
   WordOutlineProvider,
   WordOutlineProviderSnapshot,
 } from '../../services/word/WordOutlineProvider';
 import { useExternalStoreSelector } from '../../shared/react/useExternalStoreSnapshot';
-import {
-  OFFICE_MAX_ZOOM,
-  OFFICE_MIN_ZOOM,
-  OFFICE_ZOOM_STEP,
-} from '../constants';
+import { OFFICE_ZOOM_STEP } from '../constants';
+import { normalizeOfficeZoom } from '../normalizeOfficeZoom';
+import type {
+  OfficeFileViewerViewState,
+  OfficeFileViewerViewStateChange,
+} from '../viewState';
 import {
   createInitialOfficeViewerState,
   officeViewerReducer,
@@ -56,6 +64,10 @@ import {
 import { disposeViewerPreviewState } from './previewResources';
 
 /** 保存当前加载代次收到的渐进结果，用于丢弃过期异步输出。 */
+type OfficeViewerLoadSource =
+  | { kind: 'file'; file: File }
+  | { kind: 'uri'; uri: OfficeFileViewerUri };
+
 type PendingPartialResult = {
   /** 本次加载的递增代次。 */
   loadGeneration: number;
@@ -69,6 +81,15 @@ export type UseOfficeViewerControllerOptions = {
   uri?: OfficeFileViewerUri;
   /** 新文件和重置操作使用的缩放比例。 */
   defaultZoom: number;
+  /** 非受控模式下各视图字段的统一初始值。 */
+  defaultViewState?: Partial<OfficeFileViewerViewState>;
+  /** 由宿主按字段控制的视图状态。 */
+  viewState?: Partial<OfficeFileViewerViewState>;
+  /** 用户请求改变视图状态时触发。 */
+  onViewStateChange?: (
+    state: OfficeFileViewerViewState,
+    change: OfficeFileViewerViewStateChange,
+  ) => void;
   /** 非受控备注面板的默认状态。 */
   defaultShowSpeakerNotes: boolean;
   /** 受控模式下的备注面板状态。 */
@@ -81,6 +102,8 @@ export type UseOfficeViewerControllerOptions = {
   onPreviewReady?: (info: OfficePreviewReadyInfo, file: File) => void;
   /** 文件加载、解析或全屏失败后的回调。 */
   onError?: (error: Error, file?: File) => void;
+  /** 解析降级或格式兼容警告回调。 */
+  onWarning?: (warning: OfficeFileViewerWarning, file: File) => void;
   /** 底层解析会话配置。 */
   parseOptions?: OfficeParseOptions;
   /** 解析进度变化回调。 */
@@ -93,6 +116,8 @@ export type UseOfficeViewerControllerOptions = {
 export type OfficeViewerActions = {
   /** 解析用户在文件选择器中选中的文件。 */
   selectFile(file: File): Promise<void>;
+  /** 重新加载最近一次文件来源。 */
+  retry(): void;
   /** 切换到上一张幻灯片。 */
   previousSlide(): void;
   /** 切换到下一张幻灯片。 */
@@ -144,6 +169,10 @@ export type OfficeViewerMeta = {
   preview?: OfficeFileViewerPreviewState;
   /** 当前文件识别出的格式。 */
   previewKind?: PreviewKind;
+  /** 当前加载代次正在预览的文件。 */
+  currentFile?: File;
+  /** 可用于解析文档相对链接的 HTTP(S) 来源地址。 */
+  sourceUrl?: string;
   /** 当前格式对应的专属渲染能力。 */
   format: OfficeViewerFormatMeta;
   /** 当前是否已有可以交给格式查看器的内容。 */
@@ -154,6 +183,8 @@ export type OfficeViewerMeta = {
   fullscreenSupported: boolean;
   /** 当前解析阶段对应的本地化提示。 */
   loadingTip?: string;
+  /** 当前错误是否存在可重新加载的文件来源。 */
+  canRetry: boolean;
 };
 
 /** 控制器向公共组件交付的状态、动作和实例资源。 */
@@ -192,6 +223,87 @@ function notifyObserver<TArguments extends unknown[]>(
   }
 }
 
+/** 将幻灯片索引规范为当前演示文稿可导航的范围。 */
+function normalizeSlideIndex(value: number, slideCount: number) {
+  const fallback = 0;
+  if (!Number.isFinite(value) || slideCount <= 0) return fallback;
+  return Math.min(Math.max(0, Math.trunc(value)), slideCount - 1);
+}
+
+/** 忽略 JavaScript 调用方传入的无效电子表格显示模式。 */
+function normalizeSpreadsheetViewMode(
+  value: SpreadsheetViewMode | undefined,
+): SpreadsheetViewMode {
+  return value === 'reading' || value === 'source'
+    ? value
+    : DEFAULT_SPREADSHEET_VIEW_MODE;
+}
+
+/** 合并旧版默认属性和统一默认视图状态，保持已有调用方式兼容。 */
+function createDefaultViewState(
+  options: UseOfficeViewerControllerOptions,
+): OfficeFileViewerViewState {
+  const defaults = options.defaultViewState;
+  return {
+    zoom: normalizeOfficeZoom(defaults?.zoom ?? options.defaultZoom),
+    activeSlideIndex: normalizeSlideIndex(
+      defaults?.activeSlideIndex ?? 0,
+      Number.MAX_SAFE_INTEGER,
+    ),
+    activeSheetId: defaults?.activeSheetId,
+    wordOutlineVisible: defaults?.wordOutlineVisible ?? false,
+    speakerNotesVisible:
+      defaults?.speakerNotesVisible ?? options.defaultShowSpeakerNotes,
+    spreadsheetViewMode: normalizeSpreadsheetViewMode(
+      defaults?.spreadsheetViewMode,
+    ),
+  };
+}
+
+/** 将内部字段转换为公开视图状态，屏蔽全屏和内部备注存储细节。 */
+function createPublicViewState(
+  view: OfficeViewerState['view'],
+): OfficeFileViewerViewState {
+  return {
+    zoom: view.zoom,
+    activeSlideIndex: view.activeSlideIndex,
+    activeSheetId: view.activeSheetId,
+    wordOutlineVisible: view.showWordOutline,
+    speakerNotesVisible: view.internalShowSpeakerNotes,
+    spreadsheetViewMode: view.spreadsheetViewMode,
+  };
+}
+
+/** 把单字段变更合并到完整公开状态，保留字段和值的联合类型关系。 */
+function applyPublicViewStateChange(
+  state: OfficeFileViewerViewState,
+  change: OfficeFileViewerViewStateChange,
+): OfficeFileViewerViewState {
+  switch (change.key) {
+    case 'zoom':
+      return { ...state, zoom: change.value };
+    case 'activeSlideIndex':
+      return { ...state, activeSlideIndex: change.value };
+    case 'activeSheetId':
+      return { ...state, activeSheetId: change.value };
+    case 'wordOutlineVisible':
+      return { ...state, wordOutlineVisible: change.value };
+    case 'speakerNotesVisible':
+      return { ...state, speakerNotesVisible: change.value };
+    case 'spreadsheetViewMode':
+      return { ...state, spreadsheetViewMode: change.value };
+  }
+}
+/** 读取当前电子表格预览中有效的工作表标识。 */
+function getSpreadsheetSheetIds(
+  preview: OfficeFileViewerPreviewState | undefined,
+): string[] {
+  if (!preview || !isSpreadsheetPreviewKind(preview.previewKind)) return [];
+  if (preview.mode === 'source') {
+    return preview.source.getSnapshot().sheets.map((sheet) => sheet.id);
+  }
+  return preview.model.workbook.sheets.map((sheet) => sheet.id);
+}
 /** 从生命周期状态中读取当前可展示的预览快照。 */
 function getDocumentPreview(
   documentState: OfficeViewerDocumentState,
@@ -337,17 +449,18 @@ export function useOfficeViewerController(
   const [state, dispatch] = useReducer(
     officeViewerReducer,
     createInitialOfficeViewerState({
-      defaultZoom: options.defaultZoom,
-      defaultShowSpeakerNotes: options.defaultShowSpeakerNotes,
+      defaultViewState: createDefaultViewState(options),
     }),
   );
   const optionsRef = useLatestRef(options);
-  const stateRef = useLatestRef(state);
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const resourceStore = useMemo(() => createOfficeResourceStore(), []);
   const resourceStoreEffectGenerationRef = useRef(0);
   const loadGenerationRef = useRef(0);
+  const lastLoadSourceRef = useRef<OfficeViewerLoadSource>();
   const documentSessionIdRef = useRef<string>();
+  const currentFileRef = useRef<File>();
+  const sourceUrlRef = useRef<string>();
   const requestControllerRef = useRef<AbortController>();
   const parseSessionRef = useRef<OfficeFileViewerParseSession>();
   const previewRef = useRef<OfficeFileViewerPreviewState>();
@@ -355,6 +468,8 @@ export function useOfficeViewerController(
   const partialFrameRef = useRef<number>();
   const preview = getDocumentPreview(state.document);
   const previewKind = getDocumentPreviewKind(state.document);
+  const currentFile = currentFileRef.current;
+  const sourceUrl = sourceUrlRef.current;
   const previewFamily = previewKind ? getPreviewFamily(previewKind) : undefined;
   const presentationSource = getPresentationSource(preview);
   const spreadsheetSource = getSpreadsheetSource(preview);
@@ -385,8 +500,55 @@ export function useOfficeViewerController(
   );
   const hasWordOutline =
     (sourceWordOutlineCount || getMaterializedWordOutlineCount(preview)) > 0;
+  const spreadsheetSheetIds = getSpreadsheetSheetIds(preview);
+  const controlledViewState = options.viewState;
+  const controlledSheetId = controlledViewState?.activeSheetId;
+  const internalSheetId = state.view.activeSheetId;
+  const activeSheetId =
+    controlledSheetId && spreadsheetSheetIds.includes(controlledSheetId)
+      ? controlledSheetId
+      : internalSheetId && spreadsheetSheetIds.includes(internalSheetId)
+      ? internalSheetId
+      : spreadsheetSheetIds[0];
+  const speakerNotesVisible =
+    controlledViewState?.speakerNotesVisible ??
+    options.showSpeakerNotes ??
+    state.view.internalShowSpeakerNotes;
+  const effectiveViewState: OfficeViewerState['view'] = {
+    ...state.view,
+    activeSlideIndex: normalizeSlideIndex(
+      controlledViewState?.activeSlideIndex ?? state.view.activeSlideIndex,
+      presentationSlideCount,
+    ),
+    activeSheetId,
+    zoom: normalizeOfficeZoom(
+      controlledViewState?.zoom ?? state.view.zoom,
+      state.view.zoom,
+    ),
+    internalShowSpeakerNotes: speakerNotesVisible,
+    showWordOutline:
+      hasWordOutline &&
+      (controlledViewState?.wordOutlineVisible ?? state.view.showWordOutline),
+    spreadsheetViewMode: normalizeSpreadsheetViewMode(
+      controlledViewState?.spreadsheetViewMode ??
+        state.view.spreadsheetViewMode,
+    ),
+  };
   const presentationSlideCountRef = useLatestRef(presentationSlideCount);
+  const spreadsheetSheetIdsRef = useLatestRef(spreadsheetSheetIds);
   const hasWordOutlineRef = useLatestRef(hasWordOutline);
+  const effectiveViewStateRef = useLatestRef(effectiveViewState);
+
+  const notifyViewStateChange = useCallback(
+    (change: OfficeFileViewerViewStateChange) => {
+      const nextState = applyPublicViewStateChange(
+        createPublicViewState(effectiveViewStateRef.current),
+        change,
+      );
+      notifyObserver(optionsRef.current.onViewStateChange, nextState, change);
+    },
+    [effectiveViewStateRef, optionsRef],
+  );
 
   const cancelPartialFrame = useCallback(() => {
     if (
@@ -410,6 +572,8 @@ export function useOfficeViewerController(
     parseSessionRef.current?.dispose();
     parseSessionRef.current = undefined;
     documentSessionIdRef.current = undefined;
+    currentFileRef.current = undefined;
+    sourceUrlRef.current = undefined;
     cancelPartialFrame();
     disposeCurrentPreview();
   }, [cancelPartialFrame, disposeCurrentPreview]);
@@ -457,8 +621,10 @@ export function useOfficeViewerController(
   );
 
   const loadFile = useCallback(
-    async (file: File, loadGeneration: number) => {
+    async (file: File, loadGeneration: number, nextSourceUrl?: string) => {
       resetActiveSession();
+      currentFileRef.current = file;
+      sourceUrlRef.current = nextSourceUrl;
       dispatch({ type: 'resolve-started' });
       let retainedPartial = false;
       let documentSession: OfficeDocumentSession | undefined;
@@ -471,17 +637,11 @@ export function useOfficeViewerController(
 
         const fileKind = detectPreviewKind(file.name);
         const currentOptions = optionsRef.current;
-        const currentInternalNotes =
-          stateRef.current.view.internalShowSpeakerNotes;
         dispatch({
           type: 'parse-started',
           fileName: file.name,
           previewKind: fileKind,
-          zoom: currentOptions.defaultZoom,
-          showSpeakerNotes:
-            currentOptions.showSpeakerNotes === undefined
-              ? currentOptions.defaultShowSpeakerNotes
-              : currentInternalNotes,
+          viewState: createDefaultViewState(currentOptions),
         });
 
         documentSession = createOfficeDocumentSession();
@@ -530,6 +690,17 @@ export function useOfficeViewerController(
                 fileName: file.name,
                 preview: partial,
               });
+              notifyObserver(
+                optionsRef.current.onWarning,
+                {
+                  code: 'PARTIAL_PREVIEW_RETAINED',
+                  message:
+                    optionsRef.current.messages.progress.partialDescription,
+                  previewKind: partial.previewKind,
+                  source: 'partial-preview',
+                },
+                file,
+              );
               retainedPartial = true;
             }
           }
@@ -562,6 +733,9 @@ export function useOfficeViewerController(
           previewKind: finalPreview.previewKind,
           mode: finalPreview.mode,
         };
+        collectOfficePreviewWarnings(finalPreview).forEach((warning) => {
+          notifyObserver(optionsRef.current.onWarning, warning, file);
+        });
         if (finalPreview.mode === 'materialized') {
           parsedModel = finalPreview.model;
         }
@@ -612,6 +786,7 @@ export function useOfficeViewerController(
 
   const selectFile = useCallback(
     async (file: File) => {
+      lastLoadSourceRef.current = { kind: 'file', file };
       requestControllerRef.current?.abort();
       requestControllerRef.current = undefined;
       const loadGeneration = ++loadGenerationRef.current;
@@ -620,63 +795,77 @@ export function useOfficeViewerController(
     [loadFile],
   );
 
-  useEffect(() => {
-    if (!options.uri) return;
+  const beginUriLoad = useCallback(
+    (uriToLoad: OfficeFileViewerUri) => {
+      resetActiveSession();
+      dispatch({ type: 'resolve-started' });
+      const loadGeneration = ++loadGenerationRef.current;
+      const requestController =
+        typeof AbortController === 'undefined'
+          ? undefined
+          : new AbortController();
+      requestControllerRef.current?.abort();
+      requestControllerRef.current = requestController;
 
-    resetActiveSession();
-    dispatch({ type: 'resolve-started' });
-    // 固化本次 effect 的文件来源，避免异步闭包丢失类型收窄。
-    const uriToLoad = options.uri;
-    const loadGeneration = ++loadGenerationRef.current;
-    const requestController =
-      typeof AbortController === 'undefined'
-        ? undefined
-        : new AbortController();
-    requestControllerRef.current?.abort();
-    requestControllerRef.current = requestController;
+      async function loadUri() {
+        let file: File | undefined;
+        try {
+          const normalized = await normalizeOfficeFileUri(
+            uriToLoad,
+            optionsRef.current.messages,
+            requestController?.signal,
+          );
+          file = normalized.file;
+          if (loadGeneration !== loadGenerationRef.current) return;
+          await loadFile(file, loadGeneration, normalized.sourceUrl);
+        } catch (nextError) {
+          if (
+            loadGeneration !== loadGenerationRef.current ||
+            requestController?.signal.aborted
+          ) {
+            return;
+          }
 
-    async function loadUri() {
-      let file: File | undefined;
-      try {
-        file = await normalizeOfficeFileUri(
-          uriToLoad,
-          optionsRef.current.messages,
-          requestController?.signal,
-        );
-        if (loadGeneration !== loadGenerationRef.current) return;
-        await loadFile(file, loadGeneration);
-      } catch (nextError) {
-        if (
-          loadGeneration !== loadGenerationRef.current ||
-          requestController?.signal.aborted
-        ) {
-          return;
-        }
-
-        const normalizedError =
-          nextError instanceof Error
-            ? nextError
-            : new Error(optionsRef.current.messages.file.loadFailed);
-        dispatch({
-          type: 'failed',
-          message:
-            normalizedError instanceof OfficeFileViewerInputError
-              ? normalizedError.message
-              : optionsRef.current.messages.file.loadFailed,
-        });
-        notifyObserver(optionsRef.current.onError, normalizedError, file);
-      } finally {
-        if (requestControllerRef.current === requestController) {
-          requestControllerRef.current = undefined;
+          const normalizedError =
+            nextError instanceof Error
+              ? nextError
+              : new Error(optionsRef.current.messages.file.loadFailed);
+          dispatch({
+            type: 'failed',
+            message:
+              normalizedError instanceof OfficeFileViewerInputError
+                ? normalizedError.message
+                : optionsRef.current.messages.file.loadFailed,
+          });
+          notifyObserver(optionsRef.current.onError, normalizedError, file);
+        } finally {
+          if (requestControllerRef.current === requestController) {
+            requestControllerRef.current = undefined;
+          }
         }
       }
-    }
 
-    void loadUri();
-    return () => {
-      requestController?.abort();
-    };
-  }, [loadFile, options.uri, resetActiveSession]);
+      void loadUri();
+      return () => requestController?.abort();
+    },
+    [loadFile, resetActiveSession],
+  );
+
+  useEffect(() => {
+    if (!options.uri) return;
+    lastLoadSourceRef.current = { kind: 'uri', uri: options.uri };
+    return beginUriLoad(options.uri);
+  }, [beginUriLoad, options.uri]);
+
+  const retry = useCallback(() => {
+    const source = lastLoadSourceRef.current;
+    if (!source) return;
+    if (source.kind === 'file') {
+      void selectFile(source.file);
+      return;
+    }
+    beginUriLoad(source.uri);
+  }, [beginUriLoad, selectFile]);
 
   useEffect(() => {
     const effectGeneration = ++resourceStoreEffectGenerationRef.current;
@@ -718,86 +907,149 @@ export function useOfficeViewerController(
     };
   }, []);
 
+  const commitSlideSelection = useCallback(
+    (index: number) => {
+      const normalizedIndex = normalizeSlideIndex(
+        index,
+        presentationSlideCountRef.current,
+      );
+      if (effectiveViewStateRef.current.activeSlideIndex === normalizedIndex) {
+        return;
+      }
+      if (optionsRef.current.viewState?.activeSlideIndex === undefined) {
+        dispatch({ type: 'slide-selected', index: normalizedIndex });
+      }
+      notifyViewStateChange({
+        key: 'activeSlideIndex',
+        value: normalizedIndex,
+      });
+    },
+    [effectiveViewStateRef, notifyViewStateChange, optionsRef],
+  );
+
   const previousSlide = useCallback(() => {
-    dispatch({
-      type: 'slide-selected',
-      index: Math.max(stateRef.current.view.activeSlideIndex - 1, 0),
-    });
-  }, [stateRef]);
+    commitSlideSelection(effectiveViewStateRef.current.activeSlideIndex - 1);
+  }, [commitSlideSelection, effectiveViewStateRef]);
 
   const nextSlide = useCallback(() => {
-    dispatch({
-      type: 'slide-selected',
-      index: Math.min(
-        stateRef.current.view.activeSlideIndex + 1,
-        Math.max(0, presentationSlideCountRef.current - 1),
-      ),
-    });
-  }, [presentationSlideCountRef, stateRef]);
+    commitSlideSelection(effectiveViewStateRef.current.activeSlideIndex + 1);
+  }, [commitSlideSelection, effectiveViewStateRef]);
 
-  const selectSlide = useCallback((index: number) => {
-    dispatch({ type: 'slide-selected', index });
-  }, []);
+  const selectSlide = useCallback(
+    (index: number) => commitSlideSelection(index),
+    [commitSlideSelection],
+  );
 
-  const selectSheet = useCallback((sheetId: string) => {
-    dispatch({ type: 'sheet-selected', sheetId });
-  }, []);
+  const selectSheet = useCallback(
+    (sheetId: string) => {
+      if (!spreadsheetSheetIdsRef.current.includes(sheetId)) return;
+      if (effectiveViewStateRef.current.activeSheetId === sheetId) return;
+      if (optionsRef.current.viewState?.activeSheetId === undefined) {
+        dispatch({ type: 'sheet-selected', sheetId });
+      }
+      notifyViewStateChange({ key: 'activeSheetId', value: sheetId });
+    },
+    [
+      effectiveViewStateRef,
+      notifyViewStateChange,
+      optionsRef,
+      spreadsheetSheetIdsRef,
+    ],
+  );
+
+  const commitZoom = useCallback(
+    (zoom: number) => {
+      const normalizedZoom = normalizeOfficeZoom(
+        zoom,
+        effectiveViewStateRef.current.zoom,
+      );
+      if (effectiveViewStateRef.current.zoom === normalizedZoom) return;
+      if (optionsRef.current.viewState?.zoom === undefined) {
+        dispatch({ type: 'zoom-changed', zoom: normalizedZoom });
+      }
+      notifyViewStateChange({ key: 'zoom', value: normalizedZoom });
+    },
+    [effectiveViewStateRef, notifyViewStateChange, optionsRef],
+  );
 
   const zoomOut = useCallback(() => {
-    dispatch({
-      type: 'zoom-changed',
-      zoom: Math.max(
-        OFFICE_MIN_ZOOM,
-        stateRef.current.view.zoom - OFFICE_ZOOM_STEP,
-      ),
-    });
-  }, [stateRef]);
+    commitZoom(effectiveViewStateRef.current.zoom - OFFICE_ZOOM_STEP);
+  }, [commitZoom, effectiveViewStateRef]);
 
   const zoomIn = useCallback(() => {
-    dispatch({
-      type: 'zoom-changed',
-      zoom: Math.min(
-        OFFICE_MAX_ZOOM,
-        stateRef.current.view.zoom + OFFICE_ZOOM_STEP,
-      ),
-    });
-  }, [stateRef]);
+    commitZoom(effectiveViewStateRef.current.zoom + OFFICE_ZOOM_STEP);
+  }, [commitZoom, effectiveViewStateRef]);
 
-  const changeZoom = useCallback((zoom: number) => {
-    dispatch({ type: 'zoom-changed', zoom });
-  }, []);
+  const changeZoom = useCallback(
+    (zoom: number) => commitZoom(zoom),
+    [commitZoom],
+  );
 
   const changeSpreadsheetViewMode = useCallback(
     (viewMode: SpreadsheetViewMode) => {
-      dispatch({ type: 'spreadsheet-view-mode-changed', viewMode });
+      const normalizedMode = normalizeSpreadsheetViewMode(viewMode);
+      if (
+        effectiveViewStateRef.current.spreadsheetViewMode === normalizedMode
+      ) {
+        return;
+      }
+      if (optionsRef.current.viewState?.spreadsheetViewMode === undefined) {
+        dispatch({
+          type: 'spreadsheet-view-mode-changed',
+          viewMode: normalizedMode,
+        });
+      }
+      notifyViewStateChange({
+        key: 'spreadsheetViewMode',
+        value: normalizedMode,
+      });
     },
-    [],
+    [effectiveViewStateRef, notifyViewStateChange, optionsRef],
   );
 
   const toggleSpeakerNotes = useCallback(() => {
     const currentOptions = optionsRef.current;
-    const nextVisible = !(
-      currentOptions.showSpeakerNotes ??
-      stateRef.current.view.internalShowSpeakerNotes
-    );
-    if (currentOptions.showSpeakerNotes === undefined) {
+    const nextVisible = !effectiveViewStateRef.current.internalShowSpeakerNotes;
+    const controlled =
+      currentOptions.viewState?.speakerNotesVisible !== undefined ||
+      currentOptions.showSpeakerNotes !== undefined;
+    if (!controlled) {
       dispatch({ type: 'speaker-notes-changed', visible: nextVisible });
     }
-    currentOptions.onSpeakerNotesVisibilityChange?.(nextVisible);
-  }, [optionsRef, stateRef]);
+    notifyObserver(currentOptions.onSpeakerNotesVisibilityChange, nextVisible);
+    notifyViewStateChange({
+      key: 'speakerNotesVisible',
+      value: nextVisible,
+    });
+  }, [effectiveViewStateRef, notifyViewStateChange, optionsRef]);
+
+  const commitWordOutlineVisibility = useCallback(
+    (visible: boolean) => {
+      const nextVisible = visible && hasWordOutlineRef.current;
+      if (effectiveViewStateRef.current.showWordOutline === nextVisible) return;
+      if (optionsRef.current.viewState?.wordOutlineVisible === undefined) {
+        dispatch({ type: 'word-outline-changed', visible: nextVisible });
+      }
+      notifyViewStateChange({
+        key: 'wordOutlineVisible',
+        value: nextVisible,
+      });
+    },
+    [
+      effectiveViewStateRef,
+      hasWordOutlineRef,
+      notifyViewStateChange,
+      optionsRef,
+    ],
+  );
 
   const toggleWordOutline = useCallback(() => {
-    if (!hasWordOutlineRef.current) return;
-    dispatch({
-      type: 'word-outline-changed',
-      visible: !stateRef.current.view.showWordOutline,
-    });
-  }, [hasWordOutlineRef, stateRef]);
+    commitWordOutlineVisibility(!effectiveViewStateRef.current.showWordOutline);
+  }, [commitWordOutlineVisibility, effectiveViewStateRef]);
 
   const closeWordOutline = useCallback(() => {
-    dispatch({ type: 'word-outline-changed', visible: false });
-  }, []);
-
+    commitWordOutlineVisibility(false);
+  }, [commitWordOutlineVisibility]);
   const toggleFullscreen = useCallback(async () => {
     const viewer = viewerRef.current;
     if (
@@ -826,19 +1078,17 @@ export function useOfficeViewerController(
     }
   }, [optionsRef]);
 
-  const speakerNotesVisible =
-    options.showSpeakerNotes ?? state.view.internalShowSpeakerNotes;
   const fullscreenSupported =
     typeof document !== 'undefined' &&
     typeof document.documentElement.requestFullscreen === 'function';
   const canGoPreviousSlide =
     previewFamily === 'presentation' &&
     presentationSlideCount > 1 &&
-    state.view.activeSlideIndex > 0;
+    effectiveViewState.activeSlideIndex > 0;
   const canGoNextSlide =
     previewFamily === 'presentation' &&
     presentationSlideCount > 1 &&
-    state.view.activeSlideIndex < presentationSlideCount - 1;
+    effectiveViewState.activeSlideIndex < presentationSlideCount - 1;
   const loadingTip =
     state.document.phase === 'parsing' && state.document.progress
       ? options.messages.progress.stages[state.document.progress.stage]
@@ -870,6 +1120,7 @@ export function useOfficeViewerController(
   const actions = useMemo<OfficeViewerActions>(
     () => ({
       selectFile,
+      retry,
       previousSlide,
       nextSlide,
       selectSlide,
@@ -889,6 +1140,7 @@ export function useOfficeViewerController(
       closeWordOutline,
       nextSlide,
       previousSlide,
+      retry,
       selectFile,
       selectSheet,
       selectSlide,
@@ -903,11 +1155,14 @@ export function useOfficeViewerController(
     () => ({
       preview,
       previewKind,
+      currentFile,
+      sourceUrl,
       format,
       hasRenderableContent,
       speakerNotesVisible,
       fullscreenSupported,
       loadingTip,
+      canRetry: Boolean(lastLoadSourceRef.current),
     }),
     [
       format,
@@ -916,9 +1171,17 @@ export function useOfficeViewerController(
       loadingTip,
       preview,
       previewKind,
+      currentFile,
+      sourceUrl,
       speakerNotesVisible,
     ],
   );
 
-  return { state, actions, meta, viewerRef, resourceStore };
+  return {
+    state: { ...state, view: effectiveViewState },
+    actions,
+    meta,
+    viewerRef,
+    resourceStore,
+  };
 }

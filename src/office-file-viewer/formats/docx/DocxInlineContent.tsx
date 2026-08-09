@@ -1,6 +1,7 @@
 // DocxInlineContent 渲染 DOCX 段落内的文本、换行、图片、图表和形状。
 import React, { createContext, memo, useContext } from 'react';
 import type { DocxInline } from '../../services/docx/types';
+import { useOfficeHyperlink } from '../../shared/hyperlink';
 import { DocxImage } from './DocxImage';
 import { DocxInlineChart } from './DocxInlineChart';
 import { DocxShape } from './DocxShape';
@@ -32,12 +33,31 @@ function renderCompressedPunctuation(text: string) {
 type DocxInlineContentProps = {
   /** 当前负责渲染的行内内容模型。 */
   inline: DocxInline;
+  /** 当前行内内容在所属文档中的稳定标识。 */
+  sourceId: string;
 };
 
 /** 渲染 DOCX 段落中的行内文字、图片和图表。 */
-function DocxInlineContentComponent({ inline }: DocxInlineContentProps) {
+function DocxInlineContentComponent({
+  inline,
+  sourceId,
+}: DocxInlineContentProps) {
   const compressPunctuation = useContext(DocxCharacterSpacingContext);
+  const hyperlinkProps = useOfficeHyperlink<HTMLSpanElement>({
+    hyperlink: inline.type === 'text' ? inline.hyperlink : undefined,
+    source: { type: 'text', id: sourceId },
+  });
   if (inline.type === 'break') return <br />;
+  if (inline.type === 'bookmark') {
+    return (
+      <span
+        className="office-file-word-bookmark"
+        data-office-word-bookmark={inline.name}
+        data-office-word-bookmark-id={inline.markerId}
+        aria-hidden="true"
+      />
+    );
+  }
   if (inline.type === 'tab')
     return (
       <span
@@ -50,7 +70,10 @@ function DocxInlineContentComponent({ inline }: DocxInlineContentProps) {
   if (inline.type === 'chart') return <DocxInlineChart inline={inline} />;
   if (inline.type === 'shape') return <DocxShape inline={inline} />;
   return (
-    <span style={buildDocxTextStyle(inline.style, { includeBackground: true })}>
+    <span
+      {...hyperlinkProps}
+      style={buildDocxTextStyle(inline.style, { includeBackground: true })}
+    >
       {compressPunctuation
         ? renderCompressedPunctuation(inline.text)
         : inline.text}

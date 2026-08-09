@@ -5,6 +5,7 @@ import {
   descendantByLocalName,
   parseXml,
 } from '../../shared/ooxml/xml';
+import type { OfficeArchiveResourcePolicy } from '../../shared/resource/OfficeResourcePolicy';
 import { collectRenderableOfficeMedia } from '../media/officeMetafile';
 import type { OfficeFormatParser } from '../parsing/formatParserRegistry';
 import { throwIfParseAborted } from '../parsing/runtime/types';
@@ -32,10 +33,11 @@ async function pptxParseCheckpoint(signal?: AbortSignal) {
 export async function parsePptx(
   file: File,
   signal?: AbortSignal,
+  resourcePolicy?: OfficeArchiveResourcePolicy,
 ): Promise<PptxDocument> {
   // 解析顺序：包资源 -> 主题/表格样式 -> 母版/版式 -> 每页 slide，最终产出前端可直接渲染的模型。
   throwIfPptxParseAborted(signal);
-  const entries = await loadOfficeEntries(file, { signal });
+  const entries = await loadOfficeEntries(file, { signal, resourcePolicy });
   await pptxParseCheckpoint(signal);
   const media = await collectRenderableOfficeMedia(entries, 'ppt/media/');
   await pptxParseCheckpoint(signal);
@@ -67,12 +69,21 @@ export async function parsePptx(
     readPresentationLayouts(entries, packageState, theme, tableStyles);
   const layoutDefinitions = Object.values(masterLayoutDefinitions).flat();
   const slides: SlideModel[] = [];
+  const slideTargets = Object.fromEntries(
+    slideIds.map((node, index) => {
+      const relationshipId = attr(node, 'r:id');
+      const target = relationshipId
+        ? presentationRels[relationshipId]?.target
+        : undefined;
+      return [target ?? `ppt/slides/slide${index + 1}.xml`, index];
+    }),
+  );
 
   for (let index = 0; index < slideIds.length; index += 1) {
     await pptxParseCheckpoint(signal);
     const node = slideIds[index];
     const relId = attr(node, 'r:id');
-    const relTarget = relId ? presentationRels[relId] : undefined;
+    const relTarget = relId ? presentationRels[relId]?.target : undefined;
     const relPath = relTarget
       ? relTarget.replace(/^ppt\//, '')
       : `slides/slide${index + 1}.xml`;
@@ -93,6 +104,7 @@ export async function parsePptx(
         layoutDefinitions,
         masterDefinitions,
         tableStyles,
+        slideTargets,
       ),
     );
   }
@@ -104,7 +116,7 @@ export async function parsePptx(
 /** 通过统一运行时合同解析 PPTX，并输出完整演示文稿模型。 */
 export const runPptxParser: OfficeFormatParser = async (
   file,
-  { signal },
+  { signal, resourcePolicy },
   sink,
 ) => {
   sink.progress({
@@ -112,7 +124,7 @@ export const runPptxParser: OfficeFormatParser = async (
     percent: 0.05,
     message: '正在解析文件',
   });
-  const document = await parsePptx(file, signal);
+  const document = await parsePptx(file, signal, resourcePolicy);
   throwIfParseAborted(signal);
   await sink.parsed({ kind: 'pptx', document });
   await sink.complete();

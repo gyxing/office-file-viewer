@@ -1,3 +1,5 @@
+import { OfficeResourceLimitError } from '../../shared/resource/OfficeResourceLimitError';
+import { validateOfficeResourcePolicy } from '../../shared/resource/OfficeResourcePolicy';
 import { DocWordPageSource } from '../doc/DocWordPageSource';
 import { OFFICE_LARGE_FILE_THRESHOLDS } from '../performance/officePerformanceThresholds';
 import type { ParsedOfficeFile } from '../preview';
@@ -266,13 +268,38 @@ function createParseSession(
   const run = async () => {
     status = 'running';
     const workerMode = options.worker ?? 'auto';
+    const resourcePolicy = options.resourcePolicy;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
     try {
+      validateOfficeResourcePolicy(resourcePolicy);
+      if (
+        resourcePolicy?.maxFileBytes !== undefined &&
+        file.size > resourcePolicy.maxFileBytes
+      ) {
+        throw new OfficeResourceLimitError(
+          'FILE_SIZE_LIMIT_EXCEEDED',
+          'Office 文件大小超过宿主配置的上限',
+          { limit: resourcePolicy.maxFileBytes, actual: file.size },
+        );
+      }
+      if (resourcePolicy?.timeoutMs !== undefined) {
+        timeoutId = setTimeout(() => {
+          documentSession.abort(
+            new OfficeResourceLimitError(
+              'PARSE_TIMEOUT',
+              'Office 文件解析超过宿主配置的时限',
+              { limit: resourcePolicy.timeoutMs },
+            ),
+          );
+        }, resourcePolicy.timeoutMs);
+      }
       if (enablePartial) {
         const sourceFactory = await loadOfficeSourcePreviewFactory(kind);
         const sourceHandle = await sourceFactory?.(file, {
           documentSession,
           emitProgress,
           emitPartial: emitSourcePreviewPartial,
+          resourcePolicy,
         });
         if (sourceHandle) {
           partialResult = sourceHandle;
@@ -294,6 +321,7 @@ function createParseSession(
             {
               documentSessionId: documentSession.id,
               signal: documentSession.signal,
+              resourcePolicy,
             },
             sink,
           );
@@ -308,6 +336,7 @@ function createParseSession(
             {
               documentSessionId: documentSession.id,
               signal: documentSession.signal,
+              resourcePolicy,
             },
             sink,
           );
@@ -319,6 +348,7 @@ function createParseSession(
           {
             documentSessionId: documentSession.id,
             signal: documentSession.signal,
+            resourcePolicy,
           },
           sink,
         );
@@ -388,9 +418,14 @@ function createParseSession(
           ownershipTransferred = true;
         }
       }
+      // 清理会触发内部 AbortSignal，必须先保存真实取消原因，避免覆盖原始解析错误。
+      const abortReason = documentSession.signal.aborted
+        ? documentSession.signal.reason
+        : undefined;
       if (!ownershipTransferred) await documentSession.dispose();
-      throw error;
+      throw abortReason ?? error;
     } finally {
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
       runtime?.dispose();
       runtime = undefined;
     }

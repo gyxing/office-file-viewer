@@ -1,4 +1,7 @@
+import type { OfficeParseResourcePolicy } from '../../shared/resource/OfficeResourcePolicy';
 import type { PreviewKind } from './formatDefinitions';
+
+export type { OfficeParseResourcePolicy } from '../../shared/resource/OfficeResourcePolicy';
 
 /** 控制解析任务是否使用 Web Worker：自动选择、强制使用或禁用。 */
 export type WorkerMode = 'auto' | 'always' | 'never';
@@ -40,6 +43,8 @@ export type OfficeParseOptions = {
   worker?: WorkerMode;
   /** 创建解析 Worker 的自定义工厂，便于宿主接管 Worker 加载方式。 */
   workerFactory?: () => Worker;
+  /** 宿主可选配置的资源上限；未提供时不限制文件大小或解析时长。 */
+  resourcePolicy?: OfficeParseResourcePolicy;
 };
 
 /** 枚举解析会话从启动到完成、取消或失败的生命周期状态。 */

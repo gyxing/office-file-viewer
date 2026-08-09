@@ -1,3 +1,4 @@
+import type { OfficeArchiveResourcePolicy } from '../resource/OfficeResourcePolicy';
 import type { OfficeEntryMap } from './archive';
 
 /** OOXML 归档条目的路径和压缩体积。 */
@@ -14,6 +15,8 @@ export type OfficeArchiveEntry = {
 export type OfficeArchiveOpenOptions = {
   /** 用于取消当前异步操作的信号。 */
   signal?: AbortSignal;
+  /** 宿主可选配置的归档读取上限；未提供时不限制。 */
+  resourcePolicy?: OfficeArchiveResourcePolicy;
 };
 
 /**

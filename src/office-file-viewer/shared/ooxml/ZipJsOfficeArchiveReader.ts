@@ -1,5 +1,10 @@
 import type { Entry, FileEntry, ZipReader } from '@zip.js/zip.js';
 
+import { OfficeResourceLimitError } from '../resource/OfficeResourceLimitError';
+import {
+  validateOfficeResourcePolicy,
+  type OfficeArchiveResourcePolicy,
+} from '../resource/OfficeResourcePolicy';
 import type {
   OfficeArchiveEntry,
   OfficeArchiveReader,
@@ -79,6 +84,90 @@ function createEntryError(path: string, error: unknown) {
   return new Error(`Office 包条目解压失败（${path}）：${message}`);
 }
 
+/** 计算压缩比；空条目不会被视为高压缩比内容。 */
+function getCompressionRatio(compressedSize: number, uncompressedSize: number) {
+  if (uncompressedSize <= 0) return 0;
+  if (compressedSize <= 0) return Number.POSITIVE_INFINITY;
+  return uncompressedSize / compressedSize;
+}
+
+/** 在解压前使用中央目录元数据执行宿主配置的归档资源检查。 */
+function assertArchiveWithinPolicy(
+  entries: readonly Entry[],
+  policy?: OfficeArchiveResourcePolicy,
+) {
+  validateOfficeResourcePolicy(policy);
+  if (!policy) return;
+  const fileEntries = entries.filter((entry) => !entry.directory);
+  if (
+    policy.maxArchiveEntries !== undefined &&
+    fileEntries.length > policy.maxArchiveEntries
+  ) {
+    throw new OfficeResourceLimitError(
+      'ARCHIVE_ENTRY_COUNT_LIMIT_EXCEEDED',
+      'Office 包条目数量超过宿主配置的上限',
+      { limit: policy.maxArchiveEntries, actual: fileEntries.length },
+    );
+  }
+
+  let compressedTotal = 0;
+  let uncompressedTotal = 0;
+  for (const entry of fileEntries) {
+    compressedTotal += entry.compressedSize;
+    uncompressedTotal += entry.uncompressedSize;
+    const path = normalizeArchivePath(entry.filename);
+    if (
+      policy.maxArchiveEntryBytes !== undefined &&
+      entry.uncompressedSize > policy.maxArchiveEntryBytes
+    ) {
+      throw new OfficeResourceLimitError(
+        'ARCHIVE_ENTRY_SIZE_LIMIT_EXCEEDED',
+        `Office 包条目超过宿主配置的解压上限（${path}）`,
+        {
+          limit: policy.maxArchiveEntryBytes,
+          actual: entry.uncompressedSize,
+          path,
+        },
+      );
+    }
+    const ratio = getCompressionRatio(
+      entry.compressedSize,
+      entry.uncompressedSize,
+    );
+    if (
+      policy.maxCompressionRatio !== undefined &&
+      ratio > policy.maxCompressionRatio
+    ) {
+      throw new OfficeResourceLimitError(
+        'ARCHIVE_COMPRESSION_RATIO_LIMIT_EXCEEDED',
+        `Office 包条目压缩比超过宿主配置的上限（${path}）`,
+        { limit: policy.maxCompressionRatio, actual: ratio, path },
+      );
+    }
+  }
+
+  if (
+    policy.maxArchiveInflatedBytes !== undefined &&
+    uncompressedTotal > policy.maxArchiveInflatedBytes
+  ) {
+    throw new OfficeResourceLimitError(
+      'ARCHIVE_TOTAL_SIZE_LIMIT_EXCEEDED',
+      'Office 包累计解压大小超过宿主配置的上限',
+      { limit: policy.maxArchiveInflatedBytes, actual: uncompressedTotal },
+    );
+  }
+  const totalRatio = getCompressionRatio(compressedTotal, uncompressedTotal);
+  if (
+    policy.maxCompressionRatio !== undefined &&
+    totalRatio > policy.maxCompressionRatio
+  ) {
+    throw new OfficeResourceLimitError(
+      'ARCHIVE_COMPRESSION_RATIO_LIMIT_EXCEEDED',
+      'Office 包整体压缩比超过宿主配置的上限',
+      { limit: policy.maxCompressionRatio, actual: totalRatio },
+    );
+  }
+}
 /**
  * 使用 zip.js 读取 OOXML 归档，并保持现有 OfficeEntryMap 的物化结果。
  */
@@ -94,7 +183,9 @@ export class ZipJsOfficeArchiveReader implements OfficeArchiveReader {
     private readonly zipReader: ZipReaderWithEntries,
     private readonly useCompressionStream: boolean,
     entries: Entry[],
+    resourcePolicy?: OfficeArchiveResourcePolicy,
   ) {
+    assertArchiveWithinPolicy(entries, resourcePolicy);
     for (const entry of entries) {
       if (entry.directory) {
         continue;
@@ -294,6 +385,7 @@ export async function createZipJsOfficeArchiveReader(
   zipModule: ZipJsCoreModule,
   useCompressionStream: boolean,
   signal?: AbortSignal,
+  resourcePolicy?: OfficeArchiveResourcePolicy,
 ) {
   throwIfAborted(signal);
   const zipReader = isBlobInput(input)
@@ -312,6 +404,7 @@ export async function createZipJsOfficeArchiveReader(
       zipReader,
       useCompressionStream,
       entries,
+      resourcePolicy,
     );
   } catch (error) {
     try {

@@ -1,3 +1,4 @@
+import type { OfficeArchiveResourcePolicy } from '../../shared/resource/OfficeResourcePolicy';
 import type { OfficeSourcePreviewFactory } from '../parsing/formatParserRegistry';
 import { disposeDocumentSession } from '../session';
 import {
@@ -51,6 +52,7 @@ function emptyStructure(descriptor: XlsxSheetDescriptor) {
     merges: [],
     images: [],
     charts: [],
+    hyperlinks: [],
   };
 }
 
@@ -118,6 +120,7 @@ export class XlsxSpreadsheetSource implements SpreadsheetSource {
     return {
       revision: this.revision,
       sheets: this.snapshotDescriptors,
+      definedNames: this.context.definedNames,
     };
   }
 
@@ -259,6 +262,7 @@ export class XlsxSpreadsheetSource implements SpreadsheetSource {
           merges: parsed.merges,
           images: [...previewImages, ...cellImages],
           charts: objects.charts,
+          hyperlinks: parsed.hyperlinks,
         });
         const elapsed = performance.now() - startedAt;
         const nextProfile = createSpreadsheetPerformanceProfile({
@@ -484,14 +488,18 @@ export async function createXlsxSpreadsheetSourceFromArchive(
 /** 仅在 XLSX 画像命中大文件阈值时创建按 Sheet 预览源。 */
 export const tryCreateXlsxSourcePreview: OfficeSourcePreviewFactory = async (
   file,
-  { documentSession, emitProgress, emitPartial },
+  { documentSession, emitProgress, emitPartial, resourcePolicy },
 ) => {
   emitProgress({
     stage: 'container',
     percent: 0.02,
     message: '正在读取 XLSX 包目录',
   });
-  const archive = await profileXlsxArchive(file, documentSession.signal);
+  const archive = await profileXlsxArchive(
+    file,
+    documentSession.signal,
+    resourcePolicy,
+  );
   let source: XlsxSpreadsheetSource | undefined;
   try {
     const created = await createXlsxSpreadsheetSourceFromArchive(
@@ -530,8 +538,9 @@ export async function createXlsxSpreadsheetSource(
   file: File,
   sessionId: string,
   signal?: AbortSignal,
+  resourcePolicy?: OfficeArchiveResourcePolicy,
 ) {
-  const archive = await profileXlsxArchive(file, signal);
+  const archive = await profileXlsxArchive(file, signal, resourcePolicy);
   try {
     return await createXlsxSpreadsheetSourceFromArchive(
       archive,

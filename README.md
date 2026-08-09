@@ -6,7 +6,7 @@ English | [简体中文](./README.zh-CN.md) | <a href="https://gyxing.github.io/
 
 `office-file-viewer` downloads, parses, and renders Office files entirely in the browser. It requires no companion document-conversion service and does not actively upload local files.
 
-The package provides a unified viewer for Word documents, Excel spreadsheets, and PowerPoint presentations, including file selection, remote loading, parsing progress, zoom, fullscreen mode, document outlines, spreadsheet display modes, worksheet tabs, slide navigation, and speaker notes.
+The package provides a unified viewer for Word documents, Excel spreadsheets, and PowerPoint presentations, including file selection, remote loading, parsing progress, zoom, fullscreen mode, content-image preview and download, document outlines, spreadsheet display modes, worksheet tabs, slide navigation, and speaker notes.
 
 > This is an independent parsing and rendering implementation, not the native Microsoft Office or WPS Office layout engine. Complex documents can render differently from desktop applications. Review the [complete limitations](https://gyxing.github.io/office-file-viewer/docs#limitations) before use.
 
@@ -15,10 +15,13 @@ The package provides a unified viewer for Word documents, Excel spreadsheets, an
 - **Browser-only parsing**: Suitable for intranets, offline environments, and privacy-sensitive workflows.
 - **Seven formats**: DOC, DOCX, WPS, XLS, XLSX, PPT, and PPTX.
 - **Unified React component**: Shared loading, error, empty, zoom, and fullscreen interactions.
-- **Flexible sources**: Accepts a local `File`, remote URL, or async loader.
+- **Flexible sources**: Accepts a local `File`, remote URL, or async loader with a cancellation signal.
 - **Progressive preview**: Supported formats can render completed content while parsing continues.
+- **Controlled view state**: Hosts can control zoom, active pages, worksheets, sidebars, and display modes per field.
+- **Content-image actions**: DOC/DOCX/WPS and XLS/XLSX support double-click preview plus preview and download actions from a custom context menu.
+- **Source hyperlinks**: Text, cell, image, shape, and action-button links use safe `Ctrl`/`Command` modifier activation and can be intercepted by the host.
 - **Worker support**: Legacy DOC/WPS, XLS, and PPT parsing can run in a Web Worker.
-- **Resource management**: The component handles cancellation, subscriptions, Workers, and Blob URLs.
+- **Resource management**: The component handles cancellation, subscriptions, Workers, and Blob URLs, with optional host-configured parse limits.
 - **Built-in viewer interface**: Includes scoped controls and styles for file selection, navigation, zoom, and fullscreen.
 
 ## Installation
@@ -62,15 +65,15 @@ export default function OfficePreview() {
 }
 ```
 
-See the [complete quick start](https://gyxing.github.io/office-file-viewer/docs#quick-start), [`OfficeFileViewer` API](https://gyxing.github.io/office-file-viewer/docs#component-api), and [advanced parsing API](https://gyxing.github.io/office-file-viewer/docs#advanced-api) for URI sources, callbacks, Worker modes, low-level sessions, and cleanup.
+See the [complete quick start](https://gyxing.github.io/office-file-viewer/docs#quick-start), [`OfficeFileViewer` API](https://gyxing.github.io/office-file-viewer/docs#component-api), and [advanced parsing API](https://gyxing.github.io/office-file-viewer/docs#advanced-api) for URI sources, controlled view state, callbacks, Worker modes, resource limits, low-level sessions, and cleanup.
 
 ## Supported formats
 
-| Category   | Extensions              | Main capabilities                                                                                                |
-| ---------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Word       | `.doc`, `.docx`, `.wps` | Text, formatting, lists, tables, images, charts, shapes, links, and document outlines                            |
-| Excel      | `.xls`, `.xlsx`         | Worksheets, values, styles, merged cells, dimensions, images, charts, worksheet tabs, and original/reading modes |
-| PowerPoint | `.ppt`, `.pptx`         | Slides, masters, text, shapes, images, tables, charts, navigation, and speaker notes                             |
+| Category   | Extensions              | Main capabilities                                                                                                       |
+| ---------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Word       | `.doc`, `.docx`, `.wps` | Text, formatting, lists, tables, images, charts, shapes, links, and document outlines                                   |
+| Excel      | `.xls`, `.xlsx`         | Worksheets, values, styles, merged cells, dimensions, images, charts, links, worksheet tabs, and original/reading modes |
+| PowerPoint | `.ppt`, `.pptx`         | Slides, masters, text, shapes, images, tables, charts, links, navigation, and speaker notes                             |
 
 Coverage does not guarantee complete restoration of every Office version, vendor extension, macro, embedded object, animation, or complex layout.
 

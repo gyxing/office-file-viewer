@@ -111,6 +111,7 @@ function DocTableBlockComponent({ block }: DocTableBlockProps) {
                     <DocInlineContent
                       inlines={cell.inlines}
                       fallback={cell.text}
+                      sourceId={cell.id}
                       wordTableLineBreaks={Boolean(block.width)}
                     />
                   </td>

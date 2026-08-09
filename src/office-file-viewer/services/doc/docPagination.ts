@@ -52,7 +52,9 @@ export function pageDrawingImagesFromBlock(block: DocBlock) {
 export function isPageDrawingOnlyParagraph(block: DocBlock) {
   if (block.type !== 'paragraph' || block.text.trim()) return false;
   const visibleInlines = (block.inlines ?? []).filter(
-    (inline) => inline.type === 'image' || inline.text.trim(),
+    (inline) =>
+      inline.type === 'image' ||
+      (inline.type === 'text' && Boolean(inline.text.trim())),
   );
   return (
     visibleInlines.length > 0 &&
@@ -620,9 +622,13 @@ export class DocPaginationState {
       }
       if (currentBlock.type === 'paragraph' && currentBlock.pageBreakBefore) {
         this.flushPage();
-        if (pageDrawingOnly) this.appendBlock(currentBlock, 0);
-        index += 1;
-        continue;
+        if (pageDrawingOnly) {
+          this.appendBlock(currentBlock, 0);
+          index += 1;
+          continue;
+        }
+        // pageBreakBefore 只决定段落从新页开始，段落正文仍必须进入分页结果。
+        currentBlock = { ...currentBlock, pageBreakBefore: undefined };
       }
       if (pageDrawingOnly) {
         this.appendBlock(currentBlock, 0);

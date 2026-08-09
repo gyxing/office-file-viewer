@@ -1,6 +1,7 @@
 import React, { memo } from 'react';
 import { useOfficeFileViewerMessages } from '../../locale';
 import type { DocImage } from '../../services/doc/types';
+import { OfficePreviewableImage } from '../../shared/image-preview';
 
 /** DOC图片集组件属性。 */
 type DocImageGalleryProps = {
@@ -24,7 +25,11 @@ function DocImageGalleryComponent({ images }: DocImageGalleryProps) {
             key={image.id}
             className="office-file-doc-image-gallery__figure"
           >
-            <img
+            <OfficePreviewableImage
+              previewId={image.id}
+              previewName={image.caption}
+              previewMimeType={image.mimeType}
+              previewSource={image.src}
               className="office-file-doc-image-gallery__img"
               src={image.src}
               alt={image.caption ?? image.id}

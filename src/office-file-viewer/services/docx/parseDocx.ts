@@ -4,6 +4,7 @@ import {
   matchesLocalName,
   parseXml,
 } from '../../shared/ooxml/xml';
+import type { OfficeArchiveResourcePolicy } from '../../shared/resource/OfficeResourcePolicy';
 import type { OfficeFormatParser } from '../parsing/formatParserRegistry';
 import { throwIfParseAborted } from '../parsing/runtime/types';
 import { loadDocxEntries } from './archive';
@@ -44,10 +45,11 @@ async function docxParseCheckpoint(signal?: AbortSignal) {
 export async function parseDocx(
   file: File,
   signal?: AbortSignal,
+  resourcePolicy?: OfficeArchiveResourcePolicy,
 ): Promise<DocxDocument> {
   // 解析顺序：包资源 -> 主题/样式 -> body 子节点，段落/表格内部再递归解析图片、图表和形状。
   throwIfDocxParseAborted(signal);
-  const entries = await loadDocxEntries(file, { signal });
+  const entries = await loadDocxEntries(file, { signal, resourcePolicy });
   await docxParseCheckpoint(signal);
   const documentXml = readXml(entries, 'word/document.xml');
   const documentDoc = parseXml(documentXml);
@@ -131,6 +133,7 @@ export async function parseDocx(
     blocks,
     images: context.images,
     outline,
+    bookmarks: context.bookmarks,
     preserveSectionPagination,
     characterSpacingControl: context.characterSpacingControl,
   };
@@ -139,7 +142,7 @@ export async function parseDocx(
 /** 通过统一运行时合同解析 DOCX，并输出完整文档模型。 */
 export const runDocxParser: OfficeFormatParser = async (
   file,
-  { signal },
+  { signal, resourcePolicy },
   sink,
 ) => {
   sink.progress({
@@ -147,7 +150,7 @@ export const runDocxParser: OfficeFormatParser = async (
     percent: 0.05,
     message: '正在解析文件',
   });
-  const document = await parseDocx(file, signal);
+  const document = await parseDocx(file, signal, resourcePolicy);
   throwIfParseAborted(signal);
   await sink.parsed({ kind: 'docx', document });
   await sink.complete();

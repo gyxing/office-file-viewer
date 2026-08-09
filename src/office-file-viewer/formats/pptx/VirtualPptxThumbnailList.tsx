@@ -1,4 +1,10 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  type KeyboardEvent,
+} from 'react';
 import { useOfficeFileViewerMessages } from '../../locale';
 import type {
   PresentationSlideDescriptor,
@@ -21,6 +27,20 @@ type VirtualPptxThumbnailListProps = {
   ) => React.ReactNode;
 };
 
+/** 根据键盘操作计算缩略图导航目标，未处理的按键不改变当前项。 */
+export function getPresentationThumbnailNavigationTarget(
+  key: string,
+  currentIndex: number,
+  itemCount: number,
+) {
+  if (itemCount <= 0) return undefined;
+  if (key === 'ArrowUp') return Math.max(0, currentIndex - 1);
+  if (key === 'ArrowDown') return Math.min(itemCount - 1, currentIndex + 1);
+  if (key === 'Home') return 0;
+  if (key === 'End') return itemCount - 1;
+  return undefined;
+}
+
 /** 仅挂载侧栏可见窗口及上下预取范围内的缩略图。 */
 export function VirtualPptxThumbnailList({
   snapshot,
@@ -30,7 +50,9 @@ export function VirtualPptxThumbnailList({
 }: VirtualPptxThumbnailListProps) {
   const messages = useOfficeFileViewerMessages();
   const viewportRef = useRef<HTMLDivElement>(null);
-  const activeButtonRef = useRef<HTMLButtonElement>(null);
+  const activeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const buttonRefs = useRef<Record<number, HTMLButtonElement | null>>({});
+  const pendingFocusIndexRef = useRef<number>();
   const scrollGenerationRef = useRef(0);
   const itemHeight = useMemo(() => {
     const canvasWidth = 244;
@@ -41,6 +63,27 @@ export function VirtualPptxThumbnailList({
     viewportRef,
     snapshot.slideCount,
     itemHeight,
+  );
+  const handleThumbnailKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+      const targetIndex = getPresentationThumbnailNavigationTarget(
+        event.key,
+        index,
+        snapshot.slideCount,
+      );
+      if (targetIndex === undefined) return;
+      event.preventDefault();
+      pendingFocusIndexRef.current = targetIndex;
+      onSelectSlide(targetIndex);
+      window.requestAnimationFrame(() => {
+        const target = buttonRefs.current[targetIndex];
+        if (target) {
+          target.focus();
+          pendingFocusIndexRef.current = undefined;
+        }
+      });
+    },
+    [onSelectSlide, snapshot.slideCount],
   );
 
   useEffect(() => {
@@ -71,6 +114,25 @@ export function VirtualPptxThumbnailList({
     };
   }, [activeIndex, itemHeight]);
 
+  useEffect(() => {
+    const targetIndex = pendingFocusIndexRef.current;
+    if (
+      targetIndex === undefined ||
+      targetIndex < range.start ||
+      targetIndex >= range.end
+    ) {
+      return undefined;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      const target = buttonRefs.current[targetIndex];
+      if (target) {
+        target.focus();
+        pendingFocusIndexRef.current = undefined;
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeIndex, range.end, range.start]);
+
   return (
     <div
       ref={viewportRef}
@@ -85,7 +147,10 @@ export function VirtualPptxThumbnailList({
           const index = range.start + offset;
           return (
             <button
-              ref={index === activeIndex ? activeButtonRef : undefined}
+              ref={(node) => {
+                buttonRefs.current[index] = node;
+                if (index === activeIndex) activeButtonRef.current = node;
+              }}
               key={descriptor.id}
               type="button"
               aria-label={
@@ -96,9 +161,13 @@ export function VirtualPptxThumbnailList({
                   : messages.presentation.slide(descriptor.index)
               }
               aria-current={index === activeIndex ? 'page' : undefined}
+              aria-posinset={index + 1}
+              aria-setsize={snapshot.slideCount}
+              tabIndex={index === activeIndex ? 0 : -1}
               className="office-file-pptx-viewer__thumbnail-button"
               style={{ minHeight: itemHeight - 12 }}
               onClick={() => onSelectSlide(index)}
+              onKeyDown={(event) => handleThumbnailKeyDown(event, index)}
             >
               {renderThumbnail(descriptor, index)}
             </button>

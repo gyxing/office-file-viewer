@@ -212,6 +212,8 @@ function XlsxSheetTableComponent({
                   <td
                     key={cell.ref}
                     className="office-file-xlsx-sheet-table__cell"
+                    data-office-spreadsheet-cell={cell.ref}
+                    tabIndex={-1}
                     colSpan={colSpan}
                     rowSpan={rowSpan}
                     title={cell.value}
@@ -227,6 +229,7 @@ function XlsxSheetTableComponent({
                   >
                     <SpreadsheetCellRenderer
                       cell={cell}
+                      sourceId={`${sheet.id}:${cell.ref}`}
                       contentWidth={contentWidth}
                       contentHeight={clipped ? contentHeight : undefined}
                       clipped={clipped}

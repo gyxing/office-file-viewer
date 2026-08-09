@@ -10,6 +10,18 @@ import type {
   ThemeModel,
 } from '../presentation/types';
 
+/** PPT 文档级超链接表中的原始目标信息。 */
+export type PptHyperlinkEntry = {
+  /** ExHyperlinkAtom 声明的链接编号。 */
+  id: number;
+  /** 链接指向的文件、网址或内部幻灯片标识。 */
+  target?: string;
+  /** 链接在目标文件内部的子地址。 */
+  location?: string;
+  /** PowerPoint 为链接保存的可读名称。 */
+  friendlyName?: string;
+};
+
 /** PPT 二进制流中的单条记录。 */
 export type PptRecord = {
   /** 消息或数据结构采用的协议版本号。 */
@@ -50,6 +62,10 @@ export type PptParseContext = {
       title?: string;
     }
   >;
+  /** 按 ExHyperlink 编号索引的文档级链接表。 */
+  hyperlinks: Map<number, PptHyperlinkEntry>;
+  /** PPT 幻灯片标识到演示顺序索引的映射。 */
+  slideIndexById: Map<number, number>;
   /** 长任务主动让出主线程时间片的函数。 */
   yieldIfNeeded: () => Promise<void>;
 };
@@ -173,6 +189,8 @@ export function createPptParseContext(
         title?: string;
       }
     >(),
+    hyperlinks: new Map<number, PptHyperlinkEntry>(),
+    slideIndexById: new Map<number, number>(),
     yieldIfNeeded,
   };
 }

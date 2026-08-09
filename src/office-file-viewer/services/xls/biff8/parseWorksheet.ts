@@ -16,6 +16,10 @@ import {
 } from './Biff8Reader';
 import { BIFF8_RECORD, BIFF8_SUBSTREAM, BIFF8_VERSION } from './constants';
 import { decodeBiff8Formula } from './formulas';
+import {
+  parseBiff8Hyperlink,
+  parseBiff8HyperlinkTooltip,
+} from './parseHyperlinks';
 import { readBiff8UnicodeString } from './strings';
 
 /** Excel 错误值编号到可读错误文本的映射。 */
@@ -239,6 +243,7 @@ export async function parseBiff8WorksheetFromCursor(
   const warnings: SpreadsheetWarning[] = [];
   const drawingRecords: Biff8Worksheet['drawingRecords'] = [];
   const chartSubstreams: Biff8Worksheet['chartSubstreams'] = [];
+  const hyperlinks: Biff8Worksheet['hyperlinks'] = [];
   let dimensions: Biff8Worksheet['dimensions'];
   let defaultColumnWidth = 8.43;
   let defaultRowHeightTwips = 300;
@@ -502,6 +507,53 @@ export async function parseBiff8WorksheetFromCursor(
         }
         break;
       }
+      case BIFF8_RECORD.HLINK:
+        try {
+          const hyperlink = parseBiff8Hyperlink(record.data);
+          if (hyperlink) {
+            hyperlinks.push(hyperlink);
+          } else {
+            warnings.push({
+              code: 'UNSUPPORTED_HYPERLINK',
+              message: '已跳过无法可靠识别的 BIFF8 超链接目标',
+              sheetName: descriptor.name,
+              offset: record.offset,
+            });
+          }
+        } catch (error) {
+          warnings.push({
+            code: 'INVALID_HYPERLINK',
+            message: `BIFF8 超链接记录无效：${
+              error instanceof Error ? error.message : '未知错误'
+            }`,
+            sheetName: descriptor.name,
+            offset: record.offset,
+          });
+        }
+        break;
+      case BIFF8_RECORD.HLINKTOOLTIP:
+        try {
+          const tooltip = parseBiff8HyperlinkTooltip(record.data);
+          const hyperlink = tooltip
+            ? [...hyperlinks].reverse().find((item) => item.ref === tooltip.ref)
+            : undefined;
+          if (hyperlink && tooltip) {
+            hyperlink.hyperlink = {
+              ...hyperlink.hyperlink,
+              screenTip: tooltip.screenTip,
+            };
+          }
+        } catch (error) {
+          warnings.push({
+            code: 'INVALID_HYPERLINK_TOOLTIP',
+            message: `BIFF8 超链接提示记录无效：${
+              error instanceof Error ? error.message : '未知错误'
+            }`,
+            sheetName: descriptor.name,
+            offset: record.offset,
+          });
+        }
+        break;
       case BIFF8_RECORD.MSODRAWING:
       case BIFF8_RECORD.TXO:
       case BIFF8_RECORD.IMDATA:
@@ -570,6 +622,7 @@ export async function parseBiff8WorksheetFromCursor(
     hasChartRecords,
     chartSubstreams,
     drawingRecords,
+    hyperlinks,
     warnings,
   };
 }

@@ -86,7 +86,12 @@ function PptxThumbnailComponent({ slide, active }: PptxThumbnailProps) {
           style={contentStyle}
         >
           {/* 缩略图复用完整 Slide 渲染，保证背景、图形、表格和图表与主画布一致。 */}
-          <PptxSlide slide={slide} zoom={100} renderKey={`thumb-${slide.id}`} />
+          <PptxSlide
+            slide={slide}
+            zoom={100}
+            renderKey={`thumb-${slide.id}`}
+            interactive={false}
+          />
         </div>
       </div>
       <div className="office-file-pptx-thumbnail__label">

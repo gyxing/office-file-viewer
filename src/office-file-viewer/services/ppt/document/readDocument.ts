@@ -10,6 +10,7 @@ import type {
   PptSlideModel,
 } from '../types';
 import { readPptFonts } from './readFonts';
+import { readPptHyperlinks } from './readHyperlinks';
 import { readPptMaster } from './readMaster';
 import { readPptNotes } from './readNotes';
 import { readPptSlide } from './readSlide';
@@ -120,6 +121,8 @@ export function readPptDocumentBaseStructure(
     documentRecord,
     context,
   );
+  // 文档级链接表只在读取根结构时扫描一次，按页 Source 后续直接复用解析上下文。
+  readPptHyperlinks(documentRecord, descriptors.slides, context);
   return { width, height, theme, fonts, descriptors };
 }
 

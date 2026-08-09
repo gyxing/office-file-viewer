@@ -5,15 +5,23 @@ import {
   useOfficeResourceUrl,
   type OfficeResourceSource,
 } from '../../../services/resource-store';
+import { useOfficeHyperlink } from '../../../shared/hyperlink';
 
 /** 图片渲染器组件属性。 */
 type ImageRendererProps = {
   /** 当前处理或渲染的演示文稿元素。 */
   element: ImageElement;
+  /** 是否允许当前图片响应链接交互。 */
+  interactive: boolean;
 };
 
 /** 渲染图片渲染器。 */
-function ImageRendererComponent({ element }: ImageRendererProps) {
+function ImageRendererComponent({ element, interactive }: ImageRendererProps) {
+  const hyperlinkProps = useOfficeHyperlink<HTMLDivElement>({
+    hyperlink: element.hyperlink,
+    source: { type: 'image', id: element.id },
+    interactive,
+  });
   const source = useMemo<OfficeResourceSource>(
     () =>
       typeof element.src === 'string'
@@ -31,6 +39,7 @@ function ImageRendererComponent({ element }: ImageRendererProps) {
 
   return (
     <div
+      {...hyperlinkProps}
       style={{
         position: 'absolute',
         left: element.x,
@@ -46,7 +55,7 @@ function ImageRendererComponent({ element }: ImageRendererProps) {
           .filter(Boolean)
           .join(' '),
         transformOrigin: 'center center',
-        pointerEvents: 'none',
+        pointerEvents: interactive && element.hyperlink ? 'auto' : 'none',
       }}
     >
       <img

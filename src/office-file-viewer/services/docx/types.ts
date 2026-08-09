@@ -1,5 +1,6 @@
+import type { OfficeHyperlink } from '../../shared/hyperlink';
 import type { OfficeResourceSource } from '../resource-store/types';
-import type { WordOutlineItem } from '../word/types';
+import type { WordBookmarkTarget, WordOutlineItem } from '../word/types';
 
 /** DOCX 东亚标点字符间距压缩方式。 */
 export type DocxCharacterSpacingControl =
@@ -21,6 +22,8 @@ export type DocxDocument = {
   images: DocxImage[];
   /** 源 DOCX 明确声明的大纲条目；为空时不显示目录侧栏。 */
   outline?: WordOutlineItem[];
+  /** 按源名称索引的文档内部书签。 */
+  bookmarks?: Record<string, WordBookmarkTarget>;
   /** 是否保留源文档由节属性定义的物理分页。 */
   preserveSectionPagination?: boolean;
   /** 源文档声明的东亚标点字符间距压缩方式。 */
@@ -296,6 +299,7 @@ export type DocxInline =
   | DocxTextInline
   | DocxTabInline
   | DocxBreakInline
+  | DocxBookmarkInline
   | DocxImageInline
   | DocxChartInline
   | DocxShapeInline;
@@ -308,6 +312,18 @@ export type DocxTextInline = {
   text: string;
   /** 当前内容使用的渲染样式。 */
   style?: DocxTextStyle;
+  /** 源文档为该段文字声明的超链接。 */
+  hyperlink?: OfficeHyperlink;
+};
+
+/** DOCX 书签起点使用的零宽行内标记。 */
+export type DocxBookmarkInline = {
+  /** 用于区分联合类型分支的类型标识。 */
+  type: 'bookmark';
+  /** 源文档声明的书签名称。 */
+  name: string;
+  /** 当前书签标记的稳定标识。 */
+  markerId: string;
 };
 
 /** DOCX 制表符 行内内容模型。 */
@@ -370,6 +386,8 @@ export type DocxShape = {
   position?: DocxPosition;
   /** 按显示顺序排列的项目。 */
   items: DocxShapeItem[];
+  /** 源文档为整个形状声明的超链接。 */
+  hyperlink?: OfficeHyperlink;
 };
 
 /** DOCX 形状子项的几何、样式和内容。 */
@@ -422,6 +440,8 @@ export type DocxShapeItem = {
   blocks?: DocxBlock[];
   /** 按源文档顺序排列的段落。 */
   paragraphs?: DocxParagraphBlock[];
+  /** 源文档为当前子形状声明的超链接。 */
+  hyperlink?: OfficeHyperlink;
 };
 
 /** DOCX 图片资源及其显示信息。 */
@@ -440,6 +460,8 @@ export type DocxImage = {
   height: number;
   /** 对象的定位信息及其参考坐标系。 */
   position?: DocxPosition;
+  /** 源文档为图片声明的超链接。 */
+  hyperlink?: OfficeHyperlink;
 };
 
 /** DOCX 文本渲染样式。 */

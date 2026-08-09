@@ -1,11 +1,21 @@
 import type { OfficeFileViewerMessages } from '../../locale';
 import { isSupportedOfficeFileName } from '../parsing/detectPreviewKind';
 
+/** 异步文件来源可以消费取消信号；现有无参数函数仍保持类型兼容。 */
+export type OfficeFileViewerUriLoader = (
+  signal?: AbortSignal,
+) => Promise<File | Blob | string | Response>;
+
 /** 定义预览文件来源，可直接传入 File、URL，或返回文件数据的异步加载函数。 */
-export type OfficeFileViewerUri =
-  | File
-  | string
-  | (() => Promise<File | Blob | string | Response>);
+export type OfficeFileViewerUri = File | string | OfficeFileViewerUriLoader;
+
+/** URI 输入归一化后交给控制器的文件及可靠远程来源。 */
+export type NormalizedOfficeFileUri = {
+  /** 可直接交给格式识别和解析会话的文件。 */
+  file: File;
+  /** 可用于解析文档相对链接的 HTTP(S) 来源地址。 */
+  sourceUrl?: string;
+};
 
 /** Office MIME 类型到文件扩展名的映射。 */
 const OFFICE_MIME_EXTENSION_MAP: Record<string, string> = {
@@ -139,23 +149,44 @@ async function downloadOfficeFile(
   return createFileFromResponse(response, messages, urlFileName);
 }
 
+/** 仅保留可作为相对链接基准的 HTTP(S) 地址。 */
+function getRemoteSourceUrl(value: string | undefined) {
+  if (!value) return undefined;
+  try {
+    const baseUrl =
+      typeof window === 'undefined' ? undefined : window.location.href;
+    const url = baseUrl ? new URL(value, baseUrl) : new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:'
+      ? url.href
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** 将组件支持的各种 URI 输入统一解析为可交给解析层的 File。 */
 export async function normalizeOfficeFileUri(
   uri: OfficeFileViewerUri,
   messages: OfficeFileViewerMessages,
   signal?: AbortSignal,
-): Promise<File> {
-  const resolvedUri = typeof uri === 'function' ? await uri() : uri;
+): Promise<NormalizedOfficeFileUri> {
+  const resolvedUri = typeof uri === 'function' ? await uri(signal) : uri;
 
-  if (resolvedUri instanceof File) return resolvedUri;
+  if (resolvedUri instanceof File) return { file: resolvedUri };
   if (resolvedUri instanceof Response) {
-    return createFileFromResponse(resolvedUri, messages);
+    return {
+      file: await createFileFromResponse(resolvedUri, messages),
+      sourceUrl: getRemoteSourceUrl(resolvedUri.url),
+    };
   }
   if (resolvedUri instanceof Blob) {
-    return createFileFromBlob(resolvedUri, messages);
+    return { file: createFileFromBlob(resolvedUri, messages) };
   }
   if (typeof resolvedUri === 'string') {
-    return downloadOfficeFile(resolvedUri, messages, signal);
+    return {
+      file: await downloadOfficeFile(resolvedUri, messages, signal),
+      sourceUrl: getRemoteSourceUrl(resolvedUri),
+    };
   }
 
   throw new OfficeFileViewerInputError(messages.file.invalidUri);
