@@ -24,6 +24,10 @@ function parseNotesParagraph(node: Element): TextParagraph | undefined {
     childByLocalName(paragraphProperties, 'buChar'),
     'char',
   );
+  const bulletFontFamily = attr(
+    childByLocalName(paragraphProperties, 'buFont'),
+    'typeface',
+  );
   const bulletNone = Boolean(childByLocalName(paragraphProperties, 'buNone'));
   const runs: TextRun[] = [];
 
@@ -43,7 +47,11 @@ function parseNotesParagraph(node: Element): TextParagraph | undefined {
     runs,
     bullet:
       bulletChar || bulletNone
-        ? { char: bulletChar, none: bulletNone || undefined }
+        ? {
+            char: bulletChar,
+            fontFamily: bulletFontFamily,
+            none: bulletNone || undefined,
+          }
         : undefined,
   };
 }

@@ -1,7 +1,9 @@
+import { parseOfficeXmlDocument } from './OfficeXmlDom';
+
 /** 解析 XML 字符串；文档包含语法错误时抛出异常。 */
 export function parseXml(xml: string) {
   if (typeof DOMParser === 'undefined') {
-    throw new Error('DOMParser is not available in this environment');
+    return parseOfficeXmlDocument(xml);
   }
   try {
     return new DOMParser().parseFromString(xml, 'application/xml');

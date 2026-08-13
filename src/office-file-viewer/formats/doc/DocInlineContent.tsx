@@ -6,8 +6,11 @@ import type {
   DocTextInline,
   DocTextRunInline,
 } from '../../services/doc/types';
+import type { OfficeFontFamilyResolver } from '../../services/fonts/types';
+import { useOfficeFontResolver } from '../../shared/fonts/OfficeFontProvider';
 import { useOfficeHyperlink } from '../../shared/hyperlink';
 import { OfficePreviewableImage } from '../../shared/image-preview';
+import { OfficeSearchHighlightedText } from '../search/OfficeSearchContext';
 import { inlineStyleToCss } from './docRenderUtils';
 
 /** DOC 行内内容组件属性。 */
@@ -22,6 +25,8 @@ type DocInlineContentProps = {
   wordTableLineBreaks?: boolean;
   /** 行内内容所属块或单元格的稳定标识。 */
   sourceId?: string;
+  /** 查找结果对应的顶层正文块标识。 */
+  searchBlockId?: string;
 };
 
 /** 恢复 Word 表格中斜杠与后续数字不拆行的排版语义。 */
@@ -33,17 +38,23 @@ function withWordTableLineBreaks(text: string) {
 function DocTextRunContent({
   inline,
   sourceId,
+  searchBlockId,
   preserveBlockTypography,
   wordTableLineBreaks,
+  resolveFontFamily,
 }: {
   /** 当前文字片段。 */
   inline: DocTextRunInline;
   /** 当前片段的稳定标识。 */
   sourceId: string;
+  /** 查找结果对应的顶层正文块标识。 */
+  searchBlockId: string;
   /** 是否保留块级字体样式。 */
   preserveBlockTypography?: boolean;
   /** 是否应用表格数字分隔符规则。 */
   wordTableLineBreaks?: boolean;
+  /** 当前文档会话统一的字体链解析函数。 */
+  resolveFontFamily: OfficeFontFamilyResolver;
 }) {
   const hyperlinkProps = useOfficeHyperlink<HTMLSpanElement>({
     hyperlink: inline.hyperlink,
@@ -52,9 +63,17 @@ function DocTextRunContent({
   return (
     <span
       {...hyperlinkProps}
-      style={inlineStyleToCss(inline.style, { preserveBlockTypography })}
+      style={inlineStyleToCss(
+        inline.style,
+        { preserveBlockTypography },
+        resolveFontFamily,
+      )}
     >
-      {wordTableLineBreaks ? withWordTableLineBreaks(inline.text) : inline.text}
+      <OfficeSearchHighlightedText
+        text={inline.text}
+        target={{ kind: 'word', blockId: searchBlockId }}
+        renderText={wordTableLineBreaks ? withWordTableLineBreaks : undefined}
+      />
     </span>
   );
 }
@@ -123,10 +142,16 @@ function DocInlineContentComponent({
   preserveBlockTypography,
   wordTableLineBreaks,
   sourceId = 'doc-inline',
+  searchBlockId = sourceId,
 }: DocInlineContentProps) {
+  const resolveFontFamily = useOfficeFontResolver();
   if (!inlines?.length) {
     return (
-      <>{wordTableLineBreaks ? withWordTableLineBreaks(fallback) : fallback}</>
+      <OfficeSearchHighlightedText
+        text={fallback}
+        target={{ kind: 'word', blockId: searchBlockId }}
+        renderText={wordTableLineBreaks ? withWordTableLineBreaks : undefined}
+      />
     );
   }
 
@@ -149,8 +174,10 @@ function DocInlineContentComponent({
             key={`${inline.text}-${index}`}
             inline={inline}
             sourceId={`${sourceId}-text-${index}`}
+            searchBlockId={searchBlockId}
             preserveBlockTypography={preserveBlockTypography}
             wordTableLineBreaks={wordTableLineBreaks}
+            resolveFontFamily={resolveFontFamily}
           />
         ),
       )}

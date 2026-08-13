@@ -2,11 +2,14 @@
 import type { CSSProperties } from 'react';
 import React, { memo, useMemo } from 'react';
 import type { DocxParagraphBlock } from '../../services/docx/types';
+import { useOfficeFontResolver } from '../../shared/fonts/OfficeFontProvider';
 import { DocxInlineContent } from './DocxInlineContent';
 import {
   buildDocxTextStyle,
   getDocxCssLineHeight,
   getDocxEmptyParagraphHeight,
+  resolveDocxShapeBaselineOffset,
+  resolveDocxTextFontFamily,
 } from './docxRenderUtils';
 import { calculatePositionStyle } from './positionUtils';
 
@@ -18,6 +21,10 @@ type DocxParagraphProps = {
   compact?: boolean;
   /** 是否使用 div 元素承载当前段落。 */
   asDiv?: boolean; // 强制使用 div 而不是 p,用于避免嵌套问题
+  /** 是否使用 Office 形状文本的字体场景基线。 */
+  insideShape?: boolean;
+  /** 查找结果对应的顶层正文块标识。 */
+  searchBlockId?: string;
 };
 
 /** 渲染DOCX段落。 */
@@ -25,7 +32,19 @@ function DocxParagraphComponent({
   block,
   compact = false,
   asDiv = false,
+  insideShape = false,
+  searchBlockId = block.sourceBlockId ?? block.id,
 }: DocxParagraphProps) {
+  const resolveFontFamily = useOfficeFontResolver();
+  // 浏览器段落 strut 需采用首个实际文字运行的字体指标，否则不同字体基线会额外撑高每一行。
+  const lineMetricInline = block.inlines.find(
+    (inline) => inline.type === 'text' && Boolean(inline.text),
+  );
+  const lineMetricStyle =
+    lineMetricInline?.type === 'text' ? lineMetricInline.style : block.style;
+  const shapeBaselineOffset = insideShape
+    ? resolveDocxShapeBaselineOffset(lineMetricStyle)
+    : undefined;
   const hasContent = block.inlines.length > 0;
   const hasFlowContent = block.inlines.some((inline) => {
     if (inline.type === 'text') return inline.text.length > 0;
@@ -55,16 +74,22 @@ function DocxParagraphComponent({
   const positionStyle = calculatePositionStyle(block.position);
 
   const paragraphStyle = useMemo<CSSProperties>(() => {
-    // 纯浮动锚点段落在 Word 中流高度为 0，所有浮动共享页面顶部坐标系；
-    // 无需撑开高度，否则会造成段落级联扩张、浮动元素偏离预期位置。
+    // Word 会保留浮动对象所在的锚点行；若压成 0 高度，后续按段落定位的对象会发生累计偏移。
+    const lineMetricCss = buildDocxTextStyle(
+      lineMetricStyle,
+      undefined,
+      resolveFontFamily,
+    );
     const baseMinHeight = hasFlowContent
       ? undefined
-      : hasContent
-      ? 0
       : getDocxEmptyParagraphHeight(block);
     return {
       ...positionStyle,
       position: block.position ? positionStyle.position : 'relative',
+      transform:
+        !block.position && shapeBaselineOffset !== undefined
+          ? `translateY(${shapeBaselineOffset}px)`
+          : positionStyle.transform,
       zIndex: block.position
         ? positionStyle.zIndex
         : hasFlowContent
@@ -89,8 +114,6 @@ function DocxParagraphComponent({
           ? `${Math.max(1, block.lineHeight - 1)}px`
           : getDocxCssLineHeight(block),
       color: block.style?.color ?? '#000',
-      fontSize: block.style?.fontSize ?? 14,
-      fontWeight: block.style?.bold ? 700 : 400,
       background: block.backgroundColor,
       borderTop: block.borderTop,
       borderRight: block.borderRight,
@@ -100,13 +123,33 @@ function DocxParagraphComponent({
       paddingTop: block.paddingTop,
       paddingBottom: block.paddingBottom,
       maxWidth: block.position ? 'none' : undefined,
-      ...buildDocxTextStyle(block.style),
+      ...buildDocxTextStyle(block.style, undefined, resolveFontFamily),
+      fontSize: lineMetricStyle?.fontSize ?? block.style?.fontSize ?? 14,
+      fontFamily:
+        resolveDocxTextFontFamily(lineMetricStyle, resolveFontFamily) ??
+        resolveDocxTextFontFamily(block.style, resolveFontFamily),
+      fontWeight: lineMetricCss.fontWeight,
+      WebkitTextStroke: lineMetricCss.WebkitTextStroke,
     };
-  }, [block, compact, hasContent, hasFlowContent, isTocLine, positionStyle]);
+  }, [
+    block,
+    compact,
+    shapeBaselineOffset,
+    hasContent,
+    hasFlowContent,
+    isTocLine,
+    lineMetricStyle,
+    positionStyle,
+    resolveFontFamily,
+  ]);
 
   // 图表和形状内部会渲染块级节点，使用 div 容器避免嵌套到 p 里触发浏览器修正。
   const Container =
     hasPositionedElements || hasBlockLevelInline || asDiv ? 'div' : 'p';
+  const paragraphEndInlineIndex = block.inlines.reduce(
+    (lastIndex, inline, index) => (inline.type === 'text' ? index : lastIndex),
+    -1,
+  );
   const tocLeader = block.tabStops?.find(
     (stop) => stop.align === 'right' || stop.align === 'decimal',
   )?.leader;
@@ -118,6 +161,9 @@ function DocxParagraphComponent({
       key={`${block.id}-inline-${index}`}
       inline={inline}
       sourceId={`${block.id}-inline-${index}`}
+      searchBlockId={searchBlockId}
+      resolveFontFamily={resolveFontFamily}
+      isParagraphEnd={index === paragraphEndInlineIndex}
     />
   );
 
@@ -128,6 +174,8 @@ function DocxParagraphComponent({
       data-office-word-outline-target={
         block.outlineLevel !== undefined ? block.id : undefined
       }
+      data-office-word-block-id={searchBlockId}
+      data-office-docx-align={block.align}
     >
       {tocTabIndex >= 0 ? (
         <>

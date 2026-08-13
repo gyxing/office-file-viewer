@@ -2,6 +2,7 @@
 import type { CSSProperties } from 'react';
 import React, { memo, useMemo } from 'react';
 import type { DocListBlock as DocListBlockModel } from '../../services/doc/types';
+import { useOfficeFontResolver } from '../../shared/fonts/OfficeFontProvider';
 import { DocInlineContent } from './DocInlineContent';
 import { docTextStyleToCss } from './docRenderUtils';
 
@@ -13,16 +14,26 @@ type DocListBlockProps = {
 
 /** 渲染DOC列表内容块。 */
 function DocListBlockComponent({ block }: DocListBlockProps) {
+  const resolveFontFamily = useOfficeFontResolver();
+  const searchBlockId = block.sourceBlockId ?? block.id;
   const itemStyle = useMemo<CSSProperties>(
     () => ({
-      ...docTextStyleToCss(block.style),
+      ...docTextStyleToCss(block.style, resolveFontFamily),
     }),
-    [block.style],
+    [block.style, resolveFontFamily],
   );
   const Tag = block.ordered ? 'ol' : 'ul';
 
   return (
-    <Tag className="office-file-doc-list">
+    <Tag
+      className="office-file-doc-list"
+      data-office-word-block-id={searchBlockId}
+      data-office-doc-estimated-height={block.estimatedHeight}
+      data-office-doc-pagination-id={block.sourceBlockId ?? block.id}
+      data-office-doc-pagination-fragment={
+        block.sourceBlockId ? 'true' : undefined
+      }
+    >
       {block.items.map((item) => (
         <li
           key={item.id}
@@ -33,6 +44,7 @@ function DocListBlockComponent({ block }: DocListBlockProps) {
             inlines={item.inlines}
             fallback={item.text}
             sourceId={item.id}
+            searchBlockId={searchBlockId}
           />
         </li>
       ))}

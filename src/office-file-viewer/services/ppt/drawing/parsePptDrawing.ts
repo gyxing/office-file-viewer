@@ -3,6 +3,7 @@ import {
   parseOfficeArtRecords,
   type OfficeArtRecord,
 } from '../../../shared/officeart';
+import { inferOfficeFontBaseWeight } from '../../fonts/OfficeFontResolver';
 import type {
   ChartElement,
   ImageElement,
@@ -309,6 +310,8 @@ async function parseShape(
     ? context.charts.get(externalObjectId)
     : undefined;
   if (embeddedChart) {
+    const previewSource =
+      blipIndex === undefined ? undefined : context.blipUrls.get(blipIndex);
     const chart: ChartElement = {
       id: common.id,
       type: 'chart',
@@ -319,7 +322,14 @@ async function parseShape(
       rotate: common.rotate,
       zIndex: common.zIndex,
       hyperlink: common.hyperlink,
-      chart: embeddedChart.chart,
+      // 二进制 PPT 自带的 OLE 预览图最接近源程序排版；缺失时才回退为可交互图表。
+      chart: previewSource
+        ? {
+            ...embeddedChart.chart,
+            renderMode: 'snapshot',
+            snapshotSrc: previewSource,
+          }
+        : embeddedChart.chart,
       chartId: `ppt-chart-${externalObjectId}`,
     };
     return chart;
@@ -380,12 +390,14 @@ async function parseShape(
   }
 
   if (textbox) {
+    const defaultFontFamily = theme.fontScheme.minorLatin ?? 'Arial';
     const textRecords = Array.from(new PptRecordReader(textbox.data).records());
     const groups = parsePptTextGroups(
       textRecords,
       {
         document: {
-          fontFamily: theme.fontScheme.minorLatin ?? 'Arial',
+          fontFamily: defaultFontFamily,
+          fontWeight: inferOfficeFontBaseWeight(defaultFontFamily),
           fontSize: 18,
           color: theme.colorScheme.dk1 ?? '#000000',
         },

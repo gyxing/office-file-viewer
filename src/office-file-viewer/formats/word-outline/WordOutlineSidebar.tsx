@@ -9,13 +9,14 @@ import type { WordPageSource } from '../../services/word/WordPageSource';
 import type { WordOutlineItem } from '../../services/word/types';
 import { useExternalStoreSnapshot } from '../../shared/react/useExternalStoreSnapshot';
 import { OutlineIcon, PanelLeftCloseIcon } from '../../shared/ui/OfficeIcons';
+import { OfficeNavigationModeTabs } from '../navigation/OfficeNavigationModeTabs';
+import { OfficeNavigationPanel } from '../navigation/OfficeNavigationPanel';
 import type { WordBlockPageIndex } from '../word-pages/WordBlockPageIndex';
 import type { WordPageNavigationController } from '../word-pages/types';
 import { WordOutlineTree } from './WordOutlineTree';
 import './index.less';
 import { collectOutlineTreeKeys } from './outlineTreeModel';
 import { useWordOutlineNavigation } from './useWordOutlineNavigation';
-import { useWordOutlineResize } from './useWordOutlineResize';
 
 /** Word 大纲侧栏组件属性。 */
 type WordOutlineSidebarProps = {
@@ -47,6 +48,8 @@ type WordOutlineSidebarProps = {
   layoutKey: string;
   /** 关闭大纲侧栏。 */
   onClose: () => void;
+  /** 搜索能力启用时切换到查找侧栏。 */
+  onOpenSearch?: () => void;
 };
 
 /** 未首次展开时不订阅渐进式大纲，避免隐藏侧栏参与解析期重渲染。 */
@@ -55,59 +58,6 @@ const INACTIVE_OUTLINE_SNAPSHOT: WordOutlineProviderSnapshot = {
   count: 0,
   complete: true,
 };
-
-/** Word 大纲宽度调整分隔条属性。 */
-type WordOutlineResizeHandleProps = {
-  /** 待调整宽度的侧栏元素。 */
-  panelRef: RefObject<HTMLElement>;
-  /** 用于在切换文件时恢复默认宽度。 */
-  documentSessionId: string;
-  /** 分隔条的无障碍名称。 */
-  label: string;
-};
-
-/** 渲染支持指针与键盘操作的大纲宽度分隔条。 */
-function WordOutlineResizeHandleComponent({
-  panelRef,
-  documentSessionId,
-  label,
-}: WordOutlineResizeHandleProps) {
-  const {
-    width,
-    maxWidth,
-    minWidth,
-    handleRef,
-    handleKeyDown,
-    handlePointerDown,
-    handlePointerMove,
-    handlePointerEnd,
-  } = useWordOutlineResize(panelRef, documentSessionId);
-
-  return (
-    <div
-      ref={handleRef}
-      className="office-file-word-outline__resize-handle"
-      role="separator"
-      aria-label={label}
-      aria-orientation="vertical"
-      aria-valuemin={minWidth}
-      aria-valuemax={Math.round(maxWidth)}
-      aria-valuenow={Math.round(width)}
-      title={label}
-      tabIndex={0}
-      onKeyDown={handleKeyDown}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerEnd}
-      onPointerCancel={handlePointerEnd}
-      onLostPointerCapture={handlePointerEnd}
-    >
-      <span aria-hidden="true" />
-    </div>
-  );
-}
-
-const WordOutlineResizeHandle = memo(WordOutlineResizeHandleComponent);
 
 /** 渲染 Word 文档大纲侧栏。 */
 function WordOutlineSidebarComponent({
@@ -124,9 +74,9 @@ function WordOutlineSidebarComponent({
   documentSessionId,
   layoutKey,
   onClose,
+  onOpenSearch,
 }: WordOutlineSidebarProps) {
   const messages = useOfficeFileViewerMessages();
-  const panelRef = useRef<HTMLElement>(null);
   // 用户点击目录时只滚动正文，避免左侧已可见节点被再次强制定位。
   const manuallySelectedKeyRef = useRef<string>();
   const snapshot = useExternalStoreSnapshot(
@@ -169,14 +119,6 @@ function WordOutlineSidebarComponent({
   useEffect(() => {
     manuallySelectedKeyRef.current = undefined;
   }, [documentSessionId]);
-
-  useEffect(() => {
-    const panel = panelRef.current;
-    if (!panel) return;
-    // 收起期间保留 DOM 供动画使用，但不能让隐藏目录继续接收焦点。
-    if (visible) panel.removeAttribute('inert');
-    else panel.setAttribute('inert', '');
-  }, [visible]);
 
   useEffect(() => {
     if (
@@ -224,22 +166,34 @@ function WordOutlineSidebarComponent({
   };
 
   return (
-    <aside
-      ref={panelRef}
+    <OfficeNavigationPanel
+      visible={visible}
+      sessionKey={documentSessionId}
+      ariaLabel={messages.outline.region}
+      resizeLabel={messages.outline.resize}
       className="office-file-word-outline"
-      aria-label={messages.outline.region}
-      aria-hidden={!visible}
-      data-visible={visible ? 'true' : 'false'}
-      data-outline-count={snapshot.count}
-      data-outline-mode={outlineMode}
+      dataAttributes={{
+        'data-outline-count': snapshot.count,
+        'data-outline-mode': outlineMode,
+      }}
     >
       <div className="office-file-word-outline__viewport">
         <div className="office-file-word-outline__surface">
           <header className="office-file-word-outline__header">
-            <span className="office-file-word-outline__title">
-              <OutlineIcon />
-              {messages.outline.title}
-            </span>
+            {onOpenSearch ? (
+              <OfficeNavigationModeTabs
+                activeMode="outline"
+                outlineLabel={messages.outline.title}
+                searchLabel={messages.search.title}
+                onShowOutline={() => undefined}
+                onShowSearch={onOpenSearch}
+              />
+            ) : (
+              <span className="office-file-word-outline__title">
+                <OutlineIcon />
+                {messages.outline.title}
+              </span>
+            )}
             <span className="office-file-word-outline__count">
               {snapshot.count}
             </span>
@@ -275,12 +229,7 @@ function WordOutlineSidebarComponent({
           ) : null}
         </div>
       </div>
-      <WordOutlineResizeHandle
-        panelRef={panelRef}
-        documentSessionId={documentSessionId}
-        label={messages.outline.resize}
-      />
-    </aside>
+    </OfficeNavigationPanel>
   );
 }
 

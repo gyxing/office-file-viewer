@@ -4,8 +4,106 @@ import type {
   DocxParagraphBlock,
   DocxTextStyle,
 } from '../../services/docx/types';
+import type { OfficeFontFamilyResolver } from '../../services/fonts/types';
 
 // DOCX 的样式已经在解析阶段完成继承合并，这里只负责把最终样式映射到 React CSS。
+
+/** 可从字体名称识别的常见东亚字体，供脚本提示调整字体链优先级。 */
+const DOCX_EAST_ASIA_FONT_PATTERN =
+  /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]|simsun|simhei|yahei|dengxian|fangsong|kaiti|songti|heiti|mingliu|meiryo|malgun|noto\s+(?:sans|serif)\s+cjk|ms\s+gothic/i;
+
+/** 判断当前文字是否按东亚脚本使用宋体字面。 */
+function usesEastAsiaSimSun(style?: DocxTextStyle) {
+  return Boolean(
+    style?.fontHint === 'eastAsia' &&
+      /(?:^|,)\s*["']?(?:宋体|simsun)["']?\s*(?:,|$)/i.test(
+        style.fontFamily ?? '',
+      ),
+  );
+}
+
+/** Office 形状文本中，微软雅黑粗体相对浏览器字体场景的基线补偿比例。 */
+const DOCX_SHAPE_YAHEI_BASELINE_OFFSET_EM = 1 / 3;
+/** 可按字体度量补偿形状文本基线的微软雅黑字体。 */
+const DOCX_SHAPE_YAHEI_FONT_PATTERN = /微软雅黑|Microsoft\s+YaHei/i;
+/** Word 中 11 磅字号换算到浏览器后的标准像素值。 */
+const DOCX_SIMSUN_11PT_SIZE_PX = 44 / 3;
+
+/** 抵消浏览器对小字号宋体字宽整像素吸附造成的累计换行误差。 */
+const DOCX_SIMSUN_11PT_LETTER_SPACING_PX = -0.31;
+
+/** 宋体没有独立粗体字面，需保持原字宽并用描边模拟 Word 的合成粗体。 */
+function needsSyntheticSimSunBold(style?: DocxTextStyle) {
+  return Boolean(style?.bold && usesEastAsiaSimSun(style));
+}
+
+/** 还原 Word 打印度量中的 11 磅宋体字宽，避免浏览器整像素吸附导致提前换行。 */
+function resolveSyntheticSimSunLetterSpacing(style?: DocxTextStyle) {
+  if (
+    !needsSyntheticSimSunBold(style) ||
+    style?.fontSize === undefined ||
+    Math.abs(style.fontSize - DOCX_SIMSUN_11PT_SIZE_PX) > 0.01
+  ) {
+    return undefined;
+  }
+  return DOCX_SIMSUN_11PT_LETTER_SPACING_PX + 'px';
+}
+
+/** 按 OOXML 脚本提示调整字体链，避免系统字体链接改变东亚文字字宽。 */
+export function resolveDocxTextFontFamily(
+  style?: DocxTextStyle,
+  resolveFontFamily?: OfficeFontFamilyResolver,
+) {
+  const sourceFamily = style?.fontFamily;
+  if (!sourceFamily) return undefined;
+  const families = sourceFamily
+    .split(',')
+    .map((family) => family.trim())
+    .filter(Boolean);
+  if (style.fontHint === 'eastAsia') {
+    const eastAsiaIndex = families.findIndex((family) =>
+      DOCX_EAST_ASIA_FONT_PATTERN.test(family),
+    );
+    if (eastAsiaIndex > 0) {
+      families.unshift(...families.splice(eastAsiaIndex, 1));
+    }
+  }
+  const orderedFamily = families.join(', ');
+  return resolveFontFamily?.(orderedFamily) ?? orderedFamily;
+}
+
+/** 为东亚字体运行恢复 OOXML 单独声明的西文字体链。 */
+export function resolveDocxLatinFontFamily(
+  style?: DocxTextStyle,
+  resolveFontFamily?: OfficeFontFamilyResolver,
+) {
+  if (style?.fontHint !== 'eastAsia' || !style.fontFamily) return undefined;
+  const families = style.fontFamily
+    .split(',')
+    .map((family) => family.trim())
+    .filter(Boolean);
+  const eastAsiaIndex = families.findIndex((family) =>
+    DOCX_EAST_ASIA_FONT_PATTERN.test(family),
+  );
+  if (eastAsiaIndex < 0 || families.length < 2) return undefined;
+  const latinFamily = families
+    .filter((_, index) => index !== eastAsiaIndex)
+    .join(', ');
+  return resolveFontFamily?.(latinFamily) ?? latinFamily;
+}
+
+/** 还原 Office 形状中微软雅黑粗体使用的字体场景基线。 */
+export function resolveDocxShapeBaselineOffset(style?: DocxTextStyle) {
+  if (
+    !style?.bold ||
+    style.fontSize === undefined ||
+    !DOCX_SHAPE_YAHEI_FONT_PATTERN.test(style.fontFamily ?? '')
+  ) {
+    return undefined;
+  }
+  return style.fontSize * DOCX_SHAPE_YAHEI_BASELINE_OFFSET_EM;
+}
+
 /** 将 DOCX 文本样式转换为 React CSS 属性。 */
 export function buildDocxTextStyle(
   style?: DocxTextStyle,
@@ -13,10 +111,21 @@ export function buildDocxTextStyle(
     /** 是否将背景样式写入渲染结果。 */
     includeBackground?: boolean;
   },
+  resolveFontFamily?: OfficeFontFamilyResolver,
 ): CSSProperties {
+  const syntheticSimSunBold = needsSyntheticSimSunBold(style);
   const css: CSSProperties = {
     fontWeight:
-      style?.bold === true ? 700 : style?.bold === false ? 400 : undefined,
+      style?.bold === true
+        ? syntheticSimSunBold
+          ? 400
+          : 700
+        : style?.bold === false
+        ? 400
+        : undefined,
+    WebkitTextStroke: syntheticSimSunBold
+      ? '0.35px currentColor'
+      : undefined,
     fontStyle:
       style?.italic === true
         ? 'italic'
@@ -29,7 +138,10 @@ export function buildDocxTextStyle(
         .join(' ') || undefined,
     color: style?.color,
     fontSize: style?.fontSize,
-    fontFamily: style?.fontFamily,
+    fontFamily: resolveDocxTextFontFamily(style, resolveFontFamily),
+    letterSpacing:
+      style?.letterSpacing ?? resolveSyntheticSimSunLetterSpacing(style),
+
     textTransform: style?.allCaps ? 'uppercase' : undefined,
     fontVariant: style?.smallCaps ? 'small-caps' : undefined,
     background: options?.includeBackground ? style?.backgroundColor : undefined,

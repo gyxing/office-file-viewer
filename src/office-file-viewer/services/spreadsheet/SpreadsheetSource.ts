@@ -1,3 +1,4 @@
+import type { OfficeSearchProvider } from '../search/types';
 import type { SpreadsheetPerformanceProfile } from './spreadsheetPerformance';
 import type {
   SpreadsheetColumnMetric,
@@ -59,6 +60,8 @@ export type SpreadsheetSheetLayout = {
 
 /** 为普通和大型工作簿提供统一的 Sheet 与范围读取协议。 */
 export interface SpreadsheetSource {
+  /** 当前工作簿支持搜索时提供的稀疏扫描能力。 */
+  readonly searchProvider?: OfficeSearchProvider;
   /** 返回当前可观察状态的只读快照。 */
   getSnapshot(): SpreadsheetSourceSnapshot;
   /** 订阅状态快照变化，并返回取消订阅函数。 */

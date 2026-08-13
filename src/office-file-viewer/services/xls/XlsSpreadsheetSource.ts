@@ -9,6 +9,7 @@ import {
   upgradeSpreadsheetPerformanceProfile,
   type SpreadsheetPerformanceProfile,
 } from '../spreadsheet/spreadsheetPerformance';
+import { SpreadsheetSearchProvider } from '../spreadsheet/SpreadsheetSearchProvider';
 import {
   createSpreadsheetSheetStore,
   SPREADSHEET_TILE_COLUMNS,
@@ -301,6 +302,7 @@ function createSnapshotDescriptor(
 
 /** 提供 XLS 的 CFB 随机访问和按 Sheet 解析。 */
 export class XlsSpreadsheetSource implements SpreadsheetSource {
+  readonly searchProvider: SpreadsheetSearchProvider;
   private readonly listeners = new Set<() => void>();
   private readonly descriptors: XlsSheetDescriptor[];
   /** 与内部描述符同步、可安全暴露给订阅者的不可变数组。 */
@@ -327,6 +329,7 @@ export class XlsSpreadsheetSource implements SpreadsheetSource {
     );
     this.snapshotDescriptors = this.descriptors.map(createSnapshotDescriptor);
     this.snapshot = this.createSnapshot();
+    this.searchProvider = new SpreadsheetSearchProvider(this);
   }
 
   private ensureAvailable(sheetId?: string) {

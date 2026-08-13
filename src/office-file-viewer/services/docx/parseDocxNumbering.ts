@@ -29,6 +29,10 @@ type DocxNumberingLevel = {
   suffix: 'tab' | 'space' | 'nothing';
   /** 字体族名称。 */
   fontFamily?: string;
+  /** 编号正文相对段落起点的位置，单位为标准化渲染像素。 */
+  textStart?: number;
+  /** 编号标记相对正文起点向左悬挂的距离，单位为标准化渲染像素。 */
+  hanging?: number;
 };
 
 /** DOCX 自动编号定义及解析过程中的计数状态。 */
@@ -76,6 +80,16 @@ function readNumberingLevel(node: Element): DocxNumberingLevel | undefined {
   const start = Number(readVal(childByLocalName(node, 'start')) ?? 1);
   const suffix = readVal(childByLocalName(node, 'suff'));
   const fonts = childByLocalName(childByLocalName(node, 'rPr'), 'rFonts');
+  const indentation = childByLocalName(childByLocalName(node, 'pPr'), 'ind');
+  const rawTextStart = Number(
+    attr(indentation, 'w:start') ??
+      attr(indentation, 'start') ??
+      attr(indentation, 'w:left') ??
+      attr(indentation, 'left'),
+  );
+  const rawHanging = Number(
+    attr(indentation, 'w:hanging') ?? attr(indentation, 'hanging'),
+  );
   return {
     level,
     start: Number.isFinite(start) ? start : 1,
@@ -92,6 +106,14 @@ function readNumberingLevel(node: Element): DocxNumberingLevel | undefined {
       attr(fonts, 'hAnsi') ??
       attr(fonts, 'w:eastAsia') ??
       attr(fonts, 'eastAsia'),
+    textStart:
+      Number.isFinite(rawTextStart) && rawTextStart >= 0
+        ? rawTextStart / 15
+        : undefined,
+    hanging:
+      Number.isFinite(rawHanging) && rawHanging >= 0
+        ? rawHanging / 15
+        : undefined,
   };
 }
 
@@ -249,6 +271,8 @@ export function nextDocxNumberPrefix(
       text: string;
       suffix: DocxNumberingLevel['suffix'];
       fontFamily?: string;
+      textStart?: number;
+      hanging?: number;
     }
   | undefined {
   const instance = catalog.instances[reference.numId];
@@ -275,5 +299,11 @@ export function nextDocxNumberPrefix(
       1;
     return formatCounter(value, referencedLevel.format);
   });
-  return { text, suffix: level.suffix, fontFamily: level.fontFamily };
+  return {
+    text,
+    suffix: level.suffix,
+    fontFamily: level.fontFamily,
+    textStart: level.textStart,
+    hanging: level.hanging,
+  };
 }

@@ -5,10 +5,12 @@ import type { SpreadsheetSource } from '../../services/spreadsheet/SpreadsheetSo
 import { getSpreadsheetSource } from '../../services/spreadsheet/spreadsheetSourceRegistry';
 import type { SpreadsheetViewMode } from '../../services/spreadsheet/viewMode';
 import { OfficePreviewEmpty } from '../common/OfficePreviewEmpty';
+import { useOfficeSearchProviderRegistration } from '../search/OfficeSearchContext';
 import './index.less';
 import type { SpreadsheetNavigationController } from './spreadsheetNavigation';
 import { SpreadsheetSheetState } from './SpreadsheetSheetState';
 import { useSpreadsheetHyperlinkNavigation } from './useSpreadsheetHyperlinkNavigation';
+import { useSpreadsheetSearchNavigation } from './useSpreadsheetSearchNavigation';
 import { useSpreadsheetSource } from './useSpreadsheetSource';
 import { VirtualSpreadsheetGrid } from './VirtualSpreadsheetGrid';
 import { XlsxChartSheet } from './XlsxChartSheet';
@@ -86,6 +88,7 @@ function XlsxSourceViewer({
   viewMode: SpreadsheetViewMode;
   onSelectSheet: (sheetId: string) => void;
 }) {
+  useOfficeSearchProviderRegistration(source.searchProvider);
   const readingRowHeightCacheRef = useRef(
     new Map<string, ReadonlyMap<number, number>>(),
   );
@@ -101,6 +104,11 @@ function XlsxSourceViewer({
   const navigationControllerRef = useRef<SpreadsheetNavigationController>();
   useSpreadsheetHyperlinkNavigation({
     snapshot: state.snapshot,
+    activeSheetId: descriptor?.id,
+    onSelectSheet,
+    navigationControllerRef,
+  });
+  useSpreadsheetSearchNavigation({
     activeSheetId: descriptor?.id,
     onSelectSheet,
     navigationControllerRef,

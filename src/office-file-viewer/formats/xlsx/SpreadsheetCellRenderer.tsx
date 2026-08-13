@@ -6,6 +6,7 @@ import type {
 } from '../../services/spreadsheet/types';
 import type { SpreadsheetViewMode } from '../../services/spreadsheet/viewMode';
 import { useOfficeHyperlink } from '../../shared/hyperlink';
+import { OfficeSearchHighlightedText } from '../search/OfficeSearchContext';
 import type { SpreadsheetCellContentBounds } from './spreadsheetCellOverflow';
 import {
   estimateSpreadsheetLineWidth,
@@ -34,6 +35,8 @@ type SpreadsheetCellRendererProps = {
   viewMode?: SpreadsheetViewMode;
   /** 当前单元格在工作簿中的稳定来源标识。 */
   sourceId: string;
+  /** 当前单元格所属工作表的稳定标识。 */
+  sheetId: string;
 };
 
 /** 根据源文件线型生成浏览器 SVG 描边间隔。 */
@@ -173,6 +176,7 @@ function SpreadsheetCellRendererComponent({
   contentBounds,
   viewMode = 'source',
   sourceId,
+  sheetId,
 }: SpreadsheetCellRendererProps) {
   const hyperlinkProps = useOfficeHyperlink<HTMLDivElement>({
     hyperlink: cell.hyperlink,
@@ -193,6 +197,17 @@ function SpreadsheetCellRendererComponent({
       ? { top: '50%', transform: 'translateY(-50%)' }
       : { top: 0 }
     : undefined;
+  const highlightedValue = (
+    <OfficeSearchHighlightedText
+      text={cell.value}
+      target={{
+        kind: 'spreadsheet',
+        sheetId,
+        rowIndex: cell.rowIndex,
+        columnIndex: cell.columnIndex,
+      }}
+    />
+  );
   return (
     <>
       <div
@@ -229,11 +244,11 @@ function SpreadsheetCellRendererComponent({
             }}
           >
             <span className="office-file-xlsx-sheet-table__cell-text-value">
-              {cell.value}
+              {highlightedValue}
             </span>
           </span>
         ) : (
-          cell.value
+          highlightedValue
         )}
       </div>
       {cell.style?.diagonalBorder ? (

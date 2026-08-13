@@ -9,10 +9,8 @@ import { useOfficeHyperlinkContext } from '../../shared/hyperlink';
 import {
   parseSpreadsheetCellReference,
   type SpreadsheetNavigationController,
+  waitForSpreadsheetNavigationController,
 } from './spreadsheetNavigation';
-
-/** 工作表切换后等待新网格控制器挂载的最大帧数。 */
-const SPREADSHEET_NAVIGATION_MAX_FRAMES = 90;
 
 /** 去掉 Excel 对定义名称目标增加的公式前缀。 */
 function normalizeDefinedNameTarget(value: string) {
@@ -48,29 +46,6 @@ function resolveSpreadsheetLocation(
   return position ? { sheetName, ...position } : undefined;
 }
 
-function waitForSheetController(
-  controllerRef: MutableRefObject<SpreadsheetNavigationController | undefined>,
-  sheetId: string,
-) {
-  return new Promise<SpreadsheetNavigationController | undefined>((resolve) => {
-    let frame = 0;
-    const inspect = () => {
-      const controller = controllerRef.current;
-      if (controller?.sheetId === sheetId) {
-        resolve(controller);
-        return;
-      }
-      frame += 1;
-      if (frame >= SPREADSHEET_NAVIGATION_MAX_FRAMES) {
-        resolve(undefined);
-        return;
-      }
-      requestAnimationFrame(inspect);
-    };
-    inspect();
-  });
-}
-
 /** 注册 Excel 内部链接导航，兼容工作表切换、定义名称与虚拟网格。 */
 export function useSpreadsheetHyperlinkNavigation({
   snapshot,
@@ -104,7 +79,7 @@ export function useSpreadsheetHyperlinkNavigation({
           snapshot.sheets[0];
       if (!targetSheet || targetSheet.kind !== 'worksheet') return false;
       if (targetSheet.id !== activeSheetId) onSelectSheet(targetSheet.id);
-      const controller = await waitForSheetController(
+      const controller = await waitForSpreadsheetNavigationController(
         navigationControllerRef,
         targetSheet.id,
       );

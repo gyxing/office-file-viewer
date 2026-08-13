@@ -13,6 +13,10 @@ import type {
 import { WordPageStore } from '../word/WordPageStore';
 import type { WordPreviewSource } from '../word/WordPreviewSource';
 import {
+  collectDocxSearchBlocks,
+  WordSearchProvider,
+} from '../word/WordSearchProvider';
+import {
   createDocxMeasurementBatches,
   paginateMeasuredDocxPage,
   type DocxMeasuredBlock,
@@ -45,6 +49,28 @@ type PendingSourcePage = {
   measurements: DocxMeasuredBlock[];
 };
 
+/** DOCX Viewer 可同时消费主线程 Source 与 Worker 代理的稳定接口。 */
+export interface DocxPagePreviewSource
+  extends WordPageSource<DocxPageContent>,
+    WordPreviewSource<DocxPageContent> {
+  /** 返回当前文档摘要。 */
+  getSummary(): DocxWordPreviewSummary;
+  /** 返回当前已经发现的扁平大纲条目。 */
+  getOutlineItems(): WordOutlineItem[];
+  /** 返回当前等待浏览器布局测量的批次。 */
+  getMeasurementBatch(): DocxMeasurementBatch | undefined;
+  /** 提交主线程测得的块尺寸并推进分页。 */
+  commitMeasurement(
+    batch: DocxMeasurementBatch,
+    measurements: readonly DocxMeasuredBlock[],
+    durationMs: number,
+  ): Promise<void>;
+  /** 标记当前测量批次失败，供界面触发重试。 */
+  failMeasurement(batch: DocxMeasurementBatch, error: unknown): void;
+  /** 当前 Source 是否已经具备可渲染摘要。 */
+  hasRenderableContent(): boolean;
+}
+
 function estimatePageSize(page: DocxPageContent) {
   return page.blocks.reduce((total, block) => {
     if (block.type === 'paragraph') return total + block.text.length * 2 + 256;
@@ -54,11 +80,7 @@ function estimatePageSize(page: DocxPageContent) {
 }
 
 /** 流式 DOCX 的页面、测量队列、大纲和懒归档资源的唯一所有者。 */
-export class DocxWordPageSource
-  implements
-    WordPageSource<DocxPageContent>,
-    WordPreviewSource<DocxPageContent>
-{
+export class DocxWordPageSource implements DocxPagePreviewSource {
   readonly pages: WordPageSource<DocxPageContent> = this;
   readonly outline: WordOutlineProvider;
   private readonly writableOutline = createProgressiveWordOutlineProvider();
@@ -69,6 +91,9 @@ export class DocxWordPageSource
   private readonly listeners = new Set<() => void>();
   private readonly outlineItemsById = new Map<string, WordOutlineItem>();
   private readonly blockPageIndex = new Map<string, number>();
+  readonly searchProvider = new WordSearchProvider({
+    resolvePageIndex: (blockId) => this.blockPageIndex.get(blockId),
+  });
   private readonly batchById = new Map<string, DocxMeasurementBatch>();
   private readonly pendingPages = new Map<string, PendingSourcePage>();
   private readonly measurementQueue: DocxMeasurementBatch[] = [];
@@ -113,6 +138,7 @@ export class DocxWordPageSource
   async addSourcePage(page: DocxPageContent) {
     this.throwIfUnavailable();
     this.collectPageMetadata(page);
+    this.searchProvider.append(collectDocxSearchBlocks(page.blocks));
     // 每个 sourcePage 仍独立分页，因此测量不会跨越显式节边界。
     const batches = createDocxMeasurementBatches(page, this.nextBatchRevision);
     this.nextBatchRevision += batches.length;
@@ -154,6 +180,7 @@ export class DocxWordPageSource
       bookmarks: result.bookmarks,
     };
     this.parsingCompleted = true;
+    this.searchProvider.complete();
     this.tryComplete();
     this.emitChange();
   }
@@ -300,6 +327,7 @@ export class DocxWordPageSource
     if (this.disposePromise) return this.disposePromise;
     this.disposed = true;
     this.completed = true;
+    this.searchProvider.dispose();
     this.writableOutline.complete();
     this.emitChange();
     this.listeners.clear();

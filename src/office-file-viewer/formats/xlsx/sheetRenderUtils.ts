@@ -1,5 +1,6 @@
 // sheetRenderUtils 提供 XLSX 工作表渲染所需的样式转换和画布尺寸计算。
 import type { CSSProperties } from 'react';
+import type { OfficeFontFamilyResolver } from '../../services/fonts/types';
 import type { SpreadsheetViewMode } from '../../services/spreadsheet/viewMode';
 import type {
   XlsxAnchorPoint,
@@ -65,6 +66,7 @@ export type XlsxSheetMetrics = {
 export function buildXlsxCellStyle(
   cell: XlsxCell,
   viewMode: SpreadsheetViewMode = 'source',
+  resolveFontFamily?: OfficeFontFamilyResolver,
 ): CSSProperties {
   const style = cell.style ?? {};
   const wrapped = Boolean(
@@ -79,7 +81,7 @@ export function buildXlsxCellStyle(
     background: style.backgroundColor,
     textAlign: style.horizontalAlign,
     verticalAlign: style.verticalAlign,
-    fontFamily: style.fontFamily,
+    fontFamily: resolveFontFamily?.(style.fontFamily) ?? style.fontFamily,
     fontSize: style.fontSize,
     whiteSpace: wrapped ? 'pre-wrap' : 'nowrap',
     lineHeight: viewMode === 'reading' ? 1.2 : undefined,

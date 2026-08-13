@@ -3,6 +3,10 @@ import type {
   WordPageSource,
   WordPageSourceSnapshot,
 } from './WordPageSource';
+import {
+  createMaterializedWordSearchProvider,
+  type WordSearchBlock,
+} from './WordSearchProvider';
 
 /** 创建内存 Word 页面数据源时使用的选项。 */
 export type MaterializedWordPageSourceOptions<TPage> = {
@@ -12,6 +16,8 @@ export type MaterializedWordPageSourceOptions<TPage> = {
   getEstimatedContentHeight(page: TPage, index: number): number;
   /** 返回页面包含的源内容块标识。 */
   getSourceBlockIds(page: TPage, index: number): readonly string[];
+  /** 已完整解析的正文搜索块；未提供时不创建搜索能力。 */
+  searchBlocks?: readonly WordSearchBlock[];
 };
 
 function throwIfAborted(signal?: AbortSignal) {
@@ -41,8 +47,14 @@ export function createMaterializedWordPageSource<TPage>(
     pageCount: pages.length,
     pages: metas,
   };
+  const searchProvider = options.searchBlocks
+    ? createMaterializedWordSearchProvider(options.searchBlocks, {
+        resolvePageIndex: (blockId) => blockPageIndex.get(blockId),
+      })
+    : undefined;
 
   return {
+    ...(searchProvider ? { searchProvider } : {}),
     getSnapshot: () => snapshot,
     subscribe: () => () => undefined,
     getPage: async (index, signal) => {
@@ -58,6 +70,9 @@ export function createMaterializedWordPageSource<TPage>(
     },
     retainRange: () => () => undefined,
     retry: () => undefined,
-    dispose: () => Promise.resolve(),
+    dispose: () => {
+      searchProvider?.dispose();
+      return Promise.resolve();
+    },
   };
 }

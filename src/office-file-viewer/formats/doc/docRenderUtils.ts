@@ -1,10 +1,14 @@
 // DOC 渲染样式转换集中保留在格式层，避免解析服务依赖 React 类型。
 import type { CSSProperties } from 'react';
 import type { DocTextStyle } from '../../services/doc/types';
+import type { OfficeFontFamilyResolver } from '../../services/fonts/types';
 
 // DOC 解析出的文本样式字段和 React CSS 字段基本一一对应，集中转换便于后续补充新属性。
 /** 将 DOC 文本样式转换为 React CSS 属性。 */
-export function docTextStyleToCss(style?: DocTextStyle): CSSProperties {
+export function docTextStyleToCss(
+  style?: DocTextStyle,
+  resolveFontFamily?: OfficeFontFamilyResolver,
+): CSSProperties {
   if (!style) return {};
 
   const css: CSSProperties = {
@@ -23,7 +27,7 @@ export function docTextStyleToCss(style?: DocTextStyle): CSSProperties {
       style.lineHeight !== undefined && style.lineHeight > 4
         ? `${style.lineHeight}px`
         : style.lineHeight,
-    fontFamily: style.fontFamily,
+    fontFamily: resolveFontFamily?.(style.fontFamily) ?? style.fontFamily,
     marginLeft: style.indentLeft,
     marginRight: style.indentRight,
     textIndent: style.firstLineIndent,
@@ -46,8 +50,9 @@ export function inlineStyleToCss(
     /** 是否保留块级模型自身的字体与段落样式。 */
     preserveBlockTypography?: boolean;
   },
+  resolveFontFamily?: OfficeFontFamilyResolver,
 ): CSSProperties {
-  const css = docTextStyleToCss(style);
+  const css = docTextStyleToCss(style, resolveFontFamily);
   // 行内片段不能继承段落级缩进/间距，否则会把整段排版撑乱。
   delete css.textAlign;
   delete css.marginLeft;

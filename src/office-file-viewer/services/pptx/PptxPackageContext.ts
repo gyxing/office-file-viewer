@@ -1,9 +1,10 @@
 import type { OfficeEntryMap } from '../../shared/ooxml/archive';
-import type { OfficeArchiveReader } from '../../shared/ooxml/OfficeArchiveReader';
 import type { OfficeRelationship } from '../../shared/ooxml/media';
+import type { OfficeArchiveReader } from '../../shared/ooxml/OfficeArchiveReader';
 import type {
   GradientFill,
   PresentationSlideDescriptor,
+  ReflectionStyle,
   ShadowStyle,
   SlideBackground,
   SlideElement,
@@ -99,6 +100,8 @@ export type PlaceholderStyle = {
   strokeDash?: string;
   /** 阴影。 */
   shadow?: ShadowStyle;
+  /** 倒影。 */
+  reflection?: ReflectionStyle;
   /** 占位符自身定义的文字样式。 */
   text?: TextStyle;
   /** 占位符正文层级的默认文字样式。 */
@@ -161,6 +164,8 @@ export type PptxPackageContext = {
   height: number;
   /** 当前文档使用的主题颜色和字体配置。 */
   theme: ThemeModel;
+  /** 演示文稿级默认文字样式，供非占位符文本框及占位符继承链兜底。 */
+  defaultTextStyle: PlaceholderStyle;
   /** 按样式标识索引的表格样式。 */
   tableStyles: TableStyleMap;
   /** 可供幻灯片继承的母版定义。 */

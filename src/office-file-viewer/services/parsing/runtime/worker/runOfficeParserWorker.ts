@@ -11,6 +11,8 @@ import type {
 } from '../../protocol/messages';
 import { OFFICE_PARSER_PROTOCOL_VERSION } from '../../protocol/version';
 import { createParseAbortError } from '../types';
+import { runOoxmlMaterializedParser } from './runOoxmlMaterializedParser';
+import { WorkerSourceHost } from './WorkerSourceHost';
 
 /** 解析 Worker 接收消息时使用的最小事件结构。 */
 type WorkerMessageEvent = {
@@ -44,6 +46,7 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
 
   const post = (message: WorkerToMainMessage, transfer: Transferable[] = []) =>
     scope.postMessage(message, transfer);
+  const sourceHost = new WorkerSourceHost(post);
 
   const waitForAck = (sequence: number) =>
     new Promise<void>((resolve) => {
@@ -57,6 +60,13 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
           {
             /** 固定为 `parse-resource`，用于区分联合类型分支。 */
             type: 'parse-resource';
+          }
+        >
+      | Extract<
+          WorkerToMainMessage,
+          {
+            /** 固定为 `parse-spreadsheet-meta`，用于区分联合类型分支。 */
+            type: 'parse-spreadsheet-meta';
           }
         >
       | Extract<
@@ -93,6 +103,27 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
             /** 固定为 `parse-document-blocks`，用于区分联合类型分支。 */
             type: 'parse-document-blocks';
           }
+        >
+      | Extract<
+          WorkerToMainMessage,
+          {
+            /** 固定为 `parse-docx-meta`，用于区分联合类型分支。 */
+            type: 'parse-docx-meta';
+          }
+        >
+      | Extract<
+          WorkerToMainMessage,
+          {
+            /** 固定为 `parse-docx-blocks`，用于区分联合类型分支。 */
+            type: 'parse-docx-blocks';
+          }
+        >
+      | Extract<
+          WorkerToMainMessage,
+          {
+            /** 固定为 `parse-docx-pages`，用于区分联合类型分支。 */
+            type: 'parse-docx-pages';
+          }
         >,
     transfer: Transferable[] = [],
   ) {
@@ -123,6 +154,7 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
               version: OFFICE_PARSER_PROTOCOL_VERSION,
               taskId,
               documentSessionId,
+              sequence: nextSequence++,
               progress,
             });
           }
@@ -161,6 +193,7 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
         version: OFFICE_PARSER_PROTOCOL_VERSION,
         taskId,
         documentSessionId,
+        sequence: nextSequence++,
         warnings: result.workbook.warnings,
       });
     } catch (error) {
@@ -173,6 +206,7 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
           version: OFFICE_PARSER_PROTOCOL_VERSION,
           taskId,
           documentSessionId,
+          sequence: nextSequence++,
         });
       } else {
         post({
@@ -180,6 +214,7 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
           version: OFFICE_PARSER_PROTOCOL_VERSION,
           taskId,
           documentSessionId,
+          sequence: nextSequence++,
           error: serializeParseError(error, { format: 'xls' }),
         });
       }
@@ -208,6 +243,7 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
               version: OFFICE_PARSER_PROTOCOL_VERSION,
               taskId,
               documentSessionId,
+              sequence: nextSequence++,
               progress,
             });
           }
@@ -255,6 +291,7 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
         version: OFFICE_PARSER_PROTOCOL_VERSION,
         taskId,
         documentSessionId,
+        sequence: nextSequence++,
       });
     } catch (error) {
       if (
@@ -266,6 +303,7 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
           version: OFFICE_PARSER_PROTOCOL_VERSION,
           taskId,
           documentSessionId,
+          sequence: nextSequence++,
         });
       } else {
         post({
@@ -273,6 +311,7 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
           version: OFFICE_PARSER_PROTOCOL_VERSION,
           taskId,
           documentSessionId,
+          sequence: nextSequence++,
           error: serializeParseError(error, { format: 'ppt' }),
         });
       }
@@ -300,6 +339,7 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
               version: OFFICE_PARSER_PROTOCOL_VERSION,
               taskId,
               documentSessionId,
+              sequence: nextSequence++,
               progress,
             });
           }
@@ -358,6 +398,7 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
         version: OFFICE_PARSER_PROTOCOL_VERSION,
         taskId,
         documentSessionId,
+        sequence: nextSequence++,
       });
     } catch (error) {
       if (
@@ -369,6 +410,7 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
           version: OFFICE_PARSER_PROTOCOL_VERSION,
           taskId,
           documentSessionId,
+          sequence: nextSequence++,
         });
       } else {
         post({
@@ -376,7 +418,138 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
           version: OFFICE_PARSER_PROTOCOL_VERSION,
           taskId,
           documentSessionId,
+          sequence: nextSequence++,
           error: serializeParseError(error, { format: 'doc' }),
+        });
+      }
+    }
+  }
+
+  async function parseOoxml(
+    message: Extract<
+      MainToWorkerMessage,
+      {
+        /** 固定为 `parse-start`，用于区分联合类型分支。 */
+        type: 'parse-start';
+      }
+    >,
+  ) {
+    const { documentSessionId, kind, taskId } = message;
+    if (kind !== 'docx' && kind !== 'xlsx' && kind !== 'pptx') return;
+    try {
+      const warnings = await runOoxmlMaterializedParser(
+        message.file,
+        kind,
+        activeAbortController.signal,
+        {
+          progress: (progress) => {
+            post({
+              type: 'parse-progress',
+              version: OFFICE_PARSER_PROTOCOL_VERSION,
+              taskId,
+              documentSessionId,
+              sequence: nextSequence++,
+              progress,
+            });
+          },
+          docxMetadata: (metadata) =>
+            sendSequenced({
+              type: 'parse-docx-meta',
+              version: OFFICE_PARSER_PROTOCOL_VERSION,
+              taskId,
+              documentSessionId,
+              sequence: nextSequence++,
+              metadata,
+            }),
+          docxBlocks: (startIndex, blocks) =>
+            sendSequenced({
+              type: 'parse-docx-blocks',
+              version: OFFICE_PARSER_PROTOCOL_VERSION,
+              taskId,
+              documentSessionId,
+              sequence: nextSequence++,
+              startIndex,
+              blocks,
+            }),
+          docxPages: (startIndex, pages) =>
+            sendSequenced({
+              type: 'parse-docx-pages',
+              version: OFFICE_PARSER_PROTOCOL_VERSION,
+              taskId,
+              documentSessionId,
+              sequence: nextSequence++,
+              startIndex,
+              pages,
+            }),
+          spreadsheetMetadata: (metadata) =>
+            sendSequenced({
+              type: 'parse-spreadsheet-meta',
+              version: OFFICE_PARSER_PROTOCOL_VERSION,
+              taskId,
+              documentSessionId,
+              sequence: nextSequence++,
+              metadata,
+            }),
+          sheet: (sheetIndex, sheet) =>
+            sendSequenced({
+              type: 'parse-sheet',
+              version: OFFICE_PARSER_PROTOCOL_VERSION,
+              taskId,
+              documentSessionId,
+              sequence: nextSequence++,
+              sheetIndex,
+              revision: 1,
+              sheet,
+            }),
+          presentationMetadata: (metadata) =>
+            sendSequenced({
+              type: 'parse-presentation-meta',
+              version: OFFICE_PARSER_PROTOCOL_VERSION,
+              taskId,
+              documentSessionId,
+              sequence: nextSequence++,
+              metadata,
+            }),
+          slide: (slideIndex, slide) =>
+            sendSequenced({
+              type: 'parse-slide',
+              version: OFFICE_PARSER_PROTOCOL_VERSION,
+              taskId,
+              documentSessionId,
+              sequence: nextSequence++,
+              slideIndex,
+              slide,
+            }),
+        },
+      );
+      post({
+        type: 'parse-complete',
+        version: OFFICE_PARSER_PROTOCOL_VERSION,
+        taskId,
+        documentSessionId,
+        sequence: nextSequence++,
+        warnings,
+      });
+    } catch (error) {
+      if (
+        cancelled ||
+        (error instanceof Error && error.name === 'AbortError')
+      ) {
+        post({
+          type: 'parse-cancelled',
+          version: OFFICE_PARSER_PROTOCOL_VERSION,
+          taskId,
+          documentSessionId,
+          sequence: nextSequence++,
+        });
+      } else {
+        post({
+          type: 'parse-error',
+          version: OFFICE_PARSER_PROTOCOL_VERSION,
+          taskId,
+          documentSessionId,
+          sequence: nextSequence++,
+          error: serializeParseError(error, { format: kind }),
         });
       }
     }
@@ -385,6 +558,7 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
   scope.addEventListener('message', (event) => {
     const message = event.data;
     if (message.version !== OFFICE_PARSER_PROTOCOL_VERSION) return;
+    if (sourceHost.handle(message)) return;
     if (message.type === 'parse-ack') {
       if (
         message.taskId !== activeTaskId ||
@@ -409,12 +583,14 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
       }
       return;
     }
+    if (message.type !== 'parse-start') return;
     if (activeTaskId) {
       post({
         type: 'parse-error',
         version: OFFICE_PARSER_PROTOCOL_VERSION,
         taskId: message.taskId,
         documentSessionId: message.documentSessionId,
+        sequence: nextSequence++,
         error: {
           code: 'WORKER_BUSY',
           message: '解析 Worker 正在处理其他任务',
@@ -428,7 +604,13 @@ export function runOfficeParserWorker(scope: ParserWorkerScope) {
     activeDocumentSessionId = message.documentSessionId;
     cancelled = false;
     activeAbortController = new AbortController();
-    if (message.kind === 'ppt') void parsePpt(message);
+    if (
+      message.kind === 'docx' ||
+      message.kind === 'xlsx' ||
+      message.kind === 'pptx'
+    ) {
+      void parseOoxml(message);
+    } else if (message.kind === 'ppt') void parsePpt(message);
     else if (message.kind === 'doc') void parseDoc(message);
     else void parseXls(message);
   });

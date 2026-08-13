@@ -1,13 +1,15 @@
 // PptxViewer 负责 PPTX 预览整体布局，组合左侧缩略图栏和右侧幻灯片视口。
-import React, { memo, useMemo } from 'react';
+import React, { memo, useMemo, useRef } from 'react';
 import type { OfficeFileViewerPreviewState } from '../../services/parsing/internalTypes';
 import { getPresentationSource } from '../../services/presentation/presentationSourceRegistry';
 import { OfficePreviewEmpty } from '../common/OfficePreviewEmpty';
+import { useOfficeSearchProviderRegistration } from '../search/OfficeSearchContext';
 import './index.less';
 import { PptxSlideViewport } from './PptxSlideViewport';
 import { PptxSpeakerNotes } from './PptxSpeakerNotes';
 import { PptxThumbnailPane } from './PptxThumbnailPane';
 import { usePresentationHyperlinkNavigation } from './usePresentationHyperlinkNavigation';
+import { usePresentationSearchNavigation } from './usePresentationSearchNavigation';
 import { usePresentationSource } from './usePresentationSource';
 
 /** 演示文稿 Viewer 可以消费的物化或按需预览。 */
@@ -45,6 +47,8 @@ function PptxViewerComponent({
         : getPresentationSource(preview.model.document),
     [preview],
   );
+  const viewerRef = useRef<HTMLDivElement>(null);
+  useOfficeSearchProviderRegistration(resolvedSource?.searchProvider);
   const {
     snapshot,
     slide: currentSlide,
@@ -54,13 +58,18 @@ function PptxViewerComponent({
     retry,
   } = usePresentationSource(resolvedSource, activeIndex, showSpeakerNotes);
   usePresentationHyperlinkNavigation({ snapshot, activeIndex, onSelectSlide });
+  usePresentationSearchNavigation({
+    snapshot,
+    onSelectSlide,
+    viewerRef,
+  });
 
   if (!resolvedSource || !snapshot.slideCount) {
     return <OfficePreviewEmpty kind={preview.previewKind} />;
   }
 
   return (
-    <div className="office-file-pptx-viewer">
+    <div ref={viewerRef} className="office-file-pptx-viewer">
       <PptxThumbnailPane
         source={resolvedSource}
         snapshot={snapshot}

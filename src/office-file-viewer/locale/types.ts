@@ -107,6 +107,43 @@ export type OfficeFileViewerMessages = {
     /** 调整大纲侧栏宽度时使用的文案。 */
     resize: string;
   };
+  /** 文档全文查找相关文案。 */
+  search: {
+    /** 查找侧栏区域的无障碍名称。 */
+    region: string;
+    /** 工具栏和侧栏显示的标题。 */
+    title: string;
+    /** 展开查找侧栏的操作文案。 */
+    expand: string;
+    /** 收起查找侧栏的操作文案。 */
+    collapse: string;
+    /** 搜索输入框占位文案。 */
+    placeholder: string;
+    /** 切换到上一个匹配结果的操作文案。 */
+    previous: string;
+    /** 切换到下一个匹配结果的操作文案。 */
+    next: string;
+    /** 区分大小写选项文案。 */
+    matchCase: string;
+    /** 全字匹配选项文案。 */
+    wholeWord: string;
+    /** 尚未输入查询时显示的说明。 */
+    emptyQuery: string;
+    /** 查询没有匹配结果时显示的说明。 */
+    noResults: string;
+    /** 扫描尚未完成时显示的说明。 */
+    searching: string;
+    /** 生成结果数量文案。 */
+    resultCount: (count: number) => string;
+    /** 生成当前结果位置文案。 */
+    currentResult: (current: number, total: number) => string;
+    /** 生成 Word 搜索结果的页码文案。 */
+    page: (index: number) => string;
+    /** 隐藏幻灯片结果的标记文案。 */
+    hiddenSlide: string;
+    /** 调整查找侧栏宽度时使用的文案。 */
+    resize: string;
+  };
   /** 电子表格预览相关文案。 */
   spreadsheet: {
     /** 显示模式选择控件的无障碍名称。 */

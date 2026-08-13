@@ -102,6 +102,11 @@
   word-break: break-word;
 }
 
+.office-file-doc-paragraph[data-office-doc-grid='true'] {
+  // Word 文档网格的字符节距略窄于浏览器宋体默认节距，仅对跟随网格的段落做等价修正。
+  letter-spacing: -0.2px;
+}
+
 .office-file-doc-paragraph--toc {
   display: flex;
   align-items: baseline;

@@ -1,30 +1,5 @@
 .office-file-word-outline {
-  --office-file-word-outline-width: 260px;
-
-  position: relative;
-  box-sizing: border-box;
-  flex: 0 0 var(--office-file-word-outline-width);
-  width: var(--office-file-word-outline-width);
-  min-width: 0;
-  height: 100%;
   color: #1f2937;
-  visibility: visible;
-  transition: flex-basis 280ms cubic-bezier(0.2, 0, 0, 1),
-    width 280ms cubic-bezier(0.2, 0, 0, 1), visibility 0s linear;
-}
-
-.office-file-word-outline[data-visible='false'] {
-  flex-basis: 0;
-  width: 0;
-  visibility: hidden;
-  pointer-events: none;
-  transition: flex-basis 220ms cubic-bezier(0.4, 0, 1, 1),
-    width 220ms cubic-bezier(0.4, 0, 1, 1), visibility 0s linear 220ms;
-}
-
-// 拖拽时宽度必须实时跟随指针，避免显隐动画造成迟滞。
-.office-file-word-outline[data-resizing='true'] {
-  transition: none;
 }
 
 .office-file-word-outline__viewport {
@@ -39,8 +14,8 @@
 .office-file-word-outline__surface {
   display: flex;
   flex-direction: column;
-  width: var(--office-file-word-outline-width);
-  min-width: var(--office-file-word-outline-width);
+  width: var(--office-file-navigation-panel-width);
+  min-width: var(--office-file-navigation-panel-width);
   height: 100%;
   opacity: 1;
   transform: translate3d(0, 0, 0);
@@ -291,52 +266,7 @@
   }
 }
 
-.office-file-word-outline__resize-handle {
-  position: absolute;
-  z-index: 2;
-  top: 0;
-  right: -6px;
-  display: flex;
-  width: 12px;
-  height: 100%;
-  align-items: center;
-  justify-content: center;
-  cursor: col-resize;
-  background: transparent;
-  outline: none;
-  touch-action: none;
-  user-select: none;
-}
-
-.office-file-word-outline__resize-handle span {
-  width: 4px;
-  height: 48px;
-  background: #b8c2d1;
-  border-radius: 2px;
-}
-
-.office-file-word-outline__resize-handle:hover span,
-.office-file-word-outline__resize-handle:focus-visible span,
-.office-file-word-outline__resize-handle:active span {
-  background: #2f6fed;
-}
-
-.office-file-word-outline__resize-handle:focus-visible span {
-  box-shadow: 0 0 0 2px rgba(47, 111, 237, 35%);
-}
-
 @media (prefers-reduced-motion: reduce) {
-  // 即使系统要求减少动态效果，也保留简短过渡，避免侧栏造成突兀的布局跳变。
-  .office-file-word-outline {
-    transition: flex-basis 220ms ease-out, width 220ms ease-out,
-      visibility 0s linear;
-  }
-
-  .office-file-word-outline[data-visible='false'] {
-    transition: flex-basis 180ms ease-in, width 180ms ease-in,
-      visibility 0s linear 180ms;
-  }
-
   .office-file-word-outline__surface {
     transform: none;
     transition: opacity 180ms linear;

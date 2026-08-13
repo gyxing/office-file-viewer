@@ -1,3 +1,4 @@
+import type { PreviewKind } from '../formatDefinitions';
 import { deserializeParseError } from '../protocol/errors';
 import type {
   MainToWorkerMessage,
@@ -8,6 +9,9 @@ import type { RuntimeContext, RuntimeSink } from './types';
 import { createParseAbortError } from './types';
 
 let taskSequence = 0;
+
+/** Worker 入口加载和协议握手允许等待的默认时长。 */
+const DEFAULT_WORKER_READY_TIMEOUT_MS = 10_000;
 
 /** 描述解析运行时失败时使用的结构化错误。 */
 type RuntimeError = Error & {
@@ -48,11 +52,14 @@ export class WorkerRuntime {
   private worker: Worker | undefined;
   private stopActive: (() => void) | undefined;
 
-  constructor(private readonly workerFactory?: () => Worker) {}
+  constructor(
+    private readonly workerFactory?: () => Worker,
+    private readonly readyTimeoutMs = DEFAULT_WORKER_READY_TIMEOUT_MS,
+  ) {}
 
   run(
     file: File,
-    kind: 'xls' | 'ppt' | 'doc',
+    kind: PreviewKind,
     context: RuntimeContext,
     sink: RuntimeSink,
   ): Promise<void> {
@@ -90,9 +97,11 @@ export class WorkerRuntime {
       const taskId = `office-parse-${Date.now()}-${++taskSequence}`;
       let parseStarted = false;
       let settled = false;
+      let readyTimeoutId: ReturnType<typeof setTimeout> | undefined;
       this.worker = worker;
 
       const cleanup = () => {
+        if (readyTimeoutId !== undefined) clearTimeout(readyTimeoutId);
         signal.removeEventListener('abort', handleAbort);
         worker.removeEventListener('message', handleMessage);
         worker.removeEventListener('error', handleWorkerError);
@@ -129,6 +138,7 @@ export class WorkerRuntime {
             version: OFFICE_PARSER_PROTOCOL_VERSION,
             taskId,
             documentSessionId,
+            sequence: 1,
           };
           worker.postMessage(message);
         }
@@ -159,6 +169,7 @@ export class WorkerRuntime {
         }
         if (message.type === 'worker-ready') {
           if (parseStarted || settled || signal.aborted) return;
+          if (readyTimeoutId !== undefined) clearTimeout(readyTimeoutId);
           const startMessage: MainToWorkerMessage = {
             type: 'parse-start',
             version: OFFICE_PARSER_PROTOCOL_VERSION,
@@ -166,6 +177,7 @@ export class WorkerRuntime {
             documentSessionId,
             kind,
             fileName: file.name,
+            sequence: 0,
             file,
           };
           parseStarted = true;
@@ -212,6 +224,26 @@ export class WorkerRuntime {
           sendAck(message.sequence);
           return;
         }
+        if (message.type === 'parse-spreadsheet-meta') {
+          await sink.spreadsheetMetadata(message.metadata);
+          sendAck(message.sequence);
+          return;
+        }
+        if (message.type === 'parse-docx-meta') {
+          await sink.docxMetadata(message.metadata);
+          sendAck(message.sequence);
+          return;
+        }
+        if (message.type === 'parse-docx-blocks') {
+          await sink.docxBlocks(message.startIndex, message.blocks);
+          sendAck(message.sequence);
+          return;
+        }
+        if (message.type === 'parse-docx-pages') {
+          await sink.docxPages(message.startIndex, message.pages);
+          sendAck(message.sequence);
+          return;
+        }
         if (message.type === 'parse-complete') {
           await sink.complete(message.warnings);
           finish();
@@ -233,6 +265,15 @@ export class WorkerRuntime {
       signal.addEventListener('abort', handleAbort, { once: true });
       worker.addEventListener('message', handleMessage);
       worker.addEventListener('error', handleWorkerError);
+      readyTimeoutId = setTimeout(() => {
+        fail(
+          createRuntimeError(
+            'WORKER_STARTUP_FAILED',
+            'Office 解析 Worker 就绪超时',
+            true,
+          ),
+        );
+      }, Math.max(0, this.readyTimeoutMs));
       if (signal.aborted) handleAbort();
     });
   }

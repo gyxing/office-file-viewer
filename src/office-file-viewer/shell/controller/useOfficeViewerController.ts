@@ -81,6 +81,10 @@ export type UseOfficeViewerControllerOptions = {
   uri?: OfficeFileViewerUri;
   /** 新文件和重置操作使用的缩放比例。 */
   defaultZoom: number;
+  /** 当前实例是否启用文档搜索能力。 */
+  searchEnabled: boolean;
+  /** 非受控搜索侧栏的默认状态。 */
+  defaultSearchVisible: boolean;
   /** 非受控模式下各视图字段的统一初始值。 */
   defaultViewState?: Partial<OfficeFileViewerViewState>;
   /** 由宿主按字段控制的视图状态。 */
@@ -140,6 +144,12 @@ export type OfficeViewerActions = {
   toggleWordOutline(): void;
   /** 关闭 Word 大纲侧栏。 */
   closeWordOutline(): void;
+  /** 切换文档查找侧栏。 */
+  toggleSearch(): void;
+  /** 打开文档查找侧栏。 */
+  openSearch(): void;
+  /** 关闭文档查找侧栏。 */
+  closeSearch(): void;
   /** 进入或退出浏览器全屏。 */
   toggleFullscreen(): Promise<void>;
 };
@@ -252,6 +262,9 @@ function createDefaultViewState(
     ),
     activeSheetId: defaults?.activeSheetId,
     wordOutlineVisible: defaults?.wordOutlineVisible ?? false,
+    searchVisible:
+      options.searchEnabled &&
+      (defaults?.searchVisible ?? options.defaultSearchVisible),
     speakerNotesVisible:
       defaults?.speakerNotesVisible ?? options.defaultShowSpeakerNotes,
     spreadsheetViewMode: normalizeSpreadsheetViewMode(
@@ -269,6 +282,7 @@ function createPublicViewState(
     activeSlideIndex: view.activeSlideIndex,
     activeSheetId: view.activeSheetId,
     wordOutlineVisible: view.showWordOutline,
+    searchVisible: view.showSearch,
     speakerNotesVisible: view.internalShowSpeakerNotes,
     spreadsheetViewMode: view.spreadsheetViewMode,
   };
@@ -288,6 +302,8 @@ function applyPublicViewStateChange(
       return { ...state, activeSheetId: change.value };
     case 'wordOutlineVisible':
       return { ...state, wordOutlineVisible: change.value };
+    case 'searchVisible':
+      return { ...state, searchVisible: change.value };
     case 'speakerNotesVisible':
       return { ...state, speakerNotesVisible: change.value };
     case 'spreadsheetViewMode':
@@ -526,9 +542,16 @@ export function useOfficeViewerController(
       state.view.zoom,
     ),
     internalShowSpeakerNotes: speakerNotesVisible,
+    showSearch:
+      options.searchEnabled &&
+      (controlledViewState?.searchVisible ?? state.view.showSearch),
     showWordOutline:
       hasWordOutline &&
-      (controlledViewState?.wordOutlineVisible ?? state.view.showWordOutline),
+      (controlledViewState?.wordOutlineVisible ?? state.view.showWordOutline) &&
+      !(
+        options.searchEnabled &&
+        (controlledViewState?.searchVisible ?? state.view.showSearch)
+      ),
     spreadsheetViewMode: normalizeSpreadsheetViewMode(
       controlledViewState?.spreadsheetViewMode ??
         state.view.spreadsheetViewMode,
@@ -1023,10 +1046,43 @@ export function useOfficeViewerController(
     });
   }, [effectiveViewStateRef, notifyViewStateChange, optionsRef]);
 
+  const commitSearchVisibility = useCallback(
+    (visible: boolean) => {
+      const nextVisible = visible && optionsRef.current.searchEnabled;
+      if (effectiveViewStateRef.current.showSearch === nextVisible) return;
+      if (nextVisible && effectiveViewStateRef.current.showWordOutline) {
+        if (optionsRef.current.viewState?.wordOutlineVisible === undefined) {
+          dispatch({ type: 'word-outline-changed', visible: false });
+        }
+        notifyViewStateChange({ key: 'wordOutlineVisible', value: false });
+      }
+      if (optionsRef.current.viewState?.searchVisible === undefined) {
+        dispatch({ type: 'search-changed', visible: nextVisible });
+      }
+      notifyViewStateChange({ key: 'searchVisible', value: nextVisible });
+    },
+    [effectiveViewStateRef, notifyViewStateChange, optionsRef],
+  );
+
+  const toggleSearch = useCallback(() => {
+    commitSearchVisibility(!effectiveViewStateRef.current.showSearch);
+  }, [commitSearchVisibility, effectiveViewStateRef]);
+
+  const openSearch = useCallback(() => {
+    commitSearchVisibility(true);
+  }, [commitSearchVisibility]);
+
+  const closeSearch = useCallback(() => {
+    commitSearchVisibility(false);
+  }, [commitSearchVisibility]);
+
   const commitWordOutlineVisibility = useCallback(
     (visible: boolean) => {
       const nextVisible = visible && hasWordOutlineRef.current;
       if (effectiveViewStateRef.current.showWordOutline === nextVisible) return;
+      if (nextVisible && effectiveViewStateRef.current.showSearch) {
+        commitSearchVisibility(false);
+      }
       if (optionsRef.current.viewState?.wordOutlineVisible === undefined) {
         dispatch({ type: 'word-outline-changed', visible: nextVisible });
       }
@@ -1038,6 +1094,7 @@ export function useOfficeViewerController(
     [
       effectiveViewStateRef,
       hasWordOutlineRef,
+      commitSearchVisibility,
       notifyViewStateChange,
       optionsRef,
     ],
@@ -1132,20 +1189,26 @@ export function useOfficeViewerController(
       toggleSpeakerNotes,
       toggleWordOutline,
       closeWordOutline,
+      toggleSearch,
+      openSearch,
+      closeSearch,
       toggleFullscreen,
     }),
     [
       changeZoom,
       changeSpreadsheetViewMode,
+      closeSearch,
       closeWordOutline,
       nextSlide,
       previousSlide,
+      openSearch,
       retry,
       selectFile,
       selectSheet,
       selectSlide,
       toggleFullscreen,
       toggleSpeakerNotes,
+      toggleSearch,
       toggleWordOutline,
       zoomIn,
       zoomOut,

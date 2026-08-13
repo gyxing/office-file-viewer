@@ -198,7 +198,11 @@ function XlsxSheetGridComponent({
   );
 
   return (
-    <div ref={gridRef} className="office-file-xlsx-sheet-grid">
+    <div
+      ref={gridRef}
+      className="office-file-xlsx-sheet-grid"
+      data-office-spreadsheet-sheet-id={sheet.id}
+    >
       <div className="office-file-xlsx-sheet-grid__canvas" style={canvasStyle}>
         <XlsxSheetFiller
           sheet={sheet}

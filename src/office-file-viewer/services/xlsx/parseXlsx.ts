@@ -100,9 +100,8 @@ export async function parseXlsx(
   const definedNames = Object.fromEntries(
     descendantsByLocalName(workbookDoc.documentElement, 'definedName')
       .map((node) => [attr(node, 'name'), node.textContent?.trim()] as const)
-      .filter(
-        (entry): entry is readonly [string, string] =>
-          Boolean(entry[0] && entry[1]),
+      .filter((entry): entry is readonly [string, string] =>
+        Boolean(entry[0] && entry[1]),
       ),
   );
   const sheetEntries = childrenByLocalName(

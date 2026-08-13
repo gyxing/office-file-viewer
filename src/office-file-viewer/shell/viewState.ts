@@ -10,6 +10,8 @@ export type OfficeFileViewerViewState = {
   activeSheetId?: string;
   /** Word 大纲侧栏是否展开。 */
   wordOutlineVisible: boolean;
+  /** 文档查找侧栏是否展开。 */
+  searchVisible: boolean;
   /** 演讲者备注区域是否展开。 */
   speakerNotesVisible: boolean;
   /** 电子表格采用的显示模式。 */

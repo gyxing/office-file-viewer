@@ -78,18 +78,32 @@ function resolveXmlTarget(
   return packageState.entries.get(normalized) ? normalized : target;
 }
 
-function readDrawingAnchorPosition(node: Element) {
+function readDrawingAnchorPosition(
+  node: Element,
+  documentGridLineHeight?: number,
+) {
   const anchor = descendantByLocalName(node, 'anchor');
   if (!anchor) return undefined;
 
   const positionH = childByLocalName(anchor, 'positionH');
   const positionV = childByLocalName(anchor, 'positionV');
+  const relativeFromV = attr(positionV, 'relativeFrom');
+  const affectsTextFlow = [
+    'wrapSquare',
+    'wrapTight',
+    'wrapThrough',
+    'wrapTopAndBottom',
+  ].some((name) => Boolean(childByLocalName(anchor, name)));
   const left = emuToPx(
     Number(textContent(childByLocalName(positionH, 'posOffset')).trim()),
   );
-  const top = emuToPx(
-    Number(textContent(childByLocalName(positionV, 'posOffset')).trim()),
-  );
+  const top =
+    emuToPx(
+      Number(textContent(childByLocalName(positionV, 'posOffset')).trim()),
+    ) +
+    (relativeFromV === 'paragraph' && affectsTextFlow
+      ? documentGridLineHeight ?? 0
+      : 0);
   if (!Number.isFinite(left) || !Number.isFinite(top)) return undefined;
 
   const relativeHeight = Number(attr(anchor, 'relativeHeight'));
@@ -237,6 +251,78 @@ function isDirectDrawingPicture(drawingNode: Element) {
   );
 }
 
+/** 判断绘图是否包含不能退化为单张图片的组合内容。 */
+function hasCompoundDrawingContent(drawingNode: Element) {
+  const graphicData = readTopLevelDrawingGraphicData(drawingNode);
+  const group = descendantByLocalName(graphicData, 'wgp');
+  if (!group) return Boolean(childByLocalName(graphicData, 'wsp'));
+
+  const drawableChildren = Array.from(group.children).filter(
+    (child) => matchesLocalName(child, 'wsp') || matchesLocalName(child, 'pic'),
+  );
+  return (
+    drawableChildren.some((child) => matchesLocalName(child, 'wsp')) ||
+    drawableChildren.length > 1
+  );
+}
+
+/** 读取 DrawingML 图片的颜色替换效果；浏览器原生图片无法直接表达该效果。 */
+function readDrawingImageColorChange(
+  drawingNode: Element,
+): DocxImage['colorChange'] | undefined {
+  const blip = descendantByLocalName(drawingNode, 'blip');
+  const colorChange = childByLocalName(blip, 'clrChange');
+  if (!colorChange) return undefined;
+
+  const fromNode = childByLocalName(
+    childByLocalName(colorChange, 'clrFrom'),
+    'srgbClr',
+  );
+  const toNode = childByLocalName(
+    childByLocalName(colorChange, 'clrTo'),
+    'srgbClr',
+  );
+  const from = normalizeCssColor(attr(fromNode, 'val'));
+  const to = normalizeCssColor(attr(toNode, 'val'));
+  if (!from || !to) return undefined;
+
+  const alphaValues = Array.from(toNode?.children ?? []).filter((child) =>
+    matchesLocalName(child, 'alpha'),
+  );
+  const rawAlpha = Number(
+    attr(alphaValues[alphaValues.length - 1], 'val') ?? 100000,
+  );
+  return {
+    from,
+    to,
+    alpha: Number.isFinite(rawAlpha)
+      ? Math.max(0, Math.min(1, rawAlpha / 100000))
+      : 1,
+    useAlpha: attr(colorChange, 'useA') === '1' || undefined,
+  };
+}
+
+/** 读取 DrawingML 图片四边以十万分比声明的裁剪范围。 */
+function readDrawingImageCrop(
+  drawingNode: Element,
+): DocxImage['crop'] | undefined {
+  const picture = descendantByLocalName(drawingNode, 'pic');
+  const blipFill = childByLocalName(picture, 'blipFill');
+  const srcRect = childByLocalName(blipFill, 'srcRect');
+  if (!srcRect) return undefined;
+
+  const readSide = (name: 'l' | 't' | 'r' | 'b') => {
+    const value = Number(attr(srcRect, name) ?? 0) / 100000;
+    return Number.isFinite(value) ? Math.min(0.99, Math.max(0, value)) : 0;
+  };
+  return {
+    left: readSide('l'),
+    top: readSide('t'),
+    right: readSide('r'),
+    bottom: readSide('b'),
+  };
+}
+
 function parseDrawingImage(
   drawingNode: Element,
   context: ParseContext,
@@ -258,7 +344,10 @@ function parseDrawingImage(
     Math.round(emuToPx(Number(attr(extent, 'cy') ?? 0))),
   );
   const name = attr(docPr, 'name');
-  const anchorPosition = readDrawingAnchorPosition(drawingNode);
+  const anchorPosition = readDrawingAnchorPosition(
+    drawingNode,
+    context.documentGridLineHeight,
+  );
   const imageTransform = readDrawingImageTransform(drawingNode);
   const position = anchorPosition
     ? {
@@ -274,6 +363,8 @@ function parseDrawingImage(
     src,
     width,
     height,
+    crop: readDrawingImageCrop(drawingNode),
+    colorChange: readDrawingImageColorChange(drawingNode),
     position,
     hyperlink: parseDocxDrawingHyperlink(
       docPr ?? drawingNode,
@@ -302,6 +393,8 @@ function parseAlternateContentImage(
   drawingNode: Element,
   context: ParseContext,
 ) {
+  // 图片与文本、多个图片组成的组必须交给形状解析器，否则只会保留首张图片。
+  if (hasCompoundDrawingContent(drawingNode)) return undefined;
   const image = parseDrawingImage(drawingNode, context);
   if (!image) return undefined;
   if (
@@ -388,51 +481,216 @@ function parseDrawingFillImage(
   return resolveMediaRef(target, context.packageState);
 }
 
-function parseDrawingXfrm(
+/** 二维仿射矩阵，用于把嵌套组合图形的局部坐标映射到最终像素坐标。 */
+type DrawingMatrix = {
+  /** 水平轴的水平分量。 */
+  a: number;
+  /** 水平轴的垂直分量。 */
+  b: number;
+  /** 垂直轴的水平分量。 */
+  c: number;
+  /** 垂直轴的垂直分量。 */
+  d: number;
+  /** 水平位移。 */
+  e: number;
+  /** 垂直位移。 */
+  f: number;
+};
+
+const IDENTITY_DRAWING_MATRIX: DrawingMatrix = {
+  a: 1,
+  b: 0,
+  c: 0,
+  d: 1,
+  e: 0,
+  f: 0,
+};
+
+/** 组合两个坐标变换，结果会先应用 child，再应用 parent。 */
+function multiplyDrawingMatrices(
+  parent: DrawingMatrix,
+  child: DrawingMatrix,
+): DrawingMatrix {
+  return {
+    a: parent.a * child.a + parent.c * child.b,
+    b: parent.b * child.a + parent.d * child.b,
+    c: parent.a * child.c + parent.c * child.d,
+    d: parent.b * child.c + parent.d * child.d,
+    e: parent.a * child.e + parent.c * child.f + parent.e,
+    f: parent.b * child.e + parent.d * child.f + parent.f,
+  };
+}
+
+function createDrawingTranslationMatrix(x: number, y: number): DrawingMatrix {
+  return { ...IDENTITY_DRAWING_MATRIX, e: x, f: y };
+}
+
+function createDrawingScaleMatrix(x: number, y: number): DrawingMatrix {
+  return { ...IDENTITY_DRAWING_MATRIX, a: x, d: y };
+}
+
+function createDrawingRotationMatrix(degrees: number): DrawingMatrix {
+  const radians = (degrees * Math.PI) / 180;
+  const cosine = Math.cos(radians);
+  const sine = Math.sin(radians);
+  return {
+    a: cosine,
+    b: sine,
+    c: -sine,
+    d: cosine,
+    e: 0,
+    f: 0,
+  };
+}
+
+function applyDrawingMatrix(matrix: DrawingMatrix, x: number, y: number) {
+  return {
+    x: matrix.a * x + matrix.c * y + matrix.e,
+    y: matrix.b * x + matrix.d * y + matrix.f,
+  };
+}
+
+function readFiniteNumber(value: string | undefined, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+/** 读取组合容器从子坐标系到父坐标系的完整变换。 */
+function readDrawingGroupMatrix(groupNode: Element): DrawingMatrix {
+  const groupProperties = childByLocalName(groupNode, 'grpSpPr');
+  const xfrm = childByLocalName(groupProperties, 'xfrm');
+  if (!xfrm) return IDENTITY_DRAWING_MATRIX;
+
+  const off = childByLocalName(xfrm, 'off');
+  const ext = childByLocalName(xfrm, 'ext');
+  const childOff = childByLocalName(xfrm, 'chOff');
+  const childExt = childByLocalName(xfrm, 'chExt');
+  const left = readFiniteNumber(attr(off, 'x'));
+  const top = readFiniteNumber(attr(off, 'y'));
+  const width = readFiniteNumber(attr(ext, 'cx'));
+  const height = readFiniteNumber(attr(ext, 'cy'));
+  const childLeft = readFiniteNumber(attr(childOff, 'x'));
+  const childTop = readFiniteNumber(attr(childOff, 'y'));
+  const childWidth = readFiniteNumber(attr(childExt, 'cx'), width || 1);
+  const childHeight = readFiniteNumber(attr(childExt, 'cy'), height || 1);
+  const scaleX = childWidth > 0 ? width / childWidth : 1;
+  const scaleY = childHeight > 0 ? height / childHeight : 1;
+
+  let matrix = multiplyDrawingMatrices(
+    createDrawingTranslationMatrix(left, top),
+    multiplyDrawingMatrices(
+      createDrawingScaleMatrix(scaleX, scaleY),
+      createDrawingTranslationMatrix(-childLeft, -childTop),
+    ),
+  );
+
+  const rawRotation = readFiniteNumber(attr(xfrm, 'rot'));
+  const rotation = rawRotation / 60000;
+  const flipX = attr(xfrm, 'flipH') === '1' ? -1 : 1;
+  const flipY = attr(xfrm, 'flipV') === '1' ? -1 : 1;
+  if (rotation || flipX < 0 || flipY < 0) {
+    const centerX = left + width / 2;
+    const centerY = top + height / 2;
+    const aroundCenter = multiplyDrawingMatrices(
+      createDrawingTranslationMatrix(centerX, centerY),
+      multiplyDrawingMatrices(
+        createDrawingRotationMatrix(rotation),
+        multiplyDrawingMatrices(
+          createDrawingScaleMatrix(flipX, flipY),
+          createDrawingTranslationMatrix(-centerX, -centerY),
+        ),
+      ),
+    );
+    matrix = multiplyDrawingMatrices(aroundCenter, matrix);
+  }
+
+  return matrix;
+}
+
+/** 将顶层组合图形的 EMU 坐标映射到锚点提供的像素视口。 */
+function readWpgRootMatrix(
+  groupNode: Element,
+  width: number,
+  height: number,
+): DrawingMatrix {
+  const xfrm = childByLocalName(childByLocalName(groupNode, 'grpSpPr'), 'xfrm');
+  const ext = childByLocalName(xfrm, 'ext');
+  const rawWidth = readFiniteNumber(attr(ext, 'cx'));
+  const rawHeight = readFiniteNumber(attr(ext, 'cy'));
+  const viewportMatrix = createDrawingScaleMatrix(
+    rawWidth > 0 ? width / rawWidth : emuToPx(1),
+    rawHeight > 0 ? height / rawHeight : emuToPx(1),
+  );
+  return multiplyDrawingMatrices(
+    viewportMatrix,
+    readDrawingGroupMatrix(groupNode),
+  );
+}
+
+function readDrawingItemSize(
   node: Element | null | undefined,
-  scale?: {
-    /** 水平方向的坐标或缩放参数。 */
-    x?: number;
-    /** 垂直方向的坐标或缩放参数。 */
-    y?: number;
-  },
+  matrix: DrawingMatrix,
 ) {
   const xfrm = childByLocalName(node, 'xfrm');
   const off = childByLocalName(xfrm, 'off');
   const ext = childByLocalName(xfrm, 'ext');
-  const rawLeft = Number(attr(off, 'x') ?? 0);
-  const rawTop = Number(attr(off, 'y') ?? 0);
-  const rawWidth = Number(attr(ext, 'cx') ?? 0);
-  const rawHeight = Number(attr(ext, 'cy') ?? 0);
+  const rawLeft = readFiniteNumber(attr(off, 'x'));
+  const rawTop = readFiniteNumber(attr(off, 'y'));
+  const rawWidth = readFiniteNumber(attr(ext, 'cx'));
+  const rawHeight = readFiniteNumber(attr(ext, 'cy'));
+  const center = applyDrawingMatrix(
+    matrix,
+    rawLeft + rawWidth / 2,
+    rawTop + rawHeight / 2,
+  );
+  const width = Math.hypot(matrix.a * rawWidth, matrix.b * rawWidth);
+  const height = Math.hypot(matrix.c * rawHeight, matrix.d * rawHeight);
   return {
-    left: Number.isFinite(rawLeft) ? rawLeft * (scale?.x ?? 1) : 0,
-    top: Number.isFinite(rawTop) ? rawTop * (scale?.y ?? 1) : 0,
-    width: Number.isFinite(rawWidth) ? rawWidth * (scale?.x ?? 1) : 0,
-    height: Number.isFinite(rawHeight) ? rawHeight * (scale?.y ?? 1) : 0,
+    left: center.x - width / 2,
+    top: center.y - height / 2,
+    width,
+    height,
   };
 }
 
-function readWpgScale(groupNode: Element, width: number, height: number) {
-  const xfrm = descendantByLocalName(
-    childByLocalName(groupNode, 'grpSpPr'),
-    'xfrm',
-  );
-  const chOff = childByLocalName(xfrm, 'chOff');
-  const chExt = childByLocalName(xfrm, 'chExt');
-  const rawWidth = Number(attr(chExt, 'cx') ?? 0);
-  const rawHeight = Number(attr(chExt, 'cy') ?? 0);
-  const originX = Number(attr(chOff, 'x') ?? 0);
-  const originY = Number(attr(chOff, 'y') ?? 0);
+/** 合并子图形自身与外层组合容器的旋转、翻转。 */
+function readDrawingItemTransform(
+  node: Element | null | undefined,
+  matrix: DrawingMatrix,
+): Pick<DocxShapeItem, 'rotation' | 'flipH' | 'flipV'> {
+  const xfrm = childByLocalName(node, 'xfrm');
+  const rawRotation = readFiniteNumber(attr(xfrm, 'rot')) / 60000;
+  const groupRotation = (Math.atan2(matrix.b, matrix.a) * 180) / Math.PI;
+  const determinant = matrix.a * matrix.d - matrix.b * matrix.c;
+  const groupFlipV = determinant < 0;
+  const rotation = groupRotation + (groupFlipV ? -rawRotation : rawRotation);
   return {
-    scale: {
-      x: Number.isFinite(rawWidth) && rawWidth > 0 ? width / rawWidth : 1,
-      y: Number.isFinite(rawHeight) && rawHeight > 0 ? height / rawHeight : 1,
-    },
-    origin: {
-      x: Number.isFinite(originX) ? originX : 0,
-      y: Number.isFinite(originY) ? originY : 0,
-    },
+    rotation: Math.abs(rotation) > 0.0001 ? rotation : undefined,
+    flipH: attr(xfrm, 'flipH') === '1' || undefined,
+    flipV: (attr(xfrm, 'flipV') === '1') !== groupFlipV || undefined,
   };
+}
+
+/** 递归收集组合图形中的可绘制子项，并保留每一级坐标变换。 */
+function collectWpgDrawables(
+  groupNode: Element,
+  parentMatrix: DrawingMatrix,
+  result: Array<{ node: Element; matrix: DrawingMatrix }> = [],
+) {
+  Array.from(groupNode.children).forEach((child) => {
+    if (matchesLocalName(child, 'wsp') || matchesLocalName(child, 'pic')) {
+      result.push({ node: child, matrix: parentMatrix });
+      return;
+    }
+    if (matchesLocalName(child, 'grpSp')) {
+      collectWpgDrawables(
+        child,
+        multiplyDrawingMatrices(parentMatrix, readDrawingGroupMatrix(child)),
+        result,
+      );
+    }
+  });
+  return result;
 }
 
 function readDrawingShapeKind(
@@ -446,6 +704,7 @@ function readDrawingShapeKind(
     preset === 'star5' ||
     preset === 'moon' ||
     preset === 'cloud' ||
+    preset === 'heart' ||
     preset === 'horizontalScroll'
   )
     return 'path';
@@ -455,6 +714,37 @@ function readDrawingShapeKind(
 
 function readDrawingShapePreset(spPr: Element | null | undefined) {
   return attr(childByLocalName(spPr, 'prstGeom'), 'prst');
+}
+
+/** DrawingML 圆角矩形未声明调整值时使用的标准默认比例。 */
+const DEFAULT_DRAWING_ROUNDED_RECTANGLE_RATIO = 16667 / 100000;
+
+/** 读取预设几何的首个调整比例，并约束到该预设允许的范围。 */
+function readDrawingPresetAdjustmentRatio(
+  geometry: Element | null | undefined,
+  defaultRatio: number,
+  maximumRatio: number,
+) {
+  const adjustment = Array.from(
+    childByLocalName(geometry, 'avLst')?.children ?? [],
+  ).find(
+    (child) => matchesLocalName(child, 'gd') && attr(child, 'name') === 'adj',
+  );
+  const formula = attr(adjustment, 'fmla')?.trim();
+  const value = formula?.match(/^val\s+(-?\d+(?:\.\d+)?)$/)?.[1];
+  const ratio = Number(value) / 100000;
+  if (!Number.isFinite(ratio)) return defaultRatio;
+  return Math.min(maximumRatio, Math.max(0, ratio));
+}
+
+function readDrawingRoundedRectangleRatio(
+  geometry: Element | null | undefined,
+) {
+  return readDrawingPresetAdjustmentRatio(
+    geometry,
+    DEFAULT_DRAWING_ROUNDED_RECTANGLE_RATIO,
+    0.5,
+  );
 }
 
 function readDrawingShapeBorderRadius(
@@ -467,8 +757,14 @@ function readDrawingShapeBorderRadius(
   },
 ) {
   const geometry = childByLocalName(spPr, 'prstGeom');
-  if (attr(geometry, 'prst') !== 'roundRect') return undefined;
-  return Math.min(32, Math.max(8, Math.min(size.width, size.height) * 0.04));
+  const preset = attr(geometry, 'prst');
+  if (preset !== 'roundRect' && preset !== 'flowChartAlternateProcess') {
+    return undefined;
+  }
+  return (
+    Math.min(size.width, size.height) *
+    readDrawingRoundedRectangleRatio(geometry)
+  );
 }
 
 function readDrawingTextAnchor(
@@ -483,10 +779,12 @@ function readDrawingTextAnchor(
 function readDrawingTextBehavior(shapeNode: Element) {
   const bodyPr = childByLocalName(shapeNode, 'bodyPr');
   const wrap = attr(bodyPr, 'wrap');
+  const verticalOverflow = attr(bodyPr, 'vertOverflow');
 
   return {
     fitShapeToText: Boolean(childByLocalName(bodyPr, 'spAutoFit')),
     noWrap: wrap === 'none',
+    clipVerticalOverflow: verticalOverflow === 'clip',
   };
 }
 
@@ -553,6 +851,96 @@ function formatPathNumber(value: number) {
   return Number(value.toFixed(3));
 }
 
+/** 按 DrawingML 的 darkenLess 规则将路径填充色降低到 80%。 */
+function darkenDrawingPathFillLess(color: string | undefined) {
+  const match = color?.match(/^#([0-9a-f]{6})$/i);
+  if (!match) return color;
+  const channels = match[1].match(/.{2}/g);
+  if (!channels) return color;
+  return `#${channels
+    .map((channel) =>
+      Math.round(Number.parseInt(channel, 16) * 0.8)
+        .toString(16)
+        .padStart(2, '0'),
+    )
+    .join('')}`;
+}
+
+/** 按标准预设几何生成横卷轴的分层填充和轮廓路径。 */
+function convertHorizontalScrollPathLayers(
+  spPr: Element | null | undefined,
+  width: number,
+  height: number,
+  fillColor: string | undefined,
+  stroke: Pick<
+    DocxShapeItem,
+    'strokeColor' | 'strokeWidth' | 'strokeDasharray'
+  >,
+): NonNullable<DocxShapeItem['pathLayers']> | undefined {
+  if (readDrawingShapePreset(spPr) !== 'horizontalScroll') return undefined;
+  const geometry = childByLocalName(spPr, 'prstGeom');
+  const shortSide = Math.min(width, height);
+  const curl =
+    shortSide * readDrawingPresetAdjustmentRatio(geometry, 0.125, 0.25);
+  const halfCurl = curl / 2;
+  const quarterCurl = curl / 4;
+  const x3 = width - curl;
+  const x4 = width - halfCurl;
+  const y3 = curl + halfCurl;
+  const y4 = curl * 2;
+  const y5 = height - curl - halfCurl;
+  const y6 = height - curl;
+  const y7 = height - halfCurl;
+  const n = formatPathNumber;
+  const basePath = [
+    `M ${n(width)} ${n(halfCurl)}`,
+    `A ${n(halfCurl)} ${n(halfCurl)} 0 0 1 ${n(x4)} ${n(curl)}`,
+    `L ${n(x4)} ${n(halfCurl)}`,
+    `A ${n(quarterCurl)} ${n(quarterCurl)} 0 0 1 ${n(x3)} ${n(halfCurl)}`,
+    `L ${n(x3)} ${n(curl)} L ${n(halfCurl)} ${n(curl)}`,
+    `A ${n(halfCurl)} ${n(halfCurl)} 0 0 0 0 ${n(y3)}`,
+    `L 0 ${n(y7)}`,
+    `A ${n(halfCurl)} ${n(halfCurl)} 0 0 0 ${n(curl)} ${n(y7)}`,
+    `L ${n(curl)} ${n(y6)} L ${n(x4)} ${n(y6)}`,
+    `A ${n(halfCurl)} ${n(halfCurl)} 0 0 0 ${n(width)} ${n(y5)} Z`,
+    `M ${n(halfCurl)} ${n(y4)}`,
+    `A ${n(halfCurl)} ${n(halfCurl)} 0 0 0 ${n(curl)} ${n(y3)}`,
+    `A ${n(quarterCurl)} ${n(quarterCurl)} 0 0 0 ${n(halfCurl)} ${n(y3)} Z`,
+  ].join(' ');
+  const shadedPath = [
+    `M ${n(halfCurl)} ${n(y4)}`,
+    `A ${n(halfCurl)} ${n(halfCurl)} 0 0 0 ${n(curl)} ${n(y3)}`,
+    `A ${n(quarterCurl)} ${n(quarterCurl)} 0 0 0 ${n(halfCurl)} ${n(y3)} Z`,
+    `M ${n(x4)} ${n(curl)}`,
+    `A ${n(halfCurl)} ${n(halfCurl)} 0 1 0 ${n(x3)} ${n(halfCurl)}`,
+    `A ${n(quarterCurl)} ${n(quarterCurl)} 0 0 0 ${n(x4)} ${n(halfCurl)} Z`,
+  ].join(' ');
+  const outlinePath = [
+    `M 0 ${n(y3)}`,
+    `A ${n(halfCurl)} ${n(halfCurl)} 0 0 1 ${n(halfCurl)} ${n(y4)}`,
+    `L ${n(x3)} ${n(curl)} L ${n(x3)} ${n(halfCurl)}`,
+    `A ${n(halfCurl)} ${n(halfCurl)} 0 0 1 ${n(width)} ${n(halfCurl)}`,
+    `L ${n(width)} ${n(y5)}`,
+    `A ${n(halfCurl)} ${n(halfCurl)} 0 0 1 ${n(x4)} ${n(y6)}`,
+    `L ${n(curl)} ${n(y6)} L ${n(curl)} ${n(y7)}`,
+    `A ${n(halfCurl)} ${n(halfCurl)} 0 0 1 0 ${n(y7)} Z`,
+    `M ${n(x3)} ${n(curl)} L ${n(x4)} ${n(curl)}`,
+    `A ${n(halfCurl)} ${n(halfCurl)} 0 0 0 ${n(width)} ${n(halfCurl)}`,
+    `M ${n(x4)} ${n(curl)} L ${n(x4)} ${n(halfCurl)}`,
+    `A ${n(quarterCurl)} ${n(quarterCurl)} 0 0 1 ${n(x3)} ${n(halfCurl)}`,
+    `M ${n(halfCurl)} ${n(y4)} L ${n(halfCurl)} ${n(y3)}`,
+    `A ${n(quarterCurl)} ${n(quarterCurl)} 0 0 1 ${n(curl)} ${n(y3)}`,
+    `A ${n(halfCurl)} ${n(halfCurl)} 0 0 1 0 ${n(y3)}`,
+    `M ${n(curl)} ${n(y3)} L ${n(curl)} ${n(y6)}`,
+  ].join(' ');
+
+  return [
+    { path: basePath, fillColor },
+    { path: shadedPath, fillColor: darkenDrawingPathFillLess(fillColor) },
+    { path: outlinePath, ...stroke },
+  ];
+}
+
 function convertDrawingPresetGeometry(
   spPr: Element | null | undefined,
   width: number,
@@ -592,33 +980,74 @@ function convertDrawingPresetGeometry(
   }
 
   const point = (x: number, y: number) =>
-    `${formatPathNumber(width * x)} ${formatPathNumber(height * y)}`;
+    String(formatPathNumber(width * x)) +
+    ' ' +
+    String(formatPathNumber(height * y));
   if (preset === 'cloud') {
-    return [
-      `M ${point(0.18, 0.78)}`,
-      `C ${point(0.06, 0.78)} ${point(0.01, 0.67)} ${point(0.07, 0.56)}`,
-      `C ${point(0.02, 0.42)} ${point(0.14, 0.29)} ${point(0.29, 0.31)}`,
-      `C ${point(0.34, 0.12)} ${point(0.56, 0.09)} ${point(0.67, 0.25)}`,
-      `C ${point(0.82, 0.21)} ${point(0.96, 0.33)} ${point(0.93, 0.49)}`,
-      `C ${point(1.02, 0.58)} ${point(0.96, 0.73)} ${point(0.84, 0.77)}`,
-      `C ${point(0.72, 0.9)} ${point(0.54, 0.88)} ${point(0.47, 0.8)}`,
-      `C ${point(0.37, 0.91)} ${point(0.23, 0.88)} ${point(0.18, 0.78)}`,
-      'Z',
-    ].join(' ');
+    // 云朵由 OOXML 预设中的 11 段椭圆弧组成，不能使用近似贝塞尔轮廓代替。
+    const scaleX = width / 43200;
+    const scaleY = height / 43200;
+    const arcs = [
+      [6753, 9190, -11429249, 7426832],
+      [5333, 7267, -8646143, 5396714],
+      [4365, 5945, -8748475, 5983381],
+      [4857, 6595, -7859164, 7034504],
+      [5333, 7273, -4722533, 6541615],
+      [6775, 9220, -2776035, 7816140],
+      [5785, 7867, 37501, 6842000],
+      [6752, 9215, 1347096, 6910353],
+      [7720, 10543, 3974558, 4542661],
+      [4360, 5918, -16496525, 8804134],
+      [4345, 5945, -14809710, 9151131],
+    ] as const;
+    let currentX = 3900;
+    let currentY = 14370;
+    const commands = [
+      'M ' +
+        formatPathNumber(currentX * scaleX) +
+        ' ' +
+        formatPathNumber(currentY * scaleY),
+    ];
+
+    arcs.forEach(([radiusX, radiusY, startAngle, sweepAngle]) => {
+      const startRadians = (startAngle / 60000 / 180) * Math.PI;
+      const endRadians = ((startAngle + sweepAngle) / 60000 / 180) * Math.PI;
+      const startParameter = Math.atan2(
+        radiusX * Math.sin(startRadians),
+        radiusY * Math.cos(startRadians),
+      );
+      const endParameter = Math.atan2(
+        radiusX * Math.sin(endRadians),
+        radiusY * Math.cos(endRadians),
+      );
+      const centerX = currentX - radiusX * Math.cos(startParameter);
+      const centerY = currentY - radiusY * Math.sin(startParameter);
+      currentX = centerX + radiusX * Math.cos(endParameter);
+      currentY = centerY + radiusY * Math.sin(endParameter);
+      commands.push(
+        [
+          'A',
+          formatPathNumber(radiusX * scaleX),
+          formatPathNumber(radiusY * scaleY),
+          0,
+          Math.abs(sweepAngle) > 10800000 ? 1 : 0,
+          sweepAngle > 0 ? 1 : 0,
+          formatPathNumber(currentX * scaleX),
+          formatPathNumber(currentY * scaleY),
+        ].join(' '),
+      );
+    });
+
+    commands.push('Z');
+    return commands.join(' ');
   }
-  if (preset === 'horizontalScroll') {
+  if (preset === 'heart') {
     return [
-      `M ${point(0.12, 0.08)}`,
-      `L ${point(0.88, 0.08)}`,
-      `C ${point(0.96, 0.08)} ${point(1, 0.14)} ${point(1, 0.22)}`,
-      `L ${point(0.93, 0.3)}`,
-      `L ${point(0.93, 0.78)}`,
-      `C ${point(0.93, 0.87)} ${point(0.87, 0.92)} ${point(0.79, 0.92)}`,
-      `L ${point(0.12, 0.92)}`,
-      `C ${point(0.04, 0.92)} ${point(0, 0.86)} ${point(0, 0.78)}`,
-      `L ${point(0.08, 0.7)}`,
-      `L ${point(0.08, 0.22)}`,
-      `C ${point(0.08, 0.14)} ${point(0.13, 0.08)} ${point(0.2, 0.08)}`,
+      `M ${point(0.5, 1)}`,
+      `C ${point(0.43, 0.91)} ${point(0, 0.64)} ${point(0, 0.31)}`,
+      `C ${point(0, 0.06)} ${point(0.29, -0.04)} ${point(0.5, 0.21)}`,
+      `C ${point(0.71, -0.04)} ${point(1, 0.06)} ${point(1, 0.31)}`,
+      `C ${point(1, 0.64)} ${point(0.57, 0.91)} ${point(0.5, 1)}`,
       'Z',
     ].join(' ');
   }
@@ -626,55 +1055,15 @@ function convertDrawingPresetGeometry(
   return undefined;
 }
 
-function adjustInCellPresetShapePosition(
-  node: Element,
-  shapeNode: Element,
-  position: DocxPosition | undefined,
-): DocxPosition | undefined {
-  const anchor = descendantByLocalName(node, 'anchor');
-  const positionV = childByLocalName(anchor, 'positionV');
-  const preset = readDrawingShapePreset(childByLocalName(shapeNode, 'spPr'));
-  if (
-    !position ||
-    attr(anchor, 'layoutInCell') !== '1' ||
-    attr(positionV, 'relativeFrom') !== 'paragraph' ||
-    (preset !== 'star5' && preset !== 'moon')
-  ) {
-    return position;
-  }
-
-  return {
-    ...position,
-    // WPS 表格内的小型预设形状锚在空段落上，浏览器中该段落高度为 0，需要补偿一行锚点高度。
-    top: position.top + 20,
-  };
-}
-
 function parseWpgShapeItem(
   shapeNode: Element,
   index: number,
   context: ParseContext,
-  scale: {
-    /** 水平方向的坐标或缩放参数。 */
-    x: number;
-    /** 垂直方向的坐标或缩放参数。 */
-    y: number;
-  },
+  matrix: DrawingMatrix,
   readBlocks: DocxDrawingContentReader,
-  origin?: {
-    /** 水平方向的坐标或缩放参数。 */
-    x: number;
-    /** 垂直方向的坐标或缩放参数。 */
-    y: number;
-  },
 ): DocxShapeItem | undefined {
   const spPr = childByLocalName(shapeNode, 'spPr');
-  const rawSize = parseDrawingXfrm(spPr, scale);
-  const size = {
-    ...rawSize,
-    left: rawSize.left - (origin?.x ?? 0) * (scale?.x ?? 1),
-    top: rawSize.top - (origin?.y ?? 0) * (scale?.y ?? 1),
-  };
+  const size = readDrawingItemSize(spPr, matrix);
   const kind = readDrawingShapeKind(spPr);
   const isLine = kind === 'line';
   if (!isLine && (!size.width || !size.height)) return undefined;
@@ -685,16 +1074,20 @@ function parseWpgShapeItem(
   const imageSrc = parseDrawingFillImage(spPr, context);
   const stroke = parseDrawingLineStyle(spPr, context.theme);
   const textBehavior = readDrawingTextBehavior(shapeNode);
-  const blocks = parseVmlTextBoxParagraphs(
-    shapeNode,
-    context,
-    id,
-    readBlocks,
-  ).filter(
-    (block) => block.type !== 'paragraph' || block.text || block.inlines.length,
+  const blocks = retainTextBoxLayoutBlocks(
+    parseVmlTextBoxParagraphs(shapeNode, context, id, readBlocks),
+  );
+  const pathLayers = convertHorizontalScrollPathLayers(
+    spPr,
+    size.width,
+    size.height,
+    fillColor,
+    stroke,
   );
   const path =
-    convertDrawingPresetGeometry(spPr, size.width, size.height) ??
+    (pathLayers
+      ? undefined
+      : convertDrawingPresetGeometry(spPr, size.width, size.height)) ??
     (kind === 'path'
       ? convertDrawingCustomGeometry(spPr, size.width, size.height)
       : isLine
@@ -705,12 +1098,15 @@ function parseWpgShapeItem(
     id,
     kind,
     ...size,
+    ...readDrawingItemTransform(spPr, matrix),
     height: isLine && size.height === 0 ? 1 : size.height,
     ...readDrawingBodyPadding(shapeNode),
     path,
-    viewBox: path
-      ? `0 0 ${Math.max(1, size.width)} ${Math.max(1, size.height)}`
-      : undefined,
+    pathLayers,
+    viewBox:
+      path || pathLayers?.length
+        ? `0 0 ${Math.max(1, size.width)} ${Math.max(1, size.height)}`
+        : undefined,
     fillColor,
     imageSrc,
     ...stroke,
@@ -718,6 +1114,7 @@ function parseWpgShapeItem(
       kind === 'ellipse' ? '50%' : readDrawingShapeBorderRadius(spPr, size),
     textVerticalAlign: readDrawingTextAnchor(shapeNode),
     fitShapeToText: textBehavior.fitShapeToText || undefined,
+    clipVerticalOverflow: textBehavior.clipVerticalOverflow || undefined,
     noWrap: textBehavior.noWrap || undefined,
     hyperlink: parseDocxDrawingHyperlink(shapeNode, context.documentRels),
     blocks: blocks.length ? blocks : undefined,
@@ -731,26 +1128,10 @@ function parseWpgPictureItem(
   pictureNode: Element,
   index: number,
   context: ParseContext,
-  scale: {
-    /** 水平方向的坐标或缩放参数。 */
-    x: number;
-    /** 垂直方向的坐标或缩放参数。 */
-    y: number;
-  },
-  origin?: {
-    /** 水平方向的坐标或缩放参数。 */
-    x: number;
-    /** 垂直方向的坐标或缩放参数。 */
-    y: number;
-  },
+  matrix: DrawingMatrix,
 ): DocxShapeItem | undefined {
   const spPr = childByLocalName(pictureNode, 'spPr');
-  const rawSize = parseDrawingXfrm(spPr, scale);
-  const size = {
-    ...rawSize,
-    left: rawSize.left - (origin?.x ?? 0) * scale.x,
-    top: rawSize.top - (origin?.y ?? 0) * scale.y,
-  };
+  const size = readDrawingItemSize(spPr, matrix);
   if (!size.width || !size.height) return undefined;
 
   const blip = childByLocalName(
@@ -773,6 +1154,7 @@ function parseWpgPictureItem(
     id: `wpg-picture-item-${context.shapeIndex + 1}-${index + 1}`,
     kind,
     ...size,
+    ...readDrawingItemTransform(spPr, matrix),
     path,
     viewBox: path
       ? `0 0 ${Math.max(1, size.width)} ${Math.max(1, size.height)}`
@@ -783,87 +1165,6 @@ function parseWpgPictureItem(
       kind === 'ellipse' ? '50%' : readDrawingShapeBorderRadius(spPr, size),
     hyperlink: parseDocxDrawingHyperlink(pictureNode, context.documentRels),
   };
-}
-
-function readBlockPlainText(block: DocxBlock): string {
-  if (block.type === 'paragraph') return block.text;
-  if (block.type === 'table') {
-    return block.rows
-      .flatMap((row) => row.cells)
-      .flatMap((cell) => cell.blocks)
-      .map(readBlockPlainText)
-      .join('');
-  }
-  return '';
-}
-
-function readShapeItemPlainText(item: DocxShapeItem) {
-  return (item.blocks ?? item.paragraphs ?? [])
-    .map(readBlockPlainText)
-    .join('');
-}
-
-function adjustWpgChecklistAdviceItems(items: DocxShapeItem[]) {
-  const hasLongChecklistTable = items.some((item) =>
-    (item.blocks ?? []).some(
-      (block) =>
-        block.type === 'table' && block.insideShape && block.rows.length === 19,
-    ),
-  );
-  if (!hasLongChecklistTable) return items;
-
-  return items.map((item) =>
-    readShapeItemPlainText(item).startsWith('教育建议')
-      ? { ...item, top: item.top + 25 }
-      : item,
-  );
-}
-
-function adjustStandaloneAdviceShapePosition(
-  shape: Pick<DocxShape, 'width' | 'height' | 'items'>,
-  position: DocxPosition | undefined,
-) {
-  if (!position) return position;
-  const isTargetAdvice =
-    shape.width >= 570 &&
-    shape.width <= 585 &&
-    shape.height >= 140 &&
-    shape.height <= 150 &&
-    shape.items.some((item) =>
-      readShapeItemPlainText(item).startsWith('教育建议'),
-    );
-  if (!isTargetAdvice) return position;
-  return {
-    ...position,
-    top: position.top + 25,
-  };
-}
-
-function adjustStandalonePageNumberPosition(
-  shape: Pick<DocxShape, 'width' | 'height' | 'items'>,
-  position: DocxPosition | undefined,
-) {
-  if (!position || position.top < 800 || shape.width > 70 || shape.height > 70)
-    return position;
-  const text = shape.items.map(readShapeItemPlainText).join('').trim();
-  if (!/^\d+$/.test(text)) return position;
-  return {
-    ...position,
-    top: Math.min(
-      position.top + 35,
-      DEFAULT_DOCX_PAGE.minHeight - shape.height,
-    ),
-  };
-}
-
-function adjustStandaloneTextShapePosition(
-  shape: Pick<DocxShape, 'width' | 'height' | 'items'>,
-  position: DocxPosition | undefined,
-) {
-  return adjustStandalonePageNumberPosition(
-    shape,
-    adjustStandaloneAdviceShapePosition(shape, position),
-  );
 }
 
 function parseWpgShape(
@@ -878,26 +1179,22 @@ function parseWpgShape(
   if (!width || !height) return undefined;
 
   let items: DocxShapeItem[];
-  let standaloneShapeNode: Element | undefined;
   if (group) {
-    const { scale, origin } = readWpgScale(group, width, height);
-    items = Array.from(group.children)
-      .map((child, index) => {
-        if (matchesLocalName(child, 'wsp'))
-          return parseWpgShapeItem(
-            child,
-            index,
-            context,
-            scale,
-            readBlocks,
-            origin,
-          );
-        if (matchesLocalName(child, 'pic'))
-          return parseWpgPictureItem(child, index, context, scale, origin);
+    const drawables = collectWpgDrawables(
+      group,
+      readWpgRootMatrix(group, width, height),
+    );
+    items = drawables
+      .map(({ node: child, matrix }, index) => {
+        if (matchesLocalName(child, 'wsp')) {
+          return parseWpgShapeItem(child, index, context, matrix, readBlocks);
+        }
+        if (matchesLocalName(child, 'pic')) {
+          return parseWpgPictureItem(child, index, context, matrix);
+        }
         return undefined;
       })
       .filter((item): item is DocxShapeItem => Boolean(item));
-    items = adjustWpgChecklistAdviceItems(items);
   } else {
     // 无 wgp 包装的独立 wsp，作为整个锚点尺寸的单元素形状处理
     const graphicData = descendantByLocalName(node, 'graphicData');
@@ -905,13 +1202,12 @@ function parseWpgShape(
       ? childByLocalName(graphicData, 'wsp')
       : undefined;
     if (!standaloneWsp) return undefined;
-    standaloneShapeNode = standaloneWsp;
-    const emuScale = { x: emuToPx(1), y: emuToPx(1) };
+    const emuMatrix = createDrawingScaleMatrix(emuToPx(1), emuToPx(1));
     const item = parseWpgShapeItem(
       standaloneWsp,
       0,
       context,
-      emuScale,
+      emuMatrix,
       readBlocks,
     );
     if (!item) return undefined;
@@ -921,21 +1217,15 @@ function parseWpgShape(
 
   if (!items.length) return undefined;
   context.shapeIndex += 1;
-  const anchorPosition = standaloneShapeNode
-    ? adjustInCellPresetShapePosition(
-        node,
-        standaloneShapeNode,
-        readDrawingAnchorPosition(node),
-      )
-    : readDrawingAnchorPosition(node);
+  const anchorPosition = readDrawingAnchorPosition(
+    node,
+    context.documentGridLineHeight,
+  );
   return {
     id: `docx-shape-${context.shapeIndex}`,
     width,
     height,
-    position: adjustStandaloneTextShapePosition(
-      { width, height, items },
-      anchorPosition,
-    ),
+    position: anchorPosition,
     items,
   };
 }
@@ -955,24 +1245,14 @@ function parseAlternateContentShape(
 
   if (choiceShape) {
     const fallbackPosition = readVmlShapeContainerPosition(fallbackPict);
+    // AlternateContent 的 Choice 是当前解析器支持的主表示，Fallback 仅补齐缺失定位。
     const mergedPosition = mergeDocxPosition(
-      choiceShape.position,
       fallbackPosition,
+      choiceShape.position,
     );
-    const fallbackAdjustedPosition =
-      fallbackPosition && choiceDrawing
-        ? adjustInCellPresetShapePosition(
-            choiceDrawing,
-            descendantByLocalName(choiceDrawing, 'wsp') ?? choiceDrawing,
-            mergedPosition,
-          )
-        : mergedPosition;
-    const adviceAdjustedPosition = fallbackPosition
-      ? adjustStandaloneTextShapePosition(choiceShape, fallbackAdjustedPosition)
-      : fallbackAdjustedPosition;
     return {
       ...choiceShape,
-      position: adviceAdjustedPosition,
+      position: mergedPosition,
     };
   }
 
@@ -1234,8 +1514,49 @@ function parseVmlTextBoxParagraphs(
   return readBlocks(textBox, id, context, { insideShape: true });
 }
 
+/** 保留文本框内部的可见内容；末尾空段落只表示编辑终点，不额外占用版面。 */
+function retainTextBoxLayoutBlocks(blocks: DocxBlock[]) {
+  const hasVisibleContent = blocks.some(
+    (block) =>
+      block.type !== 'paragraph' || Boolean(block.text || block.inlines.length),
+  );
+  if (!hasVisibleContent) return [];
+
+  let finalBlockIndex = blocks.length - 1;
+  while (finalBlockIndex >= 0) {
+    const finalBlock = blocks[finalBlockIndex];
+    if (
+      finalBlock.type !== 'paragraph' ||
+      finalBlock.text ||
+      finalBlock.inlines.length
+    ) {
+      break;
+    }
+    finalBlockIndex -= 1;
+  }
+  return blocks.slice(0, finalBlockIndex + 1);
+}
+
 function hasVmlTextBox(shapeNode: Element) {
   return Boolean(descendantByLocalName(shapeNode, 'txbxContent'));
+}
+
+function readVmlShapeBorderRadius(
+  shapeNode: Element,
+  size: { width: number; height: number },
+) {
+  if (!matchesLocalName(shapeNode, 'roundrect')) return undefined;
+  const rawArcSize = attr(shapeNode, 'arcsize')?.trim();
+  if (!rawArcSize) return 8;
+  const numericArcSize = Number.parseFloat(rawArcSize);
+  if (!Number.isFinite(numericArcSize)) return 8;
+  const ratio = rawArcSize.endsWith('%')
+    ? numericArcSize / 100
+    : numericArcSize;
+  return Math.min(
+    Math.min(size.width, size.height) / 2,
+    Math.max(0, Math.min(size.width, size.height) * ratio),
+  );
 }
 
 function parseVmlShapeItem(
@@ -1274,13 +1595,8 @@ function parseVmlShapeItem(
     shapeNode,
   );
   const id = `vml-item-${context.shapeIndex + 1}-${index + 1}`;
-  const blocks = parseVmlTextBoxParagraphs(
-    shapeNode,
-    context,
-    id,
-    readBlocks,
-  ).filter(
-    (block) => block.type !== 'paragraph' || block.text || block.inlines.length,
+  const blocks = retainTextBoxLayoutBlocks(
+    parseVmlTextBoxParagraphs(shapeNode, context, id, readBlocks),
   );
 
   const textBehavior = readVmlTextBehavior(shapeNode);
@@ -1293,11 +1609,7 @@ function parseVmlShapeItem(
     viewBox: path ? `0 0 ${size.width} ${size.height}` : undefined,
     fillColor,
     ...stroke,
-    borderRadius: isEllipse
-      ? '50%'
-      : matchesLocalName(shapeNode, 'roundrect')
-      ? 8
-      : undefined,
+    borderRadius: isEllipse ? '50%' : readVmlShapeBorderRadius(shapeNode, size),
     textVerticalAlign: readVmlTextAnchor(shapeNode),
     fitShapeToText: textBehavior.fitShapeToText || undefined,
     noWrap: textBehavior.noWrap || undefined,
@@ -1354,14 +1666,7 @@ function parseVmlShape(
     id: `docx-shape-${context.shapeIndex}`,
     width: rootSize.width || maxRight,
     height: rootSize.height || maxBottom,
-    position: adjustStandaloneTextShapePosition(
-      {
-        width: rootSize.width || maxRight,
-        height: rootSize.height || maxBottom,
-        items,
-      },
-      position,
-    ),
+    position,
     items,
   };
 }

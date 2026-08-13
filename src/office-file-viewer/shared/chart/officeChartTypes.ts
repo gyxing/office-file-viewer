@@ -166,6 +166,16 @@ export type OfficeChartModel = {
   gapWidth?: number;
   /** 同一分类中各数据系列的重叠百分比。 */
   overlap?: number;
+  /** 是否显示分类轴的轴线、刻度和标签。 */
+  showCategoryAxis?: boolean;
+  /** 是否显示数值轴的轴线、刻度和标签；网格线单独保留。 */
+  showValueAxis?: boolean;
+  /** 数值轴的显式最小值。 */
+  valueAxisMinimum?: number;
+  /** 数值轴的显式最大值。 */
+  valueAxisMaximum?: number;
+  /** 数值轴相邻主刻度的间隔。 */
+  valueAxisMajorUnit?: number;
   /** 玫瑰图按半径还是面积编码数值。 */
   roseType?: 'radius' | 'area';
   /** 饼图或环形图使用的内外半径。 */

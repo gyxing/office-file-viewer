@@ -3,6 +3,7 @@ import type { CSSProperties, RefObject } from 'react';
 import React, { memo, useMemo } from 'react';
 import type { SpreadsheetViewMode } from '../../services/spreadsheet/viewMode';
 import type { XlsxSheet } from '../../services/xlsx/types';
+import { useOfficeFontResolver } from '../../shared/fonts/OfficeFontProvider';
 import {
   buildXlsxCellStyle,
   isHighlightedXlsxCell,
@@ -47,6 +48,7 @@ function XlsxSheetTableComponent({
   tableRef,
   viewMode,
 }: XlsxSheetTableProps) {
+  const resolveFontFamily = useOfficeFontResolver();
   const tableModel = useMemo(
     () =>
       buildXlsxVisibleTableModel(sheet, visibleColumnWidths, visibleRowHeights),
@@ -71,12 +73,12 @@ function XlsxSheetTableComponent({
         // 大表格渲染时单元格很多，先按 ref 缓存静态样式，避免每次 JSX 展开都重复计算。
         cache.set(cell.ref, {
           fontSize: important ? 14 : 13,
-          ...buildXlsxCellStyle(cell, viewMode),
+          ...buildXlsxCellStyle(cell, viewMode, resolveFontFamily),
         });
       });
     });
     return cache;
-  }, [tableModel.rows, viewMode]);
+  }, [resolveFontFamily, tableModel.rows, viewMode]);
   const rowContentBounds = useMemo(() => {
     if (viewMode === 'reading') {
       return tableModel.rows.map(() => new Map());
@@ -230,6 +232,7 @@ function XlsxSheetTableComponent({
                     <SpreadsheetCellRenderer
                       cell={cell}
                       sourceId={`${sheet.id}:${cell.ref}`}
+                      sheetId={sheet.id}
                       contentWidth={contentWidth}
                       contentHeight={clipped ? contentHeight : undefined}
                       clipped={clipped}

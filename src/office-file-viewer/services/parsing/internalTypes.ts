@@ -3,7 +3,7 @@ import type {
   DocWordPreviewSummary,
 } from '../doc/DocWordPageSource';
 import type {
-  DocxWordPageSource,
+  DocxPagePreviewSource,
   DocxWordPreviewSummary,
 } from '../docx/DocxWordPageSource';
 import type {
@@ -60,7 +60,7 @@ export type OfficeFileViewerPreviewState =
       /** 当前数据源或渲染器采用的工作模式。 */
       mode: 'source';
       /** 当前预览使用的按需加载数据源。 */
-      source: DocxWordPageSource;
+      source: DocxPagePreviewSource;
       /** 当前预览内容的摘要信息。 */
       summary: DocxWordPreviewSummary;
       /** 模型。 */

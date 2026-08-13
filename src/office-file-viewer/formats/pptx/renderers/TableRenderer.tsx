@@ -1,11 +1,17 @@
 // TableRenderer 渲染 PPTX 表格元素，包括单元格填充、边框和文字样式。
 import React, { memo } from 'react';
+import { resolveOfficeCssFontWeight } from '../../../services/fonts/OfficeFontResolver';
+import type { OfficeFontFamilyResolver } from '../../../services/fonts/types';
 import type {
   TableElement,
   TextRun,
   TextStyle,
 } from '../../../services/pptx/types';
+import { useOfficeFontResolver } from '../../../shared/fonts/OfficeFontProvider';
 import { useOfficeHyperlink } from '../../../shared/hyperlink';
+import { OfficeSearchHighlightedText } from '../../search/OfficeSearchContext';
+import { resolvePptxFontFamily } from './fontFamily';
+import { resolvePresentationLineHeight } from './textStyle';
 
 /** 表格渲染器组件属性。 */
 type TableRendererProps = {
@@ -13,6 +19,8 @@ type TableRendererProps = {
   element: TableElement;
   /** 是否允许表格对象和内部文字响应链接交互。 */
   interactive: boolean;
+  /** 主视口中的零基幻灯片索引；未提供时不渲染查找高亮。 */
+  searchSlideIndex?: number;
 };
 
 function colorWithOpacity(color?: string, opacity?: number) {
@@ -32,6 +40,9 @@ function TableTextRun({
   cellStyle,
   sourceId,
   interactive,
+  searchSlideIndex,
+  elementId,
+  resolveFontFamily,
 }: {
   /** 当前文字片段。 */
   run: TextRun;
@@ -41,6 +52,12 @@ function TableTextRun({
   sourceId: string;
   /** 是否允许当前文字片段响应链接交互。 */
   interactive: boolean;
+  /** 主视口中的零基幻灯片索引。 */
+  searchSlideIndex?: number;
+  /** 当前表格元素的稳定标识。 */
+  elementId: string;
+  /** 当前文档会话统一的字体链解析函数。 */
+  resolveFontFamily: OfficeFontFamilyResolver;
 }) {
   const hyperlinkProps = useOfficeHyperlink<HTMLSpanElement>({
     hyperlink: run.hyperlink,
@@ -52,9 +69,16 @@ function TableTextRun({
       {...hyperlinkProps}
       style={{
         color: run.style?.color ?? cellStyle?.color,
-        fontFamily: run.style?.fontFamily ?? cellStyle?.fontFamily,
+        fontFamily: resolvePptxFontFamily(
+          resolveFontFamily,
+          run.style?.fontFamily ?? cellStyle?.fontFamily,
+          run.style?.eastAsiaFontFamily ?? cellStyle?.eastAsiaFontFamily,
+        ),
         fontSize: run.style?.fontSize ?? cellStyle?.fontSize,
-        fontWeight: run.style?.bold || cellStyle?.bold ? 600 : 400,
+        fontWeight: resolveOfficeCssFontWeight(
+          run.style?.fontWeight ?? cellStyle?.fontWeight,
+          run.style?.bold ?? cellStyle?.bold,
+        ),
         fontStyle: run.style?.italic || cellStyle?.italic ? 'italic' : 'normal',
         textDecoration:
           [
@@ -68,13 +92,29 @@ function TableTextRun({
         letterSpacing: run.style?.charSpace ?? cellStyle?.charSpace ?? 0,
       }}
     >
-      {run.text}
+      {searchSlideIndex === undefined ? (
+        run.text
+      ) : (
+        <OfficeSearchHighlightedText
+          text={run.text}
+          target={{
+            kind: 'presentation',
+            slideIndex: searchSlideIndex,
+            elementId,
+          }}
+        />
+      )}
     </span>
   );
 }
 
 /** 渲染表格渲染器。 */
-function TableRendererComponent({ element, interactive }: TableRendererProps) {
+function TableRendererComponent({
+  element,
+  interactive,
+  searchSlideIndex,
+}: TableRendererProps) {
+  const resolveFontFamily = useOfficeFontResolver();
   const columnWidths = element.columnWidths ?? [];
   const rowHeights = element.rowHeights ?? [];
   const hyperlinkProps = useOfficeHyperlink<HTMLTableElement>({
@@ -85,6 +125,10 @@ function TableRendererComponent({ element, interactive }: TableRendererProps) {
   return (
     <table
       {...hyperlinkProps}
+      data-office-presentation-element-id={
+        searchSlideIndex === undefined ? undefined : element.id
+      }
+      data-office-presentation-slide-index={searchSlideIndex}
       style={{
         position: 'absolute',
         left: element.x,
@@ -129,39 +173,55 @@ function TableRendererComponent({ element, interactive }: TableRendererProps) {
                     cell.margins?.left ?? 0
                   }px`,
                   verticalAlign: cell.verticalAlign ?? 'middle',
+                  fontFamily: resolvePptxFontFamily(
+                    resolveFontFamily,
+                    cell.style?.fontFamily,
+                    cell.style?.eastAsiaFontFamily,
+                  ),
                   overflow: 'hidden',
                   whiteSpace: 'pre-wrap',
                   wordBreak: 'break-word',
                 }}
               >
-                {cell.paragraphs?.length
-                  ? cell.paragraphs.map((paragraph, paragraphIndex) => (
-                      <div
-                        key={paragraphIndex}
-                        style={{
-                          textAlign:
-                            paragraph.style?.align ??
-                            cell.style?.align ??
-                            'left',
-                          lineHeight:
-                            paragraph.style?.lineHeight ??
-                            cell.style?.lineHeight ??
-                            1.2,
-                          whiteSpace: 'inherit',
-                        }}
-                      >
-                        {paragraph.runs.map((run, runIndex) => (
-                          <TableTextRun
-                            key={runIndex}
-                            run={run}
-                            cellStyle={cell.style}
-                            sourceId={`${element.id}:${rowIndex}:${cellIndex}:${paragraphIndex}:${runIndex}`}
-                            interactive={interactive}
-                          />
-                        ))}
-                      </div>
-                    ))
-                  : cell.text}
+                {cell.paragraphs?.length ? (
+                  cell.paragraphs.map((paragraph, paragraphIndex) => (
+                    <div
+                      key={paragraphIndex}
+                      style={{
+                        textAlign:
+                          paragraph.style?.align ?? cell.style?.align ?? 'left',
+                        lineHeight: resolvePresentationLineHeight(
+                          paragraph.style?.lineHeight ?? cell.style?.lineHeight,
+                        ),
+                        whiteSpace: 'inherit',
+                      }}
+                    >
+                      {paragraph.runs.map((run, runIndex) => (
+                        <TableTextRun
+                          key={runIndex}
+                          run={run}
+                          cellStyle={cell.style}
+                          sourceId={`${element.id}:${rowIndex}:${cellIndex}:${paragraphIndex}:${runIndex}`}
+                          interactive={interactive}
+                          searchSlideIndex={searchSlideIndex}
+                          elementId={element.id}
+                          resolveFontFamily={resolveFontFamily}
+                        />
+                      ))}
+                    </div>
+                  ))
+                ) : searchSlideIndex === undefined ? (
+                  cell.text
+                ) : (
+                  <OfficeSearchHighlightedText
+                    text={cell.text}
+                    target={{
+                      kind: 'presentation',
+                      slideIndex: searchSlideIndex,
+                      elementId: element.id,
+                    }}
+                  />
+                )}
               </td>
             ))}
           </tr>

@@ -24,6 +24,10 @@ import type {
   XlsxSheetDescriptor,
 } from './XlsxPackageContext';
 import {
+  applyStaticXlsxFormulaHyperlink,
+  parseXlsxHyperlink,
+} from './parseXlsxHyperlinks';
+import {
   columnIndexToLabel,
   excelWidthToPx,
   parseCellRef,
@@ -32,10 +36,6 @@ import {
   resolveStyle,
   resolveXlsxMaxDigitWidth,
 } from './xlsxCellFormatting';
-import {
-  applyStaticXlsxFormulaHyperlink,
-  parseXlsxHyperlink,
-} from './parseXlsxHyperlinks';
 
 /** 单个 Sheet 流式解析后的稀疏结构。 */
 export type ParsedXlsxSheetStream = {
@@ -142,8 +142,7 @@ export async function parseXlsxSheetStream(
   const merges: SpreadsheetMerge[] = [];
   const cellImages: WpsCellImagePlacement[] = [];
   const hyperlinks: SpreadsheetHyperlinkRange[] = [];
-  const sheetRelationships =
-    context.relationships[descriptor.relsPath] ?? {};
+  const sheetRelationships = context.relationships[descriptor.relsPath] ?? {};
   let rowCount = 1;
   let columnCount = 1;
   let declaredRowCount = Math.max(1, descriptor.rowCount);

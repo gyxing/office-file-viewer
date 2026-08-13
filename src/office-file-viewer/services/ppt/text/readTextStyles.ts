@@ -1,3 +1,4 @@
+import { inferOfficeFontBaseWeight } from '../../fonts/OfficeFontResolver';
 import type { TextStyle } from '../../presentation/types';
 import type { PptParseContext, PptRecord } from '../types';
 import type {
@@ -151,6 +152,8 @@ function readCharacterException(
   if (masks & (1 << 17)) style.fontSize = (reader.u16() * 4) / 3;
   if (masks & (1 << 18)) style.color = readColor(reader.u32());
   if (masks & (1 << 19)) style.baseline = reader.i16();
+  // PPT 的 FontEntityAtom 不包含字重；从字体档案补足后，粗体才能按 Office 语义叠加。
+  style.fontWeight = inferOfficeFontBaseWeight(style.fontFamily);
   return style;
 }
 

@@ -1,5 +1,6 @@
 import type { OfficeParseResourcePolicy } from '../../../shared/resource/OfficeResourcePolicy';
 import type { DocBlock } from '../../doc/types';
+import type { DocxBlock, DocxPageContent } from '../../docx/types';
 import type { SlideModel } from '../../presentation/types';
 import type { ParsedOfficeFile } from '../../preview';
 import type {
@@ -8,8 +9,10 @@ import type {
 } from '../../spreadsheet/types';
 import type {
   PortableDocMetadata,
+  PortableDocxMetadata,
   PortablePresentationMetadata,
   PortableResource,
+  PortableSpreadsheetMetadata,
 } from '../protocol/messages';
 import type { ParseProgress } from '../types';
 
@@ -35,6 +38,8 @@ export type RuntimeSink = {
     revision: number,
     sheet: SpreadsheetSheet,
   ): Promise<void>;
+  /** 接收工作表集合之外的工作簿级元数据。 */
+  spreadsheetMetadata(metadata: PortableSpreadsheetMetadata): Promise<void>;
   /** 接收演示文稿的主体元数据。 */
   presentationMetadata(metadata: PortablePresentationMetadata): Promise<void>;
   /** 接收解析产生的单张幻灯片。 */
@@ -43,6 +48,12 @@ export type RuntimeSink = {
   documentMetadata(metadata: PortableDocMetadata): Promise<void>;
   /** 接收文字文档的连续内容块。 */
   documentBlocks(startIndex: number, blocks: DocBlock[]): Promise<void>;
+  /** 接收 DOCX 正文和页面集合之外的文档元数据。 */
+  docxMetadata(metadata: PortableDocxMetadata): Promise<void>;
+  /** 接收 DOCX 的连续正文块。 */
+  docxBlocks(startIndex: number, blocks: DocxBlock[]): Promise<void>;
+  /** 接收 DOCX 的连续页面块。 */
+  docxPages(startIndex: number, pages: DocxPageContent[]): Promise<void>;
   /** 接收解析完成的标准化文件结果。 */
   parsed(parsed: ParsedOfficeFile): Promise<void>;
   /** 通知接收方解析任务已经完成。 */

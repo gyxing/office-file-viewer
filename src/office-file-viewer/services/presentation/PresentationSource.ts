@@ -1,3 +1,4 @@
+import type { OfficeSearchProvider } from '../search/types';
 import type { PresentationPerformanceProfile } from './presentationPerformance';
 import type {
   PresentationWarning,
@@ -48,6 +49,8 @@ export type PresentationSourceSnapshot = {
 
 /** 为普通文稿和大型按需文稿提供统一的幻灯片读取协议。 */
 export interface PresentationSource {
+  /** 当前演示文稿支持搜索时提供的按页扫描能力。 */
+  readonly searchProvider?: OfficeSearchProvider;
   /** 返回当前可观察状态的只读快照。 */
   getSnapshot(): PresentationSourceSnapshot;
   /** 订阅状态快照变化，并返回取消订阅函数。 */

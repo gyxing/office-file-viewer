@@ -1,3 +1,5 @@
+import type { OfficeSearchProvider } from '../search/types';
+
 /** Word 页面常驻内存的轻量状态，不包含正文 blocks。 */
 export type WordPageMeta = {
   /** 在所属集合中的唯一标识。 */
@@ -28,6 +30,8 @@ export type WordPageSourceSnapshot = {
 
 /** 为普通数组和渐进分页统一提供按范围页面读取能力。 */
 export interface WordPageSource<TPage> {
+  /** 当前 Word 文档支持搜索时提供的增量扫描能力。 */
+  readonly searchProvider?: OfficeSearchProvider;
   /** 返回当前可观察状态的只读快照。 */
   getSnapshot(): WordPageSourceSnapshot;
   /** 订阅状态快照变化，并返回取消订阅函数。 */

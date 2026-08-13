@@ -2,6 +2,7 @@
 import React, { memo } from 'react';
 import type { ShapeElement } from '../../../services/pptx/types';
 import { useOfficeHyperlink } from '../../../shared/hyperlink';
+import { reflectionToCss } from './effects';
 import {
   colorWithOpacity,
   gradientToSvgEndpoints,
@@ -85,6 +86,7 @@ function ShapeRendererComponent({
             : undefined,
         borderRadius: radius,
         boxShadow: shadow,
+        WebkitBoxReflect: reflectionToCss(element.reflection),
         transform: element.rotate
           ? `rotate(${element.rotate}deg)${element.flipH ? ' scaleX(-1)' : ''}${
               element.flipV ? ' scaleY(-1)' : ''

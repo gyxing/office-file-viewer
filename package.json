@@ -1,6 +1,6 @@
 {
   "name": "office-file-viewer",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "description": "A browser-based React component for offline preview of DOC/DOCX/WPS, XLS/XLSX, and PPT/PPTX files.",
   "keywords": [
     "office",

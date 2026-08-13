@@ -90,6 +90,8 @@ export type DocParagraphBlock = {
   outlineLevel?: number;
   /** 是否属于 Word 自动目录段落。 */
   isTableOfContents?: boolean;
+  /** 分页器估算的块高度；仅用于在浏览器布局后校准旧 DOC 分页。 */
+  estimatedHeight?: number;
   /** 当前内容使用的渲染样式。 */
   style?: DocTextStyle;
   /** 源文档在该段落前存在显式分页符；渲染分页时该占位段落不显示。 */
@@ -176,6 +178,8 @@ export type DocListBlock = {
   items: DocListItem[];
   /** 当前内容使用的渲染样式。 */
   style?: DocTextStyle;
+  /** 分页器估算的块高度；仅用于在浏览器布局后校准旧 DOC 分页。 */
+  estimatedHeight?: number;
 };
 
 /** DOC 列表中的单个编号项。 */

@@ -1,7 +1,5 @@
-import {
-  createOfficeHyperlinkFromTarget,
-  type OfficeHyperlink,
-} from '../../shared/hyperlink';
+import { createOfficeHyperlinkFromTarget } from '../../shared/hyperlink/createOfficeHyperlink';
+import type { OfficeHyperlink } from '../../shared/hyperlink/types';
 import type { OfficeRelationship } from '../../shared/ooxml/media';
 import { attr, descendantByLocalName } from '../../shared/ooxml/xml';
 import type {

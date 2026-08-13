@@ -1,5 +1,5 @@
-import type { OfficeHyperlink } from '../../../shared/hyperlink';
-import { createOfficeHyperlinkFromTarget } from '../../../shared/hyperlink';
+import { createOfficeHyperlinkFromTarget } from '../../../shared/hyperlink/createOfficeHyperlink';
+import type { OfficeHyperlink } from '../../../shared/hyperlink/types';
 import { PPT_RECORD } from '../binary/constants';
 import { PptRecordReader } from '../binary/PptRecordReader';
 import { readPptUnicodeString } from '../binary/readStrings';

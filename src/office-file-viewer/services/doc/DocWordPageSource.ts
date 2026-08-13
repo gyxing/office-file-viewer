@@ -24,6 +24,10 @@ import type {
 } from '../word/WordPageSource';
 import { WordPageStore } from '../word/WordPageStore';
 import type { WordPreviewSource } from '../word/WordPreviewSource';
+import {
+  collectDocSearchBlocks,
+  WordSearchProvider,
+} from '../word/WordSearchProvider';
 import { estimateDocBlockBytes } from './chunkDocBlocks';
 import { DocPaginationState, type PaginatedDocPage } from './docPagination';
 import { docBookmarkMarkerIdsFromBlock } from './readDocBookmarks';
@@ -59,6 +63,9 @@ export class DocWordPageSource
   private readonly stats = new WordPerformanceStatsCollector();
   private readonly listeners = new Set<() => void>();
   private readonly blockPageIndex = new Map<string, number>();
+  readonly searchProvider = new WordSearchProvider({
+    resolvePageIndex: (blockId) => this.blockPageIndex.get(blockId),
+  });
   private readonly outlineItemsById = new Map<string, WordOutlineItem>();
   private readonly signal?: AbortSignal;
   private pagination?: DocPaginationState;
@@ -121,6 +128,7 @@ export class DocWordPageSource
     const readyPages: PaginatedDocPage[] = [];
     for (const block of blocks) {
       resolveDocBlockResources(block, this.resources);
+      this.searchProvider.append(collectDocSearchBlocks([block]));
       this.stats.addDocBlocks([block]);
       if (
         block.type === 'paragraph' &&
@@ -157,6 +165,7 @@ export class DocWordPageSource
     }
     await this.publishPages(this.pagination.append([], true));
     this.completed = true;
+    this.searchProvider.complete();
     this.writableOutline.complete();
     this.stats.setEstimatedPageCount(this.snapshot.pages.length);
     this.snapshot = {
@@ -226,6 +235,7 @@ export class DocWordPageSource
   dispose() {
     if (this.disposePromise) return this.disposePromise;
     this.completed = true;
+    this.searchProvider.dispose();
     this.writableOutline.complete();
     // 先唤醒等待页面或块定位的调用，再清空订阅，避免主动释放时遗留悬空 Promise。
     this.emitChange();

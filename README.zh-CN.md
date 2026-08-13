@@ -6,7 +6,7 @@
 
 `office-file-viewer` 在浏览器内完成 Office 文件下载、解析和渲染，不需要配套的文档转换服务，也不会主动上传本地文件。
 
-组件使用统一界面预览 Word 文档、Excel 表格和 PowerPoint 演示文稿，包含文件选择、远程加载、解析进度、缩放、全屏、内容图片预览与下载、文档大纲、电子表格显示模式、工作表标签、幻灯片导航和演讲者备注。
+组件使用统一界面预览 Word 文档、Excel 表格和 PowerPoint 演示文稿，包含文件选择、远程加载、解析进度、全文查找、缩放、全屏、内容图片预览与下载、文档大纲、电子表格显示模式、工作表标签、幻灯片导航和演讲者备注。
 
 > 这是独立实现的解析与渲染引擎，并非 Microsoft Office 或 WPS Office 的原生排版引擎。复杂文档可能与桌面应用存在差异，使用前请阅读[完整限制说明](https://gyxing.github.io/office-file-viewer/zh-CN/docs#limitations)。
 
@@ -17,10 +17,12 @@
 - **统一 React 组件**：各格式共用加载、错误、空状态、缩放和全屏交互。
 - **多种文件来源**：接受本地 `File`、远程 URL 或支持取消信号的异步加载函数。
 - **渐进预览**：受支持格式可以在解析继续进行时提前展示已完成内容。
+- **全文查找**：七种格式均支持可取消的增量查找、结果导航、大小写匹配和全词匹配。
 - **可控视图状态**：可以按字段控制缩放、当前页、工作表、侧栏和显示模式。
 - **内容图片交互**：DOC/DOCX/WPS 与 XLS/XLSX 支持双击预览图片，以及右键预览和下载。
 - **源文档超链接**：支持文字、单元格、图片、形状和按钮链接，以 `Ctrl`/`Command` 修饰单击安全激活，并支持宿主接管。
-- **Worker 支持**：旧格式 DOC/WPS、XLS 和 PPT 可以在 Web Worker 中解析。
+- **自适应 Worker**：七种格式均支持 Worker；默认模式会按文件画像自动选择完整模型或按需数据源，并在 Worker 无法启动时安全回退。
+- **字体回退**：统一解析源字体、字体别名和回退链，并可通过结构化警告报告当前浏览器缺失的字体。
 - **资源管理**：组件负责取消任务、订阅、Worker 和 Blob URL 的生命周期，并支持宿主配置解析资源上限。
 - **内置预览界面**：提供作用域隔离的文件选择、导航、缩放和全屏控件及样式。
 
@@ -65,7 +67,7 @@ export default function OfficePreview() {
 }
 ```
 
-查看[完整快速接入](https://gyxing.github.io/office-file-viewer/zh-CN/docs#quick-start)、[`OfficeFileViewer` API](https://gyxing.github.io/office-file-viewer/zh-CN/docs#component-api) 和[高级解析 API](https://gyxing.github.io/office-file-viewer/zh-CN/docs#advanced-api)，了解 URI 来源、受控视图状态、回调、Worker 模式、资源限制、底层会话和资源释放。
+查看[完整快速接入](https://gyxing.github.io/office-file-viewer/zh-CN/docs#quick-start)、[`OfficeFileViewer` API](https://gyxing.github.io/office-file-viewer/zh-CN/docs#component-api) 和[高级解析 API](https://gyxing.github.io/office-file-viewer/zh-CN/docs#advanced-api)，了解 URI 来源、全文查找、字体回退、受控视图状态、Worker 模式、资源限制、底层会话和资源释放。
 
 ## 支持格式
 
@@ -81,7 +83,8 @@ export default function OfficePreview() {
 
 - 预览器为只读组件，不提供编辑、保存、格式转换、打印排版或文件导出。
 - 远程文件仍受浏览器 CORS、身份认证和内容安全策略约束。
-- 超大或复杂文件可能占用较多内存或短暂降低响应速度；宿主应校验不可信文件的大小、类型和来源。
+- 组件不会因内部优化阈值拒绝大文件；超大或复杂文件会自动采用按需读取与虚拟渲染，但仍可能占用较多内存或短暂降低响应速度。
+- 组件不捆绑 Office 字体；最终排版效果取决于当前浏览器可用字体或宿主配置的回退字体。
 
 请阅读完整的[性能、安全与渲染边界](https://gyxing.github.io/office-file-viewer/zh-CN/docs#limitations)。
 

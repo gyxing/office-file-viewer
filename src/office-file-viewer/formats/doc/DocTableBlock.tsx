@@ -1,6 +1,8 @@
 // DocTableBlock 渲染 DOC 表格块，包括单元格文字、边框和列宽。
 import React, { memo } from 'react';
+import { DOC_STRUCTURED_TABLE_TOP_OFFSET } from '../../services/doc/docPagination';
 import type { DocTableBlock as DocTableBlockModel } from '../../services/doc/types';
+import { useOfficeFontResolver } from '../../shared/fonts/OfficeFontProvider';
 import { DocInlineContent } from './DocInlineContent';
 import { docTextStyleToCss } from './docRenderUtils';
 
@@ -12,6 +14,8 @@ type DocTableBlockProps = {
 
 /** 渲染DOC表格内容块。 */
 function DocTableBlockComponent({ block }: DocTableBlockProps) {
+  const resolveFontFamily = useOfficeFontResolver();
+  const searchBlockId = block.sourceBlockId ?? block.id;
   const columnCount = Math.max(...block.rows.map((row) => row.cells.length), 1);
   const borderColor = block.style?.borderColor ?? '#cfd7e3';
   const totalColumns =
@@ -19,7 +23,7 @@ function DocTableBlockComponent({ block }: DocTableBlockProps) {
   const hasRowSpans = block.rows.some((row) =>
     row.cells.some((cell) => Boolean(cell.rowSpan && cell.rowSpan > 1)),
   );
-  const tableTopOffset = block.width ? 8 : 0;
+  const tableTopOffset = block.width ? DOC_STRUCTURED_TABLE_TOP_OFFSET : 0;
   const marginTop = tableTopOffset + (block.spacingBefore ?? 0);
   const marginLeft =
     block.width && block.align === 'center'
@@ -40,6 +44,7 @@ function DocTableBlockComponent({ block }: DocTableBlockProps) {
         block.width ? ' office-file-doc-table--document-grid' : ''
       }`}
       style={wrapperStyle}
+      data-office-word-block-id={searchBlockId}
     >
       <table className="office-file-doc-table__table" style={{ width: '100%' }}>
         {block.columns?.length ? (
@@ -91,7 +96,7 @@ function DocTableBlockComponent({ block }: DocTableBlockProps) {
                       borderLeft: cell.borderLeft ?? `1px solid ${borderColor}`,
                       width: cell.width,
                       verticalAlign: cell.verticalAlign ?? 'top',
-                      ...docTextStyleToCss(cell.style),
+                      ...docTextStyleToCss(cell.style, resolveFontFamily),
                       // Chromium 会把宋体粗体字面横向栅格化到整数像素，微调字距以匹配 Word 的字体度量。
                       letterSpacing:
                         block.width &&
@@ -112,6 +117,7 @@ function DocTableBlockComponent({ block }: DocTableBlockProps) {
                       inlines={cell.inlines}
                       fallback={cell.text}
                       sourceId={cell.id}
+                      searchBlockId={searchBlockId}
                       wordTableLineBreaks={Boolean(block.width)}
                     />
                   </td>

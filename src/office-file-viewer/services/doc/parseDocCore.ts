@@ -15,6 +15,7 @@ import {
 } from './chunkDocBlocks';
 import type { DocBlockBuildOptions } from './docParseTypes';
 import { extractDocImages } from './extractDocImages';
+import { extractDocObjectPreviews } from './extractDocObjectPreviews';
 import {
   extractDocDrawingCanvases,
   type DocDrawingTextBox,
@@ -295,7 +296,12 @@ export async function parseDocCore(
     percent: 0.5,
     message: '正在解析 DOC 图片资源',
   });
-  const images = extractDocImages(inputStreams ?? cfb!.streams, resources);
+  const imageStreams = inputStreams ?? cfb!.streams;
+  const images = extractDocImages(imageStreams, resources);
+  const objectPreviewImages = await extractDocObjectPreviews(
+    imageStreams,
+    resources,
+  );
   const headerStart = fib.ccpText + fib.ccpFtn;
   const headerText = readDocStorySegments(
     wordDocument,
@@ -393,7 +399,11 @@ export async function parseDocCore(
     [...warnings],
   );
   metadataDocument.page = documentPage;
-  metadataDocument.images = [...drawingImages, ...images];
+  metadataDocument.images = [
+    ...drawingImages,
+    ...images,
+    ...objectPreviewImages,
+  ];
   metadataDocument.headerImage = headerImage;
   metadataDocument.footerPageNumbers = footerPageNumbers;
   await context.output?.documentMetadata(
@@ -432,6 +442,7 @@ export async function parseDocCore(
         : undefined,
     },
     drawingCanvases.slots,
+    objectPreviewImages,
   );
 
   if (!blocks.length) {
@@ -441,8 +452,8 @@ export async function parseDocCore(
   }
 
   warnings.push(
-    drawingImages.length
-      ? '已恢复 DOC/WPS 主文档中的 OfficeArt 绘图画布；分页仍由前端按源页面尺寸估算。'
+    drawingImages.length || objectPreviewImages.length
+      ? '已恢复 DOC/WPS 主文档中的 OfficeArt 画布或嵌入对象静态预览；分页仍由前端按源页面尺寸估算。'
       : images.length
       ? '当前为纯前端 DOC/WPS 降级预览，已提取到文档内图片，并按前端估算分页；暂未恢复精确锚点和复杂样式。'
       : '当前为纯前端 DOC/WPS 降级预览，已按前端估算分页；暂不还原复杂样式和图片锚点。',
@@ -454,7 +465,7 @@ export async function parseDocCore(
   });
   const document = buildDocDocument(context.fileName, blocks, warnings);
   document.page = documentPage;
-  document.images = [...drawingImages, ...images];
+  document.images = [...drawingImages, ...images, ...objectPreviewImages];
   document.headerImage = headerImage;
   document.footerPageNumbers = footerPageNumbers;
   await context.output?.documentMetadata(documentMetadataFromDoc(document));

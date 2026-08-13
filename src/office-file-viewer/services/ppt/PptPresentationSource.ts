@@ -5,6 +5,7 @@ import {
   getPresentationSlideWeight,
   type PresentationPerformanceProfile,
 } from '../presentation/presentationPerformance';
+import { PresentationSearchProvider } from '../presentation/PresentationSearchProvider';
 import {
   createPresentationAbortError,
   throwIfPresentationAborted,
@@ -57,6 +58,7 @@ function waitForPptResult<T>(promise: Promise<T>, signal?: AbortSignal) {
 
 /** 为二进制 PPT 提供当前页优先的按需解析和备注读取。 */
 export class PptPresentationSource implements PresentationSource {
+  readonly searchProvider: PresentationSearchProvider;
   private readonly listeners = new Set<() => void>();
   private descriptors: PresentationSlideDescriptor[];
   private readonly store: OfficeContentStore<SlideStoreMeta, SlideModel>;
@@ -99,6 +101,7 @@ export class PptPresentationSource implements PresentationSource {
       estimateSize: (slide) => 2048 + slide.elements.length * 512,
     });
     this.snapshot = this.createSnapshot();
+    this.searchProvider = new PresentationSearchProvider(this);
   }
 
   private ensureAvailable(index?: number) {

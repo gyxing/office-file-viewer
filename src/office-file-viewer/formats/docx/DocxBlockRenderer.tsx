@@ -13,6 +13,8 @@ type DocxBlockRendererProps = {
   availableWidth?: number;
   /** 当前页面或容器允许块内容占用的最大物理宽度。 */
   maximumWidth?: number;
+  /** 查找结果对应的顶层正文块标识。 */
+  searchBlockId?: string;
 };
 
 /** 渲染DOCX内容块渲染器。 */
@@ -20,6 +22,7 @@ function DocxBlockRendererComponent({
   block,
   availableWidth,
   maximumWidth,
+  searchBlockId = block.sourceBlockId ?? block.id,
 }: DocxBlockRendererProps) {
   if (block.type === 'table')
     return (
@@ -27,11 +30,12 @@ function DocxBlockRendererComponent({
         block={block}
         availableWidth={availableWidth}
         maximumWidth={maximumWidth}
+        searchBlockId={searchBlockId}
       />
     );
   if (block.type === 'chart')
     return <DocxChartBlock block={block} zoom={100} />;
-  return <DocxParagraph block={block} />;
+  return <DocxParagraph block={block} searchBlockId={searchBlockId} />;
 }
 
 export const DocxBlockRenderer = memo(DocxBlockRendererComponent);
