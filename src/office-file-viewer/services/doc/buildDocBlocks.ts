@@ -183,6 +183,9 @@ type DocFieldTextChunk = {
   segment: DocTextSegment;
 };
 
+/** 内部标记：EMBED 字段结果应消费 ObjectPool 预览，而非普通随文图片。 */
+const DOC_OBJECT_IMAGE_MARKER = '\ue000';
+
 /** 跨样式片段保留 Word 字段结果，避免字段指令被 run 边界拆开后泄露为正文。 */
 function preserveDocFieldResultSegments(segments: DocTextSegment[]) {
   type FieldFrame = {
@@ -219,12 +222,17 @@ function preserveDocFieldResultSegments(segments: DocTextSegment[]) {
     }
   };
   const visibleFieldValue = (frame: FieldFrame) => {
-    const hyperlink = parseDocFieldHyperlink(
-      frame.instruction.map((chunk) => chunk.text).join(''),
-    );
+    const instructionText = frame.instruction
+      .map((chunk) => chunk.text)
+      .join('');
+    const hyperlink = parseDocFieldHyperlink(instructionText);
+    const embeddedObject = /^\s*EMBED\b/i.test(instructionText);
     const visible = frame.result.length
       ? frame.result.map((chunk) => ({
           ...chunk,
+          text: embeddedObject
+            ? chunk.text.replace(/\u0001/g, DOC_OBJECT_IMAGE_MARKER)
+            : chunk.text,
           segment: hyperlink ? { ...chunk.segment, hyperlink } : chunk.segment,
         }))
       : frame.instruction.flatMap((chunk) => {
@@ -305,15 +313,17 @@ function normalizeDocTextSegments(
   segments: DocTextSegment[],
   images: DocImage[],
   drawingImages: Array<DocImage | undefined> = [],
+  objectImages: DocImage[] = [],
 ) {
   let imageIndex = 0;
   let drawingImageIndex = 0;
+  let objectImageIndex = 0;
 
   return preserveDocFieldResultSegments(segments).flatMap((segment) => {
     const normalizedText = normalizeDocText(segment.text);
 
     return normalizedText
-      .split(/(\n|\f|\u0001|\u0008)/)
+      .split(/(\n|\f|\u0001|\u0008|\ue000)/)
       .map((text, textIndex): DocImageSegment => {
         if (text === '\u0001') {
           const image = images[imageIndex];
@@ -368,6 +378,32 @@ function normalizeDocTextSegments(
               textIndex === 0 ? segment.bookmarkMarkers : undefined,
           };
         }
+        if (text === DOC_OBJECT_IMAGE_MARKER) {
+          const image = objectImages[objectImageIndex];
+          if (image) objectImageIndex += 1;
+          return {
+            text,
+            style: segment.style,
+            image,
+            inTable: segment.inTable,
+            tableRowEnd: segment.tableRowEnd,
+            tableRowHeight: segment.tableRowHeight,
+            tableRowHeightRule: segment.tableRowHeightRule,
+            pageBreakBefore: segment.pageBreakBefore,
+            outlineLevel: segment.outlineLevel,
+            isTableOfContents: segment.isTableOfContents,
+            listId: segment.listId,
+            listLevel: segment.listLevel,
+            tableColumns: segment.tableColumns,
+            tableAlign: segment.tableAlign,
+            tableOffsetLeft: segment.tableOffsetLeft,
+            tableWidth: segment.tableWidth,
+            tableCellLayouts: segment.tableCellLayouts,
+            hyperlink: segment.hyperlink,
+            bookmarkMarkers:
+              textIndex === 0 ? segment.bookmarkMarkers : undefined,
+          };
+        }
         return {
           text,
           style: segment.style,
@@ -396,7 +432,8 @@ function normalizeDocTextSegments(
           item.bookmarkMarkers?.length ||
           (item.text.length &&
             item.text !== '\u0001' &&
-            item.text !== '\u0008'),
+            item.text !== '\u0008' &&
+            item.text !== DOC_OBJECT_IMAGE_MARKER),
       );
   });
 }
@@ -746,13 +783,12 @@ function createParagraphBlock(
     mergedStyle.spacingAfter = 12;
   }
   const shouldUseSourceLineMultiplier =
-    Boolean(isTableOfContents) ||
-    ((mergedStyle.fontSize ?? 0) >= 28 && mergedStyle.textAlign === 'center');
+    (mergedStyle.fontSize ?? 0) >= 28 && mergedStyle.textAlign === 'center';
   if (
     shouldUseSourceLineMultiplier &&
     mergedStyle.lineHeightMultiplier !== undefined
   ) {
-    // 大字号居中标题与目录依赖 Word 的倍数行距；直接使用绝对行距会压住文字或撑大目录。
+    // 大字号居中标题按字体倍数生成行框；目录仍保留源文档网格换算出的绝对行距。
     mergedStyle.lineHeight = mergedStyle.lineHeightMultiplier;
   }
 
@@ -1000,6 +1036,7 @@ export async function buildDocBlocksFromSegments(
   images: DocImage[],
   options: DocBlockBuildOptions,
   drawingImages?: Array<DocImage | undefined>,
+  objectImages?: DocImage[],
 ): Promise<DocBlock[]> {
   const pendingTableRows: PendingTableRow[] = [];
   const pendingTableCells: PendingTableCell[] = [];
@@ -1008,6 +1045,15 @@ export async function buildDocBlocksFromSegments(
     segments,
     images,
     drawingImages,
+    objectImages,
+  );
+  const referencedBodyImageIds = new Set(
+    normalizedSegments
+      .map((segment) => segment.image?.id)
+      .filter((imageId): imageId is string => Boolean(imageId)),
+  );
+  const imagesWithoutTextAnchor = images.filter(
+    (image) => !referencedBodyImageIds.has(image.id),
   );
   const tocParagraphSegments = normalizedSegments.filter(
     (segment) => segment.text === '\n' && segment.isTableOfContents,
@@ -1102,13 +1148,28 @@ export async function buildDocBlocksFromSegments(
     // Word 会把跨越多条文档网格的正文居中放进固定网格槽；浏览器只按当前最大字号生成行盒。
     // 将缺失的上下留白补回段落流，可避免删减大字号片段后把后续内容整体向上拉动。
     const gridPadding = rawGridPadding > 0.5 ? rawGridPadding + 0.75 : 0;
+    const shouldUseCompactTocLineHeight =
+      isTableOfContents && tocSpacingAfter !== undefined && tocSpacingAfter > 0;
     const style =
-      !inTable &&
-      !isTableOfContents &&
-      text.trim().length > 0 &&
-      minimumLineHeight > 0 &&
-      (explicitLineHeight === undefined ||
-        explicitLineHeight < minimumLineHeight)
+      isTableOfContents &&
+      sourceStyle?.useDocumentGrid !== false &&
+      options.defaultGridLineHeight
+        ? {
+            ...sourceStyle,
+            // 可在单页容纳的长目录以原段落行距配合均摊段后距；
+            // 真正跨页的目录继续使用文档网格，避免统一压缩破坏源分页。
+            lineHeight: shouldUseCompactTocLineHeight
+              ? explicitLineHeight ?? sourceStyle?.lineHeight ?? 1.5
+              : Math.max(
+                  explicitLineHeight ?? 0,
+                  options.defaultGridLineHeight,
+                ),
+          }
+        : !inTable &&
+          text.trim().length > 0 &&
+          minimumLineHeight > 0 &&
+          (explicitLineHeight === undefined ||
+            explicitLineHeight < minimumLineHeight)
         ? {
             ...sourceStyle,
             lineHeight: minimumLineHeight,
@@ -1118,10 +1179,17 @@ export async function buildDocBlocksFromSegments(
             paddingBottom: (sourceStyle?.paddingBottom ?? 0) + gridPadding / 2,
           }
         : sourceStyle;
+    // 段落未显式脱离文档网格时保留该语义，渲染器才能复原 Word 的字符节距。
+    const resolvedStyle =
+      !inTable &&
+      options.defaultGridLineHeight !== undefined &&
+      sourceStyle?.useDocumentGrid !== false
+        ? { ...style, useDocumentGrid: true }
+        : style;
     return {
       text,
       inlines: mergeAdjacentInlines(trimInlines(currentLineInlines)),
-      style,
+      style: resolvedStyle,
       inTable,
       tableRowEnd: structuralSegments.some((segment) => segment.tableRowEnd),
       tableRowHeight: structuralSegments.find(
@@ -1515,6 +1583,15 @@ export async function buildDocBlocksFromSegments(
   await processLine(makeLine());
   await flushTable();
   await flushList();
+  // 部分旧 DOC/WPS 只保留少量 0x01 图片锚点，但图片流仍按正文顺序保存完整内容。
+  // 将剩余图片继续放回正文流，分页器才能按尺寸恢复后续图片页，而不是在尾页降级成 Gallery。
+  for (const image of imagesWithoutTextAnchor) {
+    await builder.add(
+      createParagraphBlock('', builder.nextSourceIndex, [
+        { type: 'image', image },
+      ]),
+    );
+  }
   return builder.finish();
 }
 

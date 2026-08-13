@@ -1,4 +1,10 @@
-import { attr, childByLocalName, childrenByLocalName, parseXml } from './xml';
+import {
+  attr,
+  childByLocalName,
+  childrenByLocalName,
+  descendantByLocalName,
+  parseXml,
+} from './xml';
 
 /** Office 主题。 */
 export type OfficeTheme = {
@@ -62,35 +68,60 @@ function readFontScheme(fontSchemeNode: Element | null | undefined) {
     const latin = childByLocalName(node, 'latin');
     const ea = childByLocalName(node, 'ea');
     const cs = childByLocalName(node, 'cs');
+    const scriptFonts = new Map(
+      childrenByLocalName(node, 'font')
+        .map((font) => [attr(font, 'script'), attr(font, 'typeface')] as const)
+        .filter((entry): entry is readonly [string, string] =>
+          Boolean(entry[0] && entry[1]),
+        ),
+    );
+    const latinTypeface = attr(latin, 'typeface');
+    const complexTypeface = attr(cs, 'typeface');
+    const buildFontStack = (eastAsiaTypeface?: string) =>
+      [eastAsiaTypeface, latinTypeface, complexTypeface]
+        .filter(Boolean)
+        .join(', ');
+    // Office 主题同时保存多套东亚字体；缺少语言信息时优先使用简体中文槽位。
     const eastAsia =
       attr(ea, 'typeface') ||
-      childrenByLocalName(node, 'font')
-        .find((font) =>
-          ['Hans', 'Hant', 'Jpan', 'Hang'].includes(attr(font, 'script') ?? ''),
-        )
-        ?.getAttribute('typeface');
-    const value = [eastAsia, attr(latin, 'typeface'), attr(cs, 'typeface')]
-      .filter(Boolean)
-      .join(', ');
+      scriptFonts.get('Hans') ||
+      scriptFonts.get('Hant') ||
+      scriptFonts.get('Jpan') ||
+      scriptFonts.get('Hang');
+    const value = buildFontStack(eastAsia);
     if (value) scheme[bucket] = value;
+    ['Hans', 'Hant', 'Jpan', 'Hang'].forEach((script) => {
+      const scriptValue = buildFontStack(scriptFonts.get(script));
+      if (scriptValue) scheme[`${bucket}:${script}`] = scriptValue;
+    });
   });
 
   return scheme;
 }
 
-/** 读取 OOXML 主题颜色和字体配置。 */
-export function readOfficeTheme(xml?: string): OfficeTheme {
-  if (!xml) return DEFAULT_OFFICE_THEME;
+/** 读取 OOXML 主题或主题覆盖中的颜色和字体配置。 */
+export function readOfficeTheme(
+  xml?: string,
+  baseTheme: OfficeTheme = DEFAULT_OFFICE_THEME,
+): OfficeTheme {
+  if (!xml) return baseTheme;
 
   const doc = parseXml(xml);
   const colorScheme: Record<string, string> = {
-    ...DEFAULT_OFFICE_THEME.colorScheme,
+    ...baseTheme.colorScheme,
   };
   const themeElements = childByLocalName(doc.documentElement, 'themeElements');
-  const clrScheme = childByLocalName(themeElements, 'clrScheme');
-  const fontScheme = readFontScheme(
-    childByLocalName(themeElements, 'fontScheme'),
-  );
+  // 图表 themeOverride 直接包含 clrScheme/fontScheme，不再包一层 themeElements。
+  const clrScheme =
+    childByLocalName(themeElements, 'clrScheme') ??
+    descendantByLocalName(doc.documentElement, 'clrScheme');
+  const fontScheme = {
+    ...(baseTheme.fontScheme ?? {}),
+    ...readFontScheme(
+      childByLocalName(themeElements, 'fontScheme') ??
+        descendantByLocalName(doc.documentElement, 'fontScheme'),
+    ),
+  };
 
   Object.keys(DEFAULT_OFFICE_THEME.colorScheme).forEach((name) => {
     const node = childByLocalName(clrScheme, name);
@@ -105,7 +136,7 @@ export function readOfficeTheme(xml?: string): OfficeTheme {
 
   return {
     colorScheme,
-    colorMap: DEFAULT_COLOR_MAP,
+    colorMap: baseTheme.colorMap ?? DEFAULT_COLOR_MAP,
     fontScheme,
   };
 }

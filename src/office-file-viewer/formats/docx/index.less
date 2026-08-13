@@ -7,14 +7,62 @@
 
   &[data-character-spacing-control='compressPunctuation'],
   &[data-character-spacing-control='compressPunctuationAndJapaneseKana'] {
-    // Word 的东亚标点压缩由 OpenType 半宽替代字形完成，正文和测量层必须保持一致。
-    font-feature-settings: 'halt';
-    font-variant-east-asian: proportional-width;
+    // 每个段落重设标点宽度变量，使嵌套文本框始终以最近一层段落对齐方式为准。
+    [data-office-docx-align] {
+      --office-file-docx-punctuation-spacing: 0;
 
-    .office-file-docx-page-frame__article {
-      letter-spacing: -0.2px;
+      letter-spacing: 0;
+    }
+
+    // 两端对齐只压缩标点占位，不能用负字符间距压缩全部文字。
+    [data-office-docx-align='justify'] {
+      --office-file-docx-punctuation-spacing: -0.15em;
+    }
+
+    .office-file-docx-punctuation-no-break {
+      display: inline;
+      white-space: nowrap;
+    }
+
+    .office-file-docx-compressed-punctuation {
+      display: inline;
+      letter-spacing: var(--office-file-docx-punctuation-spacing, 0);
+    }
+
+    // 行尾闭标点在 Office 中可完全悬挂到文本框右边界之外，避免最后一个字被单独挤到下一行。
+    .office-file-docx-compressed-punctuation--line-end {
+      display: inline-block;
+      width: 0;
+      letter-spacing: 0;
+    }
+
+    // 左对齐的手工引文尾注会用保留空格推到行尾，书名号需释放半个前导占位。
+    [data-office-docx-align='left']:has(.office-file-docx-east-asia-space) {
+      .office-file-docx-compressed-punctuation--book-title-opening {
+        letter-spacing: -0.5em;
+      }
     }
   }
+}
+
+.office-file-docx-east-asia-space {
+  // 用可折叠空格模拟 Word：行内保持源列距，自动换行后丢弃行首空白。
+  display: inline;
+  letter-spacing: 0;
+  white-space: normal;
+}
+
+// OOXML 的 noWrap 允许文字超出文本框，但不允许保留空格的行内容再次触发自动换行。
+.office-file-docx-shape__item--no-wrap {
+  [data-office-docx-align],
+  [data-office-docx-align] span {
+    white-space: pre !important;
+  }
+}
+
+.office-file-docx-viewer--font-loading {
+  align-items: center;
+  justify-content: center;
 }
 
 .office-file-docx-viewer__measure {
@@ -87,11 +135,6 @@
 .office-file-docx-inline-tab {
   display: inline-block;
   width: 2em;
-}
-
-.office-file-docx-compressed-punctuation {
-  // 仅缩窄源设置要求压缩的东亚标点，避免普通文字宽度和分页发生偏移。
-  letter-spacing: -2.5px;
 }
 
 .office-file-docx-toc-line {
@@ -168,13 +211,28 @@
   margin: 8px 0;
 }
 
+.office-file-docx-inline-image-crop {
+  position: relative;
+  display: inline-block;
+  width: var(--office-file-docx-inline-image-width);
+  height: var(--office-file-docx-inline-image-height);
+  max-width: 100%;
+  overflow: hidden;
+  vertical-align: middle;
+
+  &[style*='position: absolute'] {
+    max-width: none;
+  }
+}
+
 .office-file-docx-inline-image {
   display: inline-block;
   width: var(--office-file-docx-inline-image-width);
   height: var(--office-file-docx-inline-image-height);
   max-width: 100%;
   vertical-align: middle;
-  object-fit: contain;
+  // DrawingML 默认按目标 extents 拉伸图片，不能沿用网页图片的等比 contain。
+  object-fit: fill;
 
   &[style*='position: absolute'] {
     max-width: none;
@@ -198,6 +256,8 @@
   width: var(--office-file-docx-shape-width);
   height: var(--office-file-docx-shape-height);
   margin: 8px 0;
+  // 文本框使用独立文本布局，不能继承锚点段落吸附正文网格后的绝对行高。
+  line-height: normal;
 
   &[style*='position: absolute'] {
     margin: 0;
@@ -212,9 +272,35 @@
   flex-direction: column;
   overflow: visible;
 
+  // Office 文本框拥有独立文本上下文，不能继承锚点段落的粗体、斜体或字距。
+  color: #000;
+  font-style: normal;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-decoration: none;
+
+  // 固定高度文本框允许内容溢出，不能让 Flex 改写 Office 段落的实际行盒。
+  > * {
+    flex-shrink: 0;
+  }
+
   // 确保文本内容正确渲染
   word-wrap: break-word;
   overflow-wrap: break-word;
+}
+
+.office-file-docx-shape__item--bordered::before {
+  position: absolute;
+  inset: var(--office-file-docx-shape-border-offset);
+  box-sizing: border-box;
+  border: var(--office-file-docx-shape-border);
+  border-radius: inherit;
+  pointer-events: none;
+  content: '';
+}
+
+.office-file-docx-shape__item--clip-vertical {
+  overflow-y: hidden;
 }
 
 .office-file-docx-shape__svg {

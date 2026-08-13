@@ -9,7 +9,10 @@ import type { OfficeArchiveResourcePolicy } from '../../shared/resource/OfficeRe
 import { collectRenderableOfficeMedia } from '../media/officeMetafile';
 import type { OfficeFormatParser } from '../parsing/formatParserRegistry';
 import { throwIfParseAborted } from '../parsing/runtime/types';
-import { parseSlideXml } from './parsePptxSlide';
+import {
+  parseSlideXml,
+  readPptxDefaultTextStyle,
+} from './parsePptxSlide';
 import { throwIfPptxParseAborted } from './PptxPackageContext';
 import {
   buildPptxPackageState,
@@ -51,6 +54,7 @@ export async function parsePptx(
   const theme = themeXml
     ? readTheme(themeXml)
     : { colorScheme: {}, fontScheme: {}, colorMap: {} };
+  const defaultTextStyle = readPptxDefaultTextStyle(presentationXml, theme);
   const tableStyles = readTableStyles(
     readXml(entries, 'ppt/tableStyles.xml'),
     theme,
@@ -105,6 +109,7 @@ export async function parsePptx(
         masterDefinitions,
         tableStyles,
         slideTargets,
+        defaultTextStyle,
       ),
     );
   }

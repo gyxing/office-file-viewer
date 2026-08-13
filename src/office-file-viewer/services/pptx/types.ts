@@ -8,6 +8,7 @@ export type {
   ImageCrop,
   ImageElement,
   PresentationDocument as PptxDocument,
+  ReflectionStyle,
   ShadowStyle,
   ShapeElement,
   SlideBackground,

@@ -4,6 +4,9 @@ export type PreviewKind = 'pptx' | 'ppt' | 'xlsx' | 'xls' | 'docx' | 'doc';
 /** 多种文件格式复用的预览界面族。 */
 export type PreviewFamily = 'word' | 'spreadsheet' | 'presentation';
 
+/** 格式在 Worker 中可使用的最高解析能力。 */
+export type OfficeWorkerCapability = 'none' | 'materialized' | 'source';
+
 /** 单种 Office 格式的稳定能力元数据。 */
 export type OfficeFormatMetadata = {
   /** 解析结果使用的格式标识。 */
@@ -12,8 +15,8 @@ export type OfficeFormatMetadata = {
   extensions: readonly string[];
   /** 当前格式复用的预览界面族。 */
   family: PreviewFamily;
-  /** 当前格式是否支持在 Worker 中解析。 */
-  supportsWorker: boolean;
+  /** 当前格式在 Worker 中可使用的最高解析能力。 */
+  workerCapability: OfficeWorkerCapability;
 };
 
 /** OOXML PowerPoint 文件扩展名。 */
@@ -45,37 +48,37 @@ export const OFFICE_FORMAT_METADATA = {
     kind: 'pptx',
     extensions: PPTX_EXTENSIONS,
     family: 'presentation',
-    supportsWorker: false,
+    workerCapability: 'source',
   },
   ppt: {
     kind: 'ppt',
     extensions: PPT_EXTENSIONS,
     family: 'presentation',
-    supportsWorker: true,
+    workerCapability: 'source',
   },
   xlsx: {
     kind: 'xlsx',
     extensions: XLSX_EXTENSIONS,
     family: 'spreadsheet',
-    supportsWorker: false,
+    workerCapability: 'source',
   },
   xls: {
     kind: 'xls',
     extensions: XLS_EXTENSIONS,
     family: 'spreadsheet',
-    supportsWorker: true,
+    workerCapability: 'source',
   },
   docx: {
     kind: 'docx',
     extensions: DOCX_EXTENSIONS,
     family: 'word',
-    supportsWorker: false,
+    workerCapability: 'source',
   },
   doc: {
     kind: 'doc',
     extensions: DOC_EXTENSIONS,
     family: 'word',
-    supportsWorker: true,
+    workerCapability: 'source',
   },
 } as const satisfies Record<PreviewKind, OfficeFormatMetadata>;
 

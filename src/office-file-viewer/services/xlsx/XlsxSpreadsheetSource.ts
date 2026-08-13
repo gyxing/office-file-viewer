@@ -1,11 +1,13 @@
 import type { OfficeArchiveResourcePolicy } from '../../shared/resource/OfficeResourcePolicy';
 import type { OfficeSourcePreviewFactory } from '../parsing/formatParserRegistry';
+import { WorkerSpreadsheetSource } from '../parsing/runtime/source/WorkerSpreadsheetSource';
 import { disposeDocumentSession } from '../session';
 import {
   createSpreadsheetPerformanceProfile,
   upgradeSpreadsheetPerformanceProfile,
   type SpreadsheetPerformanceProfile,
 } from '../spreadsheet/spreadsheetPerformance';
+import { SpreadsheetSearchProvider } from '../spreadsheet/SpreadsheetSearchProvider';
 import {
   createSpreadsheetSheetStore,
   type SpreadsheetSheetStore,
@@ -76,6 +78,7 @@ function createSnapshotDescriptor(
 
 /** 提供 XLSX 按 Sheet 解析、稀疏范围读取和可重试状态。 */
 export class XlsxSpreadsheetSource implements SpreadsheetSource {
+  readonly searchProvider: SpreadsheetSearchProvider;
   private readonly listeners = new Set<() => void>();
   private readonly descriptors: XlsxSheetDescriptor[];
   /** 与内部描述符同步、可安全暴露给订阅者的不可变数组。 */
@@ -99,6 +102,7 @@ export class XlsxSpreadsheetSource implements SpreadsheetSource {
     });
     this.snapshotDescriptors = this.descriptors.map(createSnapshotDescriptor);
     this.snapshot = this.createSnapshot();
+    this.searchProvider = new SpreadsheetSearchProvider(this);
   }
 
   private ensureAvailable(sheetId?: string) {
@@ -488,7 +492,13 @@ export async function createXlsxSpreadsheetSourceFromArchive(
 /** 仅在 XLSX 画像命中大文件阈值时创建按 Sheet 预览源。 */
 export const tryCreateXlsxSourcePreview: OfficeSourcePreviewFactory = async (
   file,
-  { documentSession, emitProgress, emitPartial, resourcePolicy },
+  {
+    documentSession,
+    emitProgress,
+    emitPartial,
+    resourcePolicy,
+    workerSourceClient,
+  },
 ) => {
   emitProgress({
     stage: 'container',
@@ -511,6 +521,38 @@ export const tryCreateXlsxSourcePreview: OfficeSourcePreviewFactory = async (
     if (!created.profile.requiresSource) {
       await source.dispose();
       return undefined;
+    }
+
+    if (workerSourceClient) {
+      await source.dispose();
+      const opened = await workerSourceClient.openSource(
+        file,
+        'xlsx',
+        resourcePolicy,
+        {
+          signal: documentSession.signal,
+          onProgress: emitProgress,
+        },
+      );
+      if (!opened.available || opened.source.kind !== 'xlsx') return undefined;
+      const workerSource = new WorkerSpreadsheetSource(
+        workerSourceClient,
+        opened.source,
+      );
+      documentSession.register({ dispose: () => workerSource.dispose() });
+      documentSession.transferTo(workerSource);
+      const state = {
+        sessionId: documentSession.id,
+        previewKind: 'xlsx' as const,
+        mode: 'source' as const,
+        source: workerSource,
+        summary: workerSource.getSnapshot(),
+      };
+      emitPartial(state);
+      return {
+        ...state,
+        dispose: () => disposeDocumentSession(workerSource),
+      };
     }
 
     documentSession.register({ dispose: () => source?.dispose() });

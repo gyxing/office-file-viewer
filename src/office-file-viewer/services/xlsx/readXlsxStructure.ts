@@ -146,9 +146,8 @@ export async function readXlsxStructure(
   const definedNames = Object.fromEntries(
     descendantsByLocalName(workbook.documentElement, 'definedName')
       .map((node) => [attr(node, 'name'), node.textContent?.trim()] as const)
-      .filter(
-        (entry): entry is readonly [string, string] =>
-          Boolean(entry[0] && entry[1]),
+      .filter((entry): entry is readonly [string, string] =>
+        Boolean(entry[0] && entry[1]),
       ),
   );
   const workbookRels = relationships['xl/_rels/workbook.xml.rels'] ?? {};

@@ -1,12 +1,16 @@
 // OfficeFileViewer 是组件库对外主入口，负责组合本地化、控制器、工具栏和格式预览舞台。
 import type { CSSProperties, ReactElement } from 'react';
 import React, { memo, useMemo } from 'react';
+import { OfficeSearchRuntimeBoundary } from './formats/search/OfficeSearchContext';
+import { OfficeSearchSidebar } from './formats/search/OfficeSearchSidebar';
+import { useOfficeSearchController } from './formats/search/useOfficeSearchController';
 import './index.less';
 import {
   OfficeFileViewerLocaleProvider,
   useOfficeFileViewerMessages,
   type OfficeFileViewerLocale,
 } from './locale';
+import type { OfficeFileViewerFontOptions } from './services/fonts/types';
 import type { OfficeFileViewerUri } from './services/input/normalizeOfficeFileUri';
 import type {
   OfficeParseOptions,
@@ -20,6 +24,8 @@ import {
 } from './services/preview';
 import type { OfficeFileViewerWarning } from './services/previewWarnings';
 import { OfficeResourceStoreProvider } from './services/resource-store';
+import type { OfficeFileViewerSearchOptions } from './services/search/types';
+import { OfficeFontProvider } from './shared/fonts/OfficeFontProvider';
 import {
   OfficeHyperlinkProvider,
   type OfficeHyperlinkActivateEvent,
@@ -37,6 +43,7 @@ import {
   OfficeToolbar,
   type FullscreenControls,
   type OfficeToolbarFormatControls,
+  type OfficeToolbarSearchControls,
   type ZoomControls,
 } from './shell/Toolbar';
 import { OFFICE_DEFAULT_ZOOM } from './shell/constants';
@@ -46,10 +53,15 @@ import type {
   OfficeFileViewerViewStateChange,
 } from './shell/viewState';
 
+export type { OfficeFileViewerFontOptions } from './services/fonts/types';
 export type {
   OfficeFileViewerUri,
   OfficeFileViewerUriLoader,
 } from './services/input/normalizeOfficeFileUri';
+export type { OfficeFileViewerSearchOptions } from './services/search/types';
+
+/** 未声明搜索选项时复用稳定空对象，避免无关渲染重置查询。 */
+const DEFAULT_SEARCH_OPTIONS: OfficeFileViewerSearchOptions = {};
 
 /** Office文件预览器组件属性。 */
 export type OfficeFileViewerProps = {
@@ -88,7 +100,7 @@ export type OfficeFileViewerProps = {
   onPreviewReady?: (info: OfficePreviewReadyInfo, file: File) => void;
   /** 文件加载或解析失败时触发的回调。 */
   onError?: (error: Error, file?: File) => void;
-  /** 解析降级或格式兼容警告产生时触发。 */
+  /** 解析降级、格式兼容或运行时诊断警告产生时触发。 */
   onWarning?: (warning: OfficeFileViewerWarning, file: File) => void;
   /** 传递给底层解析会话的运行配置。 */
   parseOptions?: OfficeParseOptions;
@@ -96,6 +108,10 @@ export type OfficeFileViewerProps = {
   imagePreview?: OfficeFileViewerImagePreviewConfig;
   /** 是否启用源文档声明的超链接，默认开启。 */
   hyperlink?: boolean;
+  /** 控制文档全文查找；默认启用，传 false 时移除入口和运行时。 */
+  search?: false | OfficeFileViewerSearchOptions;
+  /** 配置源字体别名、全局回退字体和缺失字体诊断。 */
+  fontOptions?: OfficeFileViewerFontOptions;
   /** 链接被有效激活时触发，可阻止组件执行默认导航。 */
   onHyperlinkActivate?: (event: OfficeHyperlinkActivateEvent) => void;
   /** 解析阶段或完成度变化时触发的进度回调。 */
@@ -123,14 +139,22 @@ function OfficeFileViewerContent({
   parseOptions,
   imagePreview,
   hyperlink = true,
+  search,
+  fontOptions,
   onHyperlinkActivate,
   onParseProgress,
 }: Omit<OfficeFileViewerProps, 'locale'>) {
   const messages = useOfficeFileViewerMessages();
+  const searchEnabled = search !== false;
+  const searchOptions = searchEnabled
+    ? search ?? DEFAULT_SEARCH_OPTIONS
+    : DEFAULT_SEARCH_OPTIONS;
   const { state, actions, meta, viewerRef, resourceStore } =
     useOfficeViewerController({
       uri,
       defaultZoom,
+      searchEnabled,
+      defaultSearchVisible: Boolean(searchOptions.defaultVisible),
       defaultViewState,
       viewState,
       onViewStateChange,
@@ -247,6 +271,32 @@ function OfficeFileViewerContent({
       view.isFullscreen,
     ],
   );
+  const searchController = useOfficeSearchController({
+    enabled: searchEnabled,
+    visible: view.showSearch,
+    sessionKey: preview?.sessionId,
+    options: searchOptions,
+    hasDocument: meta.hasRenderableContent,
+    onOpen: actions.openSearch,
+    onClose: actions.closeSearch,
+  });
+  const searchControls = useMemo<OfficeToolbarSearchControls>(
+    () =>
+      searchEnabled
+        ? {
+            kind: 'enabled',
+            visible: view.showSearch,
+            disabled: !meta.hasRenderableContent,
+            toggle: actions.toggleSearch,
+          }
+        : { kind: 'disabled' },
+    [
+      actions.toggleSearch,
+      meta.hasRenderableContent,
+      searchEnabled,
+      view.showSearch,
+    ],
+  );
   let previewStageState: OfficePreviewStageState;
   if (error) {
     previewStageState = {
@@ -298,6 +348,9 @@ function OfficeFileViewerContent({
       className={['office-file-viewer', className].filter(Boolean).join(' ')}
       style={viewerStyle}
       tabIndex={-1}
+      onKeyDown={
+        searchEnabled ? searchController.handleViewerKeyDown : undefined
+      }
     >
       <OfficeResourceStoreProvider store={resourceStore}>
         <OfficeHyperlinkProvider
@@ -315,32 +368,68 @@ function OfficeFileViewerContent({
             sessionKey={preview?.sessionId}
             containerRef={viewerRef}
           >
-            <div className="office-file-viewer__layout">
-              <OfficeToolbar
-                fileName={displayedFileName}
-                previewKind={meta.previewKind}
-                formatControls={formatControls}
-                zoomControls={zoomControls}
-                fullscreenControls={fullscreenControls}
-                onSelectFile={actions.selectFile}
-              />
-              <div className="office-file-viewer__content">
-                <OfficePreviewStage
-                  state={previewStageState}
-                  onCloseWordOutline={actions.closeWordOutline}
-                  onSelectSlide={actions.selectSlide}
-                  onSelectSheet={actions.selectSheet}
-                />
-                <OfficeParseStatus
-                  progress={
-                    loading && meta.hasRenderableContent
-                      ? parseProgress
-                      : undefined
-                  }
-                  warning={partialWarning}
-                />
-              </div>
-            </div>
+            <OfficeFontProvider
+              options={fontOptions}
+              containerRef={viewerRef}
+              sessionKey={preview?.sessionId}
+              ready={meta.hasRenderableContent}
+              file={meta.currentFile}
+              previewKind={meta.previewKind}
+              onWarning={onWarning}
+            >
+              <OfficeSearchRuntimeBoundary
+                enabled={searchEnabled}
+                controller={searchController}
+              >
+                <div className="office-file-viewer__layout">
+                  <OfficeToolbar
+                    fileName={displayedFileName}
+                    previewKind={meta.previewKind}
+                    formatControls={formatControls}
+                    zoomControls={zoomControls}
+                    fullscreenControls={fullscreenControls}
+                    searchControls={searchControls}
+                    onSelectFile={actions.selectFile}
+                  />
+                  <div className="office-file-viewer__content">
+                    <div className="office-file-viewer__workspace">
+                      {searchEnabled ? (
+                        <OfficeSearchSidebar
+                          visible={view.showSearch}
+                          sessionKey={preview?.sessionId}
+                          controller={searchController}
+                          onClose={actions.closeSearch}
+                          onShowOutline={
+                            hasWordOutline
+                              ? actions.toggleWordOutline
+                              : undefined
+                          }
+                        />
+                      ) : null}
+                      <div className="office-file-viewer__stage">
+                        <OfficePreviewStage
+                          state={previewStageState}
+                          onCloseWordOutline={actions.closeWordOutline}
+                          onOpenSearch={
+                            searchEnabled ? actions.openSearch : undefined
+                          }
+                          onSelectSlide={actions.selectSlide}
+                          onSelectSheet={actions.selectSheet}
+                        />
+                      </div>
+                    </div>
+                    <OfficeParseStatus
+                      progress={
+                        loading && meta.hasRenderableContent
+                          ? parseProgress
+                          : undefined
+                      }
+                      warning={partialWarning}
+                    />
+                  </div>
+                </div>
+              </OfficeSearchRuntimeBoundary>
+            </OfficeFontProvider>
           </OfficeImagePreviewProvider>
         </OfficeHyperlinkProvider>
       </OfficeResourceStoreProvider>

@@ -1,6 +1,7 @@
 import { openCfbRandomAccess } from '../../shared/binary/cfb';
 import { createBlobRandomAccessSource } from '../../shared/io';
 import type { DocBinarySource } from './DocBinarySource';
+import { isDocObjectPreviewStreamPath } from './docObjectPreview';
 import { readDocTableStreamName } from './readDocStructure';
 
 /** 识别 DOC FIB 结构时预读的字节数。 */
@@ -30,6 +31,16 @@ export async function createCfbDocBinarySource(
       throw new Error(`DOC 文件缺少 ${tableStreamName} 数据流`);
     }
     const data = reader.openStream('Data');
+    const objectPreviewStreams = reader.entries
+      .filter(
+        (entry) =>
+          entry.objectType === 'stream' &&
+          isDocObjectPreviewStreamPath(entry.path),
+      )
+      .flatMap((entry) => {
+        const stream = reader.openStream(entry.path);
+        return stream ? [{ path: entry.path, stream }] : [];
+      });
     let disposed = false;
 
     return {
@@ -50,6 +61,14 @@ export async function createCfbDocBinarySource(
           throw new Error('DOC 文件缺少 Data 数据流');
         }
         return data.read(offset, length, readSignal);
+      },
+      async readObjectPreviewStreams(readSignal) {
+        const previews: Array<readonly [string, Uint8Array]> = [];
+        // 顺序读取可限制复杂文档一次性复制多个大型 EMF 时的瞬时内存。
+        for (const { path, stream } of objectPreviewStreams) {
+          previews.push([path, await stream.materialize(readSignal)]);
+        }
+        return previews;
       },
       async dispose() {
         if (disposed) return;

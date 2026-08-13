@@ -55,6 +55,9 @@ export async function parseXls(file: File): Promise<SpreadsheetWorkbook> {
         resource: (resource) => assembler.addResource(resource),
         sheet: async (index, revision, sheet) =>
           assembler.addSheet(index, revision, sheet),
+        spreadsheetMetadata: async () => {
+          throw new Error('XLS 主线程运行时返回了错误的工作簿元数据');
+        },
         presentationMetadata: async () => {
           throw new Error('XLS 主线程运行时返回了错误的演示文稿元数据');
         },
@@ -66,6 +69,15 @@ export async function parseXls(file: File): Promise<SpreadsheetWorkbook> {
         },
         documentBlocks: async () => {
           throw new Error('XLS 主线程运行时返回了错误的正文分块');
+        },
+        docxMetadata: async () => {
+          throw new Error('XLS 主线程运行时返回了错误的 DOCX 元数据');
+        },
+        docxBlocks: async () => {
+          throw new Error('XLS 主线程运行时返回了错误的 DOCX 正文分块');
+        },
+        docxPages: async () => {
+          throw new Error('XLS 主线程运行时返回了错误的 DOCX 页面分块');
         },
         parsed: async () => {
           throw new Error('XLS 主线程运行时返回了错误的完整文档消息');

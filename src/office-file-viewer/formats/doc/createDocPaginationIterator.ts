@@ -1,10 +1,13 @@
+import {
+  DocPaginationState,
+  type PaginatedDocPage,
+} from '../../services/doc/docPagination';
 import type { DocBlock, DocPage } from '../../services/doc/types';
 import {
   createTimeBudget,
   throwIfAborted,
   yieldToMainThread,
 } from '../../services/performance/mainThreadScheduler';
-import { DocPaginationState, type PaginatedDocPage } from '../../services/doc/docPagination';
 
 /** 按页面批次组织的 DOC 内容块集合。 */
 type DocBlockBatches = AsyncIterable<DocBlock[]> | Iterable<DocBlock[]>;

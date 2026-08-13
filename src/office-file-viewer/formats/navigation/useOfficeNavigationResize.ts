@@ -5,20 +5,20 @@ import type {
 } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-/** Word 大纲侧栏的默认宽度，单位为 CSS 像素。 */
-const DEFAULT_OUTLINE_WIDTH = 260;
-/** Word 大纲侧栏允许的最小宽度，单位为 CSS 像素。 */
-const MIN_OUTLINE_WIDTH = 200;
-/** Word 大纲侧栏允许的绝对最大宽度，单位为 CSS 像素。 */
-const MAX_OUTLINE_WIDTH = 520;
-/** 大纲侧栏最多占用预览工作区宽度的比例。 */
+/** 左侧导航面板的默认宽度，单位为 CSS 像素。 */
+const DEFAULT_NAVIGATION_WIDTH = 260;
+/** 左侧导航面板允许的最小宽度，单位为 CSS 像素。 */
+const MIN_NAVIGATION_WIDTH = 200;
+/** 左侧导航面板允许的绝对最大宽度，单位为 CSS 像素。 */
+const MAX_NAVIGATION_WIDTH = 520;
+/** 左侧导航面板最多占用预览工作区宽度的比例。 */
 const MAX_WORKSPACE_WIDTH_RATIO = 0.45;
-/** 键盘调整大纲侧栏宽度时的单次步长，单位为 CSS 像素。 */
+/** 键盘调整导航面板宽度时的单次步长，单位为 CSS 像素。 */
 const KEYBOARD_RESIZE_STEP = 20;
-/** 拖拽宽度写入侧栏时使用的 CSS 自定义属性。 */
-const OUTLINE_WIDTH_CSS_VARIABLE = '--office-file-word-outline-width';
+/** 拖拽宽度写入导航面板时使用的 CSS 自定义属性。 */
+const NAVIGATION_WIDTH_CSS_VARIABLE = '--office-file-navigation-panel-width';
 
-type OutlineResizeDrag = {
+type NavigationResizeDrag = {
   /** 当前由分隔条捕获的指针标识。 */
   pointerId: number;
   /** 开始拖拽时的水平坐标。 */
@@ -28,46 +28,49 @@ type OutlineResizeDrag = {
 };
 
 /** 将侧栏宽度限制在当前工作区允许的范围内。 */
-function clampOutlineWidth(value: number, maxWidth: number) {
-  return Math.min(maxWidth, Math.max(MIN_OUTLINE_WIDTH, value));
+function clampNavigationWidth(value: number, maxWidth: number) {
+  return Math.min(maxWidth, Math.max(MIN_NAVIGATION_WIDTH, value));
 }
 
 /**
- * 管理 Word 大纲侧栏的横向缩放。
+ * 管理通用左侧导航面板的横向缩放。
  *
  * 拖动期间直接按动画帧更新 CSS 变量，避免大纲树和正文被高频重新渲染。
  */
-export function useWordOutlineResize(
+export function useOfficeNavigationResize(
   panelRef: RefObject<HTMLElement>,
   documentSessionId: string,
 ) {
   const handleRef = useRef<HTMLDivElement>(null);
-  const widthRef = useRef(DEFAULT_OUTLINE_WIDTH);
-  const maxWidthRef = useRef(MAX_OUTLINE_WIDTH);
-  const dragRef = useRef<OutlineResizeDrag>();
+  const widthRef = useRef(DEFAULT_NAVIGATION_WIDTH);
+  const maxWidthRef = useRef(MAX_NAVIGATION_WIDTH);
+  const dragRef = useRef<NavigationResizeDrag>();
   const pendingWidthRef = useRef<number>();
   const animationFrameRef = useRef<number>();
-  const [width, setWidth] = useState(DEFAULT_OUTLINE_WIDTH);
-  const [maxWidth, setMaxWidth] = useState(MAX_OUTLINE_WIDTH);
+  const [width, setWidth] = useState(DEFAULT_NAVIGATION_WIDTH);
+  const [maxWidth, setMaxWidth] = useState(MAX_NAVIGATION_WIDTH);
 
   const readMaxWidth = useCallback(() => {
     const workspaceWidth =
       panelRef.current?.parentElement?.getBoundingClientRect().width;
     if (!workspaceWidth || !Number.isFinite(workspaceWidth)) {
-      return MAX_OUTLINE_WIDTH;
+      return MAX_NAVIGATION_WIDTH;
     }
     return Math.max(
-      MIN_OUTLINE_WIDTH,
-      Math.min(MAX_OUTLINE_WIDTH, workspaceWidth * MAX_WORKSPACE_WIDTH_RATIO),
+      MIN_NAVIGATION_WIDTH,
+      Math.min(
+        MAX_NAVIGATION_WIDTH,
+        workspaceWidth * MAX_WORKSPACE_WIDTH_RATIO,
+      ),
     );
   }, [panelRef]);
 
   const applyWidth = useCallback(
     (value: number) => {
-      const nextWidth = clampOutlineWidth(value, maxWidthRef.current);
+      const nextWidth = clampNavigationWidth(value, maxWidthRef.current);
       widthRef.current = nextWidth;
       panelRef.current?.style.setProperty(
-        OUTLINE_WIDTH_CSS_VARIABLE,
+        NAVIGATION_WIDTH_CSS_VARIABLE,
         `${nextWidth}px`,
       );
       handleRef.current?.setAttribute(
@@ -129,7 +132,7 @@ export function useWordOutlineResize(
   }, [applyWidth]);
 
   useEffect(() => {
-    widthRef.current = DEFAULT_OUTLINE_WIDTH;
+    widthRef.current = DEFAULT_NAVIGATION_WIDTH;
     const workspace = panelRef.current?.parentElement;
     syncWidthRange();
 
@@ -221,7 +224,7 @@ export function useWordOutlineResize(
   return {
     width,
     maxWidth,
-    minWidth: MIN_OUTLINE_WIDTH,
+    minWidth: MIN_NAVIGATION_WIDTH,
     handleRef,
     handleKeyDown,
     handlePointerDown,

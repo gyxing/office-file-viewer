@@ -16,6 +16,8 @@ type DocxShapeProps = {
       type: 'shape';
     }
   >;
+  /** 查找结果对应的顶层正文块标识。 */
+  searchBlockId: string;
 };
 
 // 自定义变量把解析后的形状尺寸交给 Less，保持定位样式的类型约束。
@@ -28,7 +30,7 @@ type DocxShapeStyle = CSSProperties & {
 };
 
 /** 渲染DOCX形状。 */
-function DocxShapeComponent({ inline }: DocxShapeProps) {
+function DocxShapeComponent({ inline, searchBlockId }: DocxShapeProps) {
   const shape = inline.shape;
   const positionStyle = calculatePositionStyle(shape.position);
   const hyperlinkProps = useOfficeHyperlink<HTMLSpanElement>({
@@ -53,7 +55,11 @@ function DocxShapeComponent({ inline }: DocxShapeProps) {
       style={shapeStyle}
     >
       {shape.items.map((item) => (
-        <DocxShapeItemRenderer key={item.id} item={item} />
+        <DocxShapeItemRenderer
+          key={item.id}
+          item={item}
+          searchBlockId={searchBlockId}
+        />
       ))}
     </span>
   );

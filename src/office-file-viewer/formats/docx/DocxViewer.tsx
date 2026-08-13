@@ -9,6 +9,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { useOfficeFileViewerMessages } from '../../locale';
 import {
   paginateMeasuredDocxPage,
   type DocxMeasuredBlock,
@@ -22,9 +23,13 @@ import type { OfficeFileViewerPreviewState } from '../../services/parsing/intern
 import { collectWordPerformanceStats } from '../../services/word/collectWordPerformanceStats';
 import { createMaterializedWordPageSource } from '../../services/word/createMaterializedWordPageSource';
 import { createMemoryWordOutlineProvider } from '../../services/word/createMemoryWordOutlineProvider';
+import { collectDocxSearchBlocks } from '../../services/word/WordSearchProvider';
+import { useOfficeEmbeddedFontsReady } from '../../shared/fonts/OfficeFontProvider';
 import { OfficeImagePreviewContext } from '../../shared/image-preview/OfficeImagePreviewContext';
 import { useExternalStoreSnapshot } from '../../shared/react/useExternalStoreSnapshot';
+import { OfficeSpinner } from '../../shared/ui/OfficeSpinner';
 import { OfficePreviewEmpty } from '../common/OfficePreviewEmpty';
+import { useOfficeSearchProviderRegistration } from '../search/OfficeSearchContext';
 import { useWordTargetNavigation } from '../word-hyperlink/useWordTargetNavigation';
 import { useWordOutlinePresence } from '../word-outline/useWordOutlinePresence';
 import { WordOutlineSidebar } from '../word-outline/WordOutlineSidebar';
@@ -32,6 +37,7 @@ import type { WordPageNavigationController } from '../word-pages/types';
 import { VirtualWordPageList } from '../word-pages/VirtualWordPageList';
 import { WordBlockPageIndex } from '../word-pages/WordBlockPageIndex';
 import { useWordPerformanceProfile } from '../word-performance/useWordPerformanceProfile';
+import { useWordSearchNavigation } from '../word-search/useWordSearchNavigation';
 import { DocxBlockRenderer } from './DocxBlockRenderer';
 import { DocxCharacterSpacingContext } from './DocxInlineContent';
 import { DocxPageFrame } from './DocxPageFrame';
@@ -60,6 +66,8 @@ type DocxViewerProps = {
   showOutline: boolean;
   /** 关闭文档大纲。 */
   onCloseOutline: () => void;
+  /** 搜索能力启用时切换到查找侧栏。 */
+  onOpenSearch?: () => void;
 };
 
 /** 按物理页序号选择首页、偶数页或默认页眉页脚。 */
@@ -86,12 +94,14 @@ function selectPageRegion<T>(
 function useMeasuredDocxPages(
   sourcePages: DocxPageContent[],
   reportPaginationDuration: (durationMs: number) => void,
+  measurementReady: boolean,
 ) {
   const measureRef = useRef<HTMLDivElement>(null);
   const [measuredPages, setMeasuredPages] = useState<DocxPageContent[]>();
 
   useLayoutEffect(() => {
     setMeasuredPages(undefined);
+    if (!measurementReady) return;
     const articles = Array.from(
       measureRef.current?.querySelectorAll<HTMLElement>(
         '.office-file-docx-page-frame__article',
@@ -139,7 +149,7 @@ function useMeasuredDocxPages(
       measured.some((page, index) => page !== sourcePages[index]);
     if (didSplit) setMeasuredPages(measured);
     reportPaginationDuration(performance.now() - startedAt);
-  }, [reportPaginationDuration, sourcePages]);
+  }, [measurementReady, reportPaginationDuration, sourcePages]);
 
   return { measureRef, pages: measuredPages ?? sourcePages };
 }
@@ -151,7 +161,10 @@ function DocxViewerComponent({
   zoom,
   showOutline,
   onCloseOutline,
+  onOpenSearch,
 }: DocxViewerProps) {
+  const messages = useOfficeFileViewerMessages();
+  const embeddedFontsReady = useOfficeEmbeddedFontsReady();
   const document =
     preview.mode === 'materialized' ? preview.model.document : undefined;
   const source = preview.mode === 'source' ? preview.source : undefined;
@@ -183,6 +196,7 @@ function DocxViewerComponent({
   const compressPunctuation =
     characterSpacingControl === 'compressPunctuation' ||
     characterSpacingControl === 'compressPunctuationAndJapaneseKana';
+
   const materializedOutlineItems = useMemo(
     () => (source || !shouldRenderOutline ? [] : document?.outline ?? []),
     [document?.outline, shouldRenderOutline, source],
@@ -214,6 +228,7 @@ function DocxViewerComponent({
   const { measureRef, pages: materializedPages } = useMeasuredDocxPages(
     materializedSourcePages,
     reportPaginationDuration,
+    embeddedFontsReady,
   );
   const materializedPageSource = useMemo(
     () =>
@@ -225,14 +240,18 @@ function DocxViewerComponent({
             block.id,
             ...(block.sourceBlockId ? [block.sourceBlockId] : []),
           ]),
+        searchBlocks: document
+          ? collectDocxSearchBlocks(document.blocks)
+          : undefined,
       }),
-    [materializedPages],
+    [document, materializedPages],
   );
   useEffect(
     () => () => void materializedPageSource.dispose(),
     [materializedPageSource],
   );
   const pageSource = source ?? materializedPageSource;
+  useOfficeSearchProviderRegistration(pageSource.searchProvider);
   const pageSnapshot = useExternalStoreSnapshot(pageSource);
   const outlineItems = useMemo(
     () =>
@@ -258,6 +277,14 @@ function DocxViewerComponent({
   const pageNavigationControllerRef = useRef<WordPageNavigationController>();
   useWordTargetNavigation({
     bookmarks: source ? summary?.bookmarks : document?.bookmarks,
+    scrollContainerRef,
+    pageMode: profile.pageMode,
+    pageSource,
+    blockPageIndex,
+    pageNavigationControllerRef,
+    documentSessionId,
+  });
+  useWordSearchNavigation({
     scrollContainerRef,
     pageMode: profile.pageMode,
     pageSource,
@@ -374,6 +401,13 @@ function DocxViewerComponent({
   ) {
     return <OfficePreviewEmpty kind="docx" />;
   }
+  if (!embeddedFontsReady) {
+    return (
+      <div className="office-file-docx-viewer office-file-docx-viewer--font-loading">
+        <OfficeSpinner size="large" label={messages.loading.parsing} />
+      </div>
+    );
+  }
 
   return (
     <DocxCharacterSpacingContext.Provider value={compressPunctuation}>
@@ -426,6 +460,7 @@ function DocxViewerComponent({
             documentSessionId={documentSessionId}
             layoutKey={layoutKey}
             onClose={onCloseOutline}
+            onOpenSearch={onOpenSearch}
           />
           <div
             ref={scrollContainerRef}

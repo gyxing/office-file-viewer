@@ -89,8 +89,8 @@ export function readTheme(xml: string): ThemeModel {
   const colorMap = {
     bg1: 'lt1',
     tx1: 'dk1',
-    bg2: 'dk2',
-    tx2: 'lt2',
+    bg2: 'lt2',
+    tx2: 'dk2',
     accent1: 'accent1',
     accent2: 'accent2',
     accent3: 'accent3',
@@ -132,11 +132,16 @@ export function readTheme(xml: string): ThemeModel {
     const latin = childByLocalName(node, 'latin');
     const ea = childByLocalName(node, 'ea');
     const cs = childByLocalName(node, 'cs');
-    fontScheme[bucket] = [
-      attr(latin, 'typeface'),
-      attr(ea, 'typeface'),
-      attr(cs, 'typeface'),
-    ]
+    const latinFamily = attr(latin, 'typeface');
+    const eastAsiaFamily = attr(ea, 'typeface');
+    const complexScriptFamily = attr(cs, 'typeface');
+    // 同时保留分类槽和兼容字体栈，主题占位符才能按文字类别还原源字体。
+    if (latinFamily) fontScheme[`${bucket}Latin`] = latinFamily;
+    if (eastAsiaFamily) fontScheme[`${bucket}EastAsia`] = eastAsiaFamily;
+    if (complexScriptFamily) {
+      fontScheme[`${bucket}ComplexScript`] = complexScriptFamily;
+    }
+    fontScheme[bucket] = [latinFamily, eastAsiaFamily, complexScriptFamily]
       .filter(Boolean)
       .join(', ');
   });

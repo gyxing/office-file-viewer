@@ -28,6 +28,10 @@ export interface DocBinarySource {
     length: number,
     signal?: AbortSignal,
   ): Promise<Uint8Array>;
+  /** 读取 ObjectPool 中嵌入对象的静态预览流，并保持 CFB 目录顺序。 */
+  readObjectPreviewStreams(
+    signal?: AbortSignal,
+  ): Promise<Array<readonly [string, Uint8Array]>>;
   /** 幂等释放 CFB Reader 和底层 Blob 数据源。 */
   dispose(): Promise<void>;
 }

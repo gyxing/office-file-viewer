@@ -4,8 +4,10 @@ import {
   childByLocalName,
   descendantByLocalName,
   matchesLocalName,
+  parseXml,
 } from '../../shared/ooxml/xml';
 import type { OfficeSourcePreviewFactory } from '../parsing/formatParserRegistry';
+import { WorkerWordPageSource } from '../parsing/runtime/source/WorkerWordPageSource';
 import { yieldToMainThread } from '../performance/mainThreadScheduler';
 import { disposeDocumentSession } from '../session';
 import type { WordBookmarkTarget } from '../word/types';
@@ -55,10 +57,7 @@ export type DocxSourceOutput = {
 };
 
 function createXmlDocument(rootName: string) {
-  return new DOMParser().parseFromString(
-    `<${rootName}></${rootName}>`,
-    'application/xml',
-  );
+  return parseXml(`<${rootName}></${rootName}>`);
 }
 
 function appendAttributes(
@@ -243,7 +242,13 @@ export async function parseDocxSource(
 /** 仅在 DOCX 画像命中大文件阈值时创建流式分页预览源。 */
 export const tryCreateDocxSourcePreview: OfficeSourcePreviewFactory = async (
   file,
-  { documentSession, emitProgress, emitPartial, resourcePolicy },
+  {
+    documentSession,
+    emitProgress,
+    emitPartial,
+    resourcePolicy,
+    workerSourceClient,
+  },
 ) => {
   emitProgress({
     stage: 'container',
@@ -258,6 +263,35 @@ export const tryCreateDocxSourcePreview: OfficeSourcePreviewFactory = async (
   if (archive.profile.mode !== 'lazy') {
     await archive.reader.close();
     return undefined;
+  }
+
+  if (workerSourceClient) {
+    await archive.reader.close();
+    const opened = await workerSourceClient.openSource(
+      file,
+      'docx',
+      resourcePolicy,
+      {
+        signal: documentSession.signal,
+        onProgress: emitProgress,
+      },
+    );
+    if (!opened.available || opened.source.kind !== 'docx') return undefined;
+    const source = new WorkerWordPageSource(workerSourceClient, opened.source);
+    documentSession.register({ dispose: () => source.dispose() });
+    documentSession.transferTo(source);
+    const state = {
+      sessionId: documentSession.id,
+      previewKind: 'docx' as const,
+      mode: 'source' as const,
+      source,
+      summary: source.getSummary(),
+    };
+    emitPartial(state);
+    return {
+      ...state,
+      dispose: () => disposeDocumentSession(source),
+    };
   }
 
   const source = new DocxWordPageSource({

@@ -20,6 +20,8 @@ type DocxTableBlockProps = {
   availableWidth?: number;
   /** 表格在当前页面或容器内允许占用的最大物理宽度。 */
   maximumWidth?: number;
+  /** 查找结果对应的顶层正文块标识。 */
+  searchBlockId?: string;
 };
 
 /** 渲染DOCX表格内容块。 */
@@ -27,12 +29,15 @@ function DocxTableBlockComponent({
   block,
   availableWidth,
   maximumWidth,
+  searchBlockId = block.sourceBlockId ?? block.id,
 }: DocxTableBlockProps) {
   const resolveVerticalPadding = (
     value: number | undefined,
     hasExplicitRowHeight: boolean,
     cell: DocxTableCell,
   ) => {
+    // 源文件显式声明的 0 也具有语义，不能再被浏览器补偿值覆盖。
+    if (value !== undefined) return value;
     // Word 的自动行高会包含字体度量留白；仅在源文件未固定行高和内边距时补偿浏览器差异。
     const paragraph = cell.blocks.find(
       (item): item is DocxParagraphBlock => item.type === 'paragraph',
@@ -51,16 +56,16 @@ function DocxTableBlockComponent({
       : paragraphLineHeight <= 22
       ? 4.5
       : 3.5;
-    return block.insideShape
-      ? Math.max(value ?? 0, defaultVerticalPadding)
-      : value ?? defaultVerticalPadding;
+    return defaultVerticalPadding;
   };
+  // 文本框内边距已经定义表格左边界，正文页的视觉补偿不能再次叠加。
+  const tableEdgeOffset = block.insideShape ? 0 : DOCX_TABLE_EDGE_OFFSET;
   const marginLeft =
     block.align === 'center'
       ? 'auto'
       : block.align === 'right'
       ? 'auto'
-      : -DOCX_TABLE_EDGE_OFFSET;
+      : -tableEdgeOffset;
   const marginRight =
     block.align === 'center' ? 'auto' : block.align === 'right' ? 0 : 'auto';
   const totalColumns =
@@ -76,7 +81,7 @@ function DocxTableBlockComponent({
     !block.position &&
       resolvedTableWidth &&
       maximumWidth &&
-      resolvedTableWidth > maximumWidth + DOCX_TABLE_EDGE_OFFSET * 2,
+      resolvedTableWidth > maximumWidth + tableEdgeOffset * 2,
   );
   const constrainedTableWidth =
     shouldFit && maximumWidth ? maximumWidth : resolvedTableWidth;
@@ -97,7 +102,7 @@ function DocxTableBlockComponent({
       ? -overflowWidth / 2
       : block.align === 'right'
       ? -overflowWidth
-      : -DOCX_TABLE_EDGE_OFFSET;
+      : -tableEdgeOffset;
   const positionStyle = calculatePositionStyle(block.position);
 
   return (
@@ -111,6 +116,7 @@ function DocxTableBlockComponent({
         marginTop: block.position ? undefined : block.marginTop,
         maxWidth: block.position ? 'none' : undefined,
       }}
+      data-office-word-block-id={searchBlockId}
     >
       <table
         className="office-file-docx-table-block__table"
@@ -217,6 +223,7 @@ function DocxTableBlockComponent({
                           maximumWidth={
                             cell.width ?? availableWidth ?? maximumWidth
                           }
+                          searchBlockId={searchBlockId}
                         />
                       ) : (
                         <DocxParagraph
@@ -224,6 +231,7 @@ function DocxTableBlockComponent({
                           block={item}
                           compact
                           asDiv
+                          searchBlockId={searchBlockId}
                         />
                       ),
                     )}

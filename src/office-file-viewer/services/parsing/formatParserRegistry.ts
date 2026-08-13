@@ -3,13 +3,16 @@ import type { OfficeDocumentSession } from '../session';
 import {
   OFFICE_FORMAT_METADATA,
   type OfficeFormatMetadata,
+  type PreviewFamily,
   type PreviewKind,
 } from './formatDefinitions';
 import type {
   OfficeFileViewerPreviewHandle,
   OfficeFileViewerPreviewState,
 } from './internalTypes';
+import type { WorkerSourceClient } from './runtime/source/WorkerSourceClient';
 import type { RuntimeContext, RuntimeSink } from './runtime/types';
+import type { OfficeFormatSessionAdapterFactory } from './sessionAdapters/types';
 import type { ParseProgress } from './types';
 
 /** 格式解析器向统一运行时输出增量或完整结果的入口合同。 */
@@ -29,6 +32,8 @@ export type OfficeSourcePreviewContext = {
   emitPartial(preview: OfficeFileViewerPreviewState): void;
   /** 当前解析会话采用的可选资源上限。 */
   resourcePolicy?: OfficeParseResourcePolicy;
+  /** 大 OOXML 文件需要在 Worker 长期持有 Reader 时使用的可选客户端。 */
+  workerSourceClient?: WorkerSourceClient;
 };
 
 /** 在大文件满足按需加载条件时创建预览源，否则交回普通解析流程。 */
@@ -99,6 +104,26 @@ const OFFICE_FORMAT_DEFINITIONS = {
   },
 } satisfies Record<PreviewKind, OfficeFormatDefinition>;
 
+/** 三类预览族只在普通解析链路真正启动时加载对应会话组装逻辑。 */
+const OFFICE_SESSION_ADAPTER_LOADERS = {
+  word: () =>
+    import('./sessionAdapters/createWordSessionAdapter').then(
+      ({ createWordSessionAdapter }) => createWordSessionAdapter,
+    ),
+  spreadsheet: () =>
+    import('./sessionAdapters/createSpreadsheetSessionAdapter').then(
+      ({ createSpreadsheetSessionAdapter }) => createSpreadsheetSessionAdapter,
+    ),
+  presentation: () =>
+    import('./sessionAdapters/createPresentationSessionAdapter').then(
+      ({ createPresentationSessionAdapter }) =>
+        createPresentationSessionAdapter,
+    ),
+} satisfies Record<
+  PreviewFamily,
+  () => Promise<OfficeFormatSessionAdapterFactory>
+>;
+
 /** 返回目标格式的完整动态能力定义。 */
 export function getOfficeFormatDefinition(
   kind: PreviewKind,
@@ -118,4 +143,12 @@ export async function loadOfficeSourcePreviewFactory(
   kind: PreviewKind,
 ): Promise<OfficeSourcePreviewFactory | undefined> {
   return getOfficeFormatDefinition(kind).loadSourcePreviewFactory?.();
+}
+
+/** 按具体格式所属的预览族加载内部会话组装适配器。 */
+export async function loadOfficeSessionAdapterFactory(
+  kind: PreviewKind,
+): Promise<OfficeFormatSessionAdapterFactory> {
+  const family = getOfficeFormatDefinition(kind).family;
+  return OFFICE_SESSION_ADAPTER_LOADERS[family]();
 }

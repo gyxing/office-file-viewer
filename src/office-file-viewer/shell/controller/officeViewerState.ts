@@ -59,6 +59,8 @@ export type OfficeViewerViewState = {
   internalShowSpeakerNotes: boolean;
   /** Word 文档大纲是否展开。 */
   showWordOutline: boolean;
+  /** 当前文档查找侧栏是否展开。 */
+  showSearch: boolean;
   /** 电子表格当前采用的显示模式。 */
   spreadsheetViewMode: SpreadsheetViewMode;
 };
@@ -145,6 +147,11 @@ export type OfficeViewerAction =
       visible: boolean;
     }
   | {
+      type: 'search-changed';
+      /** 文档查找侧栏的目标状态。 */
+      visible: boolean;
+    }
+  | {
       type: 'spreadsheet-view-mode-changed';
       /** 电子表格的目标显示模式。 */
       viewMode: SpreadsheetViewMode;
@@ -164,6 +171,7 @@ export function createInitialOfficeViewerState(options: {
       isFullscreen: false,
       internalShowSpeakerNotes: options.defaultViewState.speakerNotesVisible,
       showWordOutline: options.defaultViewState.wordOutlineVisible,
+      showSearch: options.defaultViewState.searchVisible,
       spreadsheetViewMode: options.defaultViewState.spreadsheetViewMode,
     },
   };
@@ -236,6 +244,7 @@ export function officeViewerReducer(
           activeSlideIndex: 0,
           activeSheetId: undefined,
           showWordOutline: false,
+          showSearch: false,
           spreadsheetViewMode: DEFAULT_SPREADSHEET_VIEW_MODE,
         },
       };
@@ -253,6 +262,7 @@ export function officeViewerReducer(
           zoom: normalizeOfficeZoom(action.viewState.zoom),
           internalShowSpeakerNotes: action.viewState.speakerNotesVisible,
           showWordOutline: action.viewState.wordOutlineVisible,
+          showSearch: action.viewState.searchVisible,
           spreadsheetViewMode: action.viewState.spreadsheetViewMode,
         },
       };
@@ -302,6 +312,7 @@ export function officeViewerReducer(
           activeSlideIndex: 0,
           activeSheetId: undefined,
           showWordOutline: false,
+          showSearch: false,
           spreadsheetViewMode: DEFAULT_SPREADSHEET_VIEW_MODE,
         },
       };
@@ -342,6 +353,12 @@ export function officeViewerReducer(
       return {
         ...state,
         view: { ...state.view, showWordOutline: action.visible },
+      };
+    case 'search-changed':
+      if (state.view.showSearch === action.visible) return state;
+      return {
+        ...state,
+        view: { ...state.view, showSearch: action.visible },
       };
     case 'spreadsheet-view-mode-changed':
       if (state.view.spreadsheetViewMode === action.viewMode) return state;

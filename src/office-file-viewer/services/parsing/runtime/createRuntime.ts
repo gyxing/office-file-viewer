@@ -13,7 +13,7 @@ export function createRuntime(
   workerFactory?: () => Worker,
 ) {
   if (mode === 'never') return new MainThreadRuntime();
-  if (!getOfficeFormatMetadata(kind).supportsWorker) {
+  if (getOfficeFormatMetadata(kind).workerCapability === 'none') {
     if (mode === 'always') {
       throw createWorkerConfigurationError(
         'WORKER_FORMAT_NOT_READY',

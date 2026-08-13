@@ -108,6 +108,34 @@ export function ZoomInIcon(props: OfficeIconProps) {
   );
 }
 
+/** 渲染文档查找图标。 */
+export function SearchIcon(props: OfficeIconProps) {
+  return (
+    <OfficeIconBase {...props}>
+      <circle cx="10.5" cy="10.5" r="6.5" />
+      <path d="M15.5 15.5 21 21" />
+    </OfficeIconBase>
+  );
+}
+
+/** 渲染向上切换结果图标。 */
+export function ChevronUpIcon(props: OfficeIconProps) {
+  return (
+    <OfficeIconBase {...props}>
+      <path d="m6 15 6-6 6 6" />
+    </OfficeIconBase>
+  );
+}
+
+/** 渲染向下切换结果图标。 */
+export function ChevronDownIcon(props: OfficeIconProps) {
+  return (
+    <OfficeIconBase {...props}>
+      <path d="m6 9 6 6 6-6" />
+    </OfficeIconBase>
+  );
+}
+
 /** 渲染图片预览图标。 */
 export function PreviewIcon(props: OfficeIconProps) {
   return (

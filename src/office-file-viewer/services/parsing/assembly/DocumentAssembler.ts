@@ -19,6 +19,7 @@ import type {
   PortableDocMetadata,
   PortablePresentationMetadata,
   PortableResource,
+  PortableSpreadsheetMetadata,
 } from '../protocol/messages';
 import { ResourceRegistry } from './ResourceRegistry';
 
@@ -33,6 +34,7 @@ type VersionedSpreadsheetSheet = {
 /** 将 XLS 跨线程分块还原成现有电子表格模型。 */
 export class XlsDocumentAssembler {
   private readonly sheets = new Map<number, VersionedSpreadsheetSheet>();
+  private metadata: PortableSpreadsheetMetadata = {};
   private warnings: SpreadsheetWarning[] = [];
   private completed = false;
 
@@ -40,6 +42,11 @@ export class XlsDocumentAssembler {
 
   async addResource(resource: PortableResource) {
     await this.resources.register(resource);
+  }
+
+  setMetadata(metadata: PortableSpreadsheetMetadata) {
+    if (this.completed) throw new Error('电子表格组装已经完成');
+    this.metadata = { ...metadata };
   }
 
   addSheet(index: number, revision: number, sheet: SpreadsheetSheet) {
@@ -84,6 +91,7 @@ export class XlsDocumentAssembler {
 
   private createWorkbook(objectUrls: string[] = []): SpreadsheetWorkbook {
     return {
+      ...this.metadata,
       sheets: [...this.sheets.entries()]
         .sort(([left], [right]) => left - right)
         .map(([, value]) => value.sheet),
@@ -101,6 +109,7 @@ export class XlsDocumentAssembler {
   dispose() {
     if (!this.completed) this.resources.dispose();
     this.sheets.clear();
+    this.metadata = {};
     this.warnings = [];
   }
 }
@@ -112,6 +121,10 @@ function resolveElementResources(
 ) {
   if (element.type === 'image' && typeof element.src === 'string') {
     element.src = resources.resolve(element.src);
+    return;
+  }
+  if (element.type === 'chart' && element.chart.snapshotSrc) {
+    element.chart.snapshotSrc = resources.resolve(element.chart.snapshotSrc);
     return;
   }
   if (element.type === 'group') {

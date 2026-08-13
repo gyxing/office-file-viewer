@@ -1,6 +1,7 @@
 import React, { memo } from 'react';
 import { useOfficeFileViewerMessages } from '../../locale';
 import type { SpeakerNotesModel } from '../../services/presentation/types';
+import { useOfficeFontResolver } from '../../shared/fonts/OfficeFontProvider';
 import { useSpeakerNotesResize } from './useSpeakerNotesResize';
 
 /** 定义演讲者备注面板可接收的属性。 */
@@ -17,6 +18,7 @@ function PptxSpeakerNotesComponent({
   notes,
 }: PptxSpeakerNotesProps) {
   const messages = useOfficeFileViewerMessages();
+  const resolveFontFamily = useOfficeFontResolver();
   const { height, maxHeight, panelRef, handleKeyDown, handleMouseDown } =
     useSpeakerNotesResize();
 
@@ -57,6 +59,11 @@ function PptxSpeakerNotesComponent({
                   <span
                     className="office-file-pptx-speaker-notes__bullet"
                     aria-hidden="true"
+                    style={{
+                      fontFamily: resolveFontFamily(
+                        paragraph.bullet?.fontFamily,
+                      ),
+                    }}
                   >
                     {bullet}
                   </span>

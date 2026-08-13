@@ -58,6 +58,19 @@ const DOCX_FLOW_TABLE_TOP_OFFSET = 8;
 // 百分比表宽不包含首尾默认单元格边距，Word 会把两侧各约 7px 绘制到正文边界外。
 /** DOCX 表格缺少边缘设置时使用的默认修正量。 */
 const DOCX_DEFAULT_TABLE_EDGE_OFFSET = 7;
+/** Word/WPS 正文单倍行距的默认行盒倍率，用于判断段落占用的文档网格数。 */
+const DOCX_BODY_LINE_HEIGHT_MULTIPLIER = 4 / 3;
+/** WPS 纯浮动锚点段落使用微软雅黑段落标记时采用的兼容行盒倍率。 */
+const DOCX_ANCHOR_YAHEI_LINE_HEIGHT_MULTIPLIER = 1.8;
+/** 可按字体场景还原纯浮动锚点段落网格占用的微软雅黑字体。 */
+const DOCX_YAHEI_FONT_PATTERN = /微软雅黑|Microsoft\s+YaHei/i;
+/** 宋体类字体在 12pt 下可完整落入 15.6pt 单行网格，需避免误吸附为双行网格。 */
+const DOCX_COMPACT_SERIF_LINE_HEIGHT_MULTIPLIER = 1.3;
+/** Word/WPS 文本框兼容行距的默认行盒倍率，用于还原文本框内的网格吸附。 */
+const DOCX_SHAPE_LINE_HEIGHT_MULTIPLIER = 1.2;
+/** 使用紧凑东亚衬线字形度量的常见 Office 字体。 */
+const DOCX_COMPACT_SERIF_FONT_PATTERN =
+  /宋体|新宋体|ＭＳ 明朝|SimSun|NSimSun|MS Mincho|Songti|Noto Serif CJK/i;
 
 /** 复杂域解析时保留的指令和已确定链接。 */
 type DocxFieldState = {
@@ -89,6 +102,68 @@ function currentFieldHyperlink(fieldStack: readonly DocxFieldState[]) {
   return undefined;
 }
 
+/** 形状文字只声明脚本提示时，Word 会改用 DrawingML 次要主题字体度量西文。 */
+function resolveShapeThemeFontFamily(
+  rPr: Element | null | undefined,
+  context: ParseContext,
+  insideShape: boolean,
+) {
+  if (!insideShape) return undefined;
+  const fonts = childByLocalName(rPr, 'rFonts');
+  if (!fonts) return undefined;
+  const explicitFontAttributes = [
+    'ascii',
+    'hAnsi',
+    'eastAsia',
+    'cs',
+    'asciiTheme',
+    'hAnsiTheme',
+    'eastAsiaTheme',
+    'cstheme',
+  ];
+  const hasExplicitFont = explicitFontAttributes.some(
+    (name) => attr(fonts, `w:${name}`) ?? attr(fonts, name),
+  );
+  if (hasExplicitFont) return undefined;
+  return context.theme.fontScheme?.minorFont;
+}
+
+/** 判断两个文字运行是否具有完全一致的可见样式。 */
+function haveEqualTextStyles(
+  left: DocxTextStyle | undefined,
+  right: DocxTextStyle | undefined,
+) {
+  const leftEntries = Object.entries(left ?? {});
+  const rightEntries = Object.entries(right ?? {});
+  return (
+    leftEntries.length === rightEntries.length &&
+    leftEntries.every(
+      ([name, value]) => right?.[name as keyof DocxTextStyle] === value,
+    )
+  );
+}
+
+/** 合并跨 run 的同样式连续空格，避免浏览器在相邻 span 边界错误压缩列距。 */
+function mergeAdjacentPreservedSpaces(inlines: DocxInline[]) {
+  return inlines.reduce<DocxInline[]>((merged, inline) => {
+    const previous = merged[merged.length - 1];
+    if (
+      previous?.type === 'text' &&
+      inline.type === 'text' &&
+      previous.text.endsWith(' ') &&
+      inline.text.startsWith(' ') &&
+      previous.hyperlink === inline.hyperlink &&
+      haveEqualTextStyles(previous.style, inline.style)
+    ) {
+      previous.text += inline.text;
+      previous.preserveSpace = true;
+      return merged;
+    }
+    merged.push(inline);
+    return merged;
+  }, []);
+}
+
 /** 将单个 run 的文本、换行和绘图子节点转换为行内模型。 */
 function parseRun(
   runNode: Element,
@@ -96,14 +171,18 @@ function parseRun(
   context: ParseContext,
   fieldStack: DocxFieldState[],
   wrapperHyperlink?: OfficeHyperlink,
+  insideShape = false,
 ): DocxInline[] {
+  const rPr = childByLocalName(runNode, 'rPr');
+  const shapeThemeFontFamily = resolveShapeThemeFontFamily(
+    rPr,
+    context,
+    insideShape,
+  );
   const runStyle = mergeTextStyle(
     inlineInheritedStyle(paragraphStyle),
-    resolveRunStyle(
-      childByLocalName(runNode, 'rPr'),
-      context.styles,
-      context.theme,
-    ),
+    resolveRunStyle(rPr, context.styles, context.theme),
+    shapeThemeFontFamily ? { fontFamily: shapeThemeFontFamily } : undefined,
   );
   const inlines: DocxInline[] = [];
 
@@ -127,9 +206,15 @@ function parseRun(
     const activeHyperlink =
       wrapperHyperlink ?? currentFieldHyperlink(fieldStack);
     if (matchesLocalName(child, 't')) {
+      const text = textContent(child);
       inlines.push({
         type: 'text',
-        text: textContent(child),
+        text,
+        // OOXML 会保留文本节点内部的连续空格；xml:space 额外覆盖首尾空格。
+        preserveSpace:
+          attr(child, 'xml:space') === 'preserve' || / {2,}/.test(text)
+            ? true
+            : undefined,
         style: runStyle,
         hyperlink: activeHyperlink,
       });
@@ -152,6 +237,28 @@ function parseRun(
   return inlines;
 }
 
+/** 判断修订是否连同段落标记一起删除。 */
+function hasDeletedParagraphMark(pNode: Element) {
+  const paragraphProperties = childByLocalName(pNode, 'pPr');
+  const paragraphMarkProperties = childByLocalName(
+    paragraphProperties,
+    'rPr',
+  );
+  return Array.from(paragraphMarkProperties?.children ?? []).some(
+    (child) =>
+      matchesLocalName(child, 'del') || matchesLocalName(child, 'moveFrom'),
+  );
+}
+
+/** 判断段落在忽略删除修订后是否仍有需要保留的行内内容。 */
+function hasFinalParagraphContent(paragraph: DocxParagraphBlock) {
+  return paragraph.inlines.some((inline) => {
+    if (inline.type === 'bookmark') return false;
+    if (inline.type === 'text') return inline.text.length > 0;
+    return true;
+  });
+}
+
 function readParagraphBlocks(
   pNode: Element,
   id: string,
@@ -159,6 +266,10 @@ function readParagraphBlocks(
   options?: ReadBlockChildrenOptions,
 ): DocxParagraphBlock[] {
   const paragraph = parseParagraph(pNode, id, context, options);
+  // 删除段落标记可能仅用于合并相邻段落；只有最终状态确实为空时才移除行盒。
+  if (hasDeletedParagraphMark(pNode) && !hasFinalParagraphContent(paragraph)) {
+    return [];
+  }
   return [paragraph];
 }
 
@@ -170,6 +281,7 @@ function readParagraphRunChildren(
   blockId: string,
   fieldStack: DocxFieldState[],
   wrapperHyperlink?: OfficeHyperlink,
+  insideShape = false,
 ) {
   const inlines: DocxInline[] = [];
 
@@ -182,6 +294,7 @@ function readParagraphRunChildren(
           context,
           fieldStack,
           wrapperHyperlink,
+          insideShape,
         ),
       );
       return;
@@ -208,6 +321,7 @@ function readParagraphRunChildren(
             blockId,
             fieldStack,
             wrapperHyperlink,
+            insideShape,
           ),
         );
       }
@@ -223,6 +337,7 @@ function readParagraphRunChildren(
           blockId,
           fieldStack,
           hyperlink ?? wrapperHyperlink,
+          insideShape,
         ),
       );
       return;
@@ -238,6 +353,7 @@ function readParagraphRunChildren(
           blockId,
           fieldStack,
           hyperlink ?? wrapperHyperlink,
+          insideShape,
         ),
       );
       return;
@@ -257,6 +373,7 @@ function readParagraphRunChildren(
           blockId,
           fieldStack,
           wrapperHyperlink,
+          insideShape,
         ),
       );
     }
@@ -270,8 +387,19 @@ function readParagraphRuns(
   paragraphStyle: DocxTextStyle | undefined,
   context: ParseContext,
   blockId: string,
+  insideShape = false,
 ) {
-  return readParagraphRunChildren(pNode, paragraphStyle, context, blockId, []);
+  return mergeAdjacentPreservedSpaces(
+    readParagraphRunChildren(
+      pNode,
+      paragraphStyle,
+      context,
+      blockId,
+      [],
+      undefined,
+      insideShape,
+    ),
+  );
 }
 
 function textFromInlines(inlines: DocxInline[]) {
@@ -282,6 +410,31 @@ function textFromInlines(inlines: DocxInline[]) {
     .join('');
 }
 
+/** 判断段落是否仅承载浮动对象及其空白锚点内容。 */
+function containsOnlyPositionedInlines(inlines: DocxInline[]) {
+  if (!inlines.length) return false;
+  let containsPositionedObject = false;
+  const onlyPositionedContent = inlines.every((inline) => {
+    if (inline.type === 'text') return !inline.text.trim();
+    if (inline.type === 'bookmark') return true;
+    if (inline.type === 'break' || inline.type === 'tab') return false;
+    if (inline.type === 'image') {
+      containsPositionedObject ||= Boolean(inline.image.position);
+      return Boolean(inline.image.position);
+    }
+    if (inline.type === 'shape') {
+      containsPositionedObject ||= Boolean(inline.shape.position);
+      return Boolean(inline.shape.position);
+    }
+    if (inline.type === 'chart') {
+      containsPositionedObject ||= Boolean(inline.chart.position);
+      return Boolean(inline.chart.position);
+    }
+    return false;
+  });
+  return onlyPositionedContent && containsPositionedObject;
+}
+
 function parseParagraph(
   pNode: Element,
   id: string,
@@ -290,7 +443,13 @@ function parseParagraph(
 ): DocxParagraphBlock {
   const pPr = childByLocalName(pNode, 'pPr');
   const style = resolveParagraphStyle(pPr, context.styles, context.theme);
-  const inlines = readParagraphRuns(pNode, style.style, context, id);
+  const inlines = readParagraphRuns(
+    pNode,
+    style.style,
+    context,
+    id,
+    Boolean(options?.insideShape),
+  );
   const sourceText = textFromInlines(inlines).trim();
   const numberingReference = style.numbering
     ? {
@@ -302,6 +461,19 @@ function parseParagraph(
     sourceText && !options?.insidePageRegion && numberingReference
       ? nextDocxNumberPrefix(numberingReference, context.numbering)
       : undefined;
+  const usesNumberingGeometry = Boolean(
+    numberPrefix?.suffix === 'tab' &&
+      numberPrefix.textStart !== undefined &&
+      numberPrefix.hanging !== undefined &&
+      numberPrefix.hanging > 0 &&
+      (style.firstLineIndent === undefined || style.firstLineIndent < 0),
+  );
+  const numberingIndentLeft = usesNumberingGeometry
+    ? style.indentLeft ?? numberPrefix?.textStart
+    : style.indentLeft;
+  const numberingFirstLineIndent = usesNumberingGeometry
+    ? style.firstLineIndent ?? -(numberPrefix?.hanging ?? 0)
+    : style.firstLineIndent;
   if (
     numberPrefix &&
     sourceText !== numberPrefix.text &&
@@ -315,8 +487,12 @@ function parseParagraph(
       style: numberPrefix.fontFamily
         ? { ...style.style, fontFamily: numberPrefix.fontFamily }
         : style.style,
+      // 编号标记与正文共享同一悬挂缩进，固定前进宽度可让换行正文继续对齐。
+      advanceWidth: usesNumberingGeometry
+        ? Math.max(0, -(numberingFirstLineIndent ?? 0))
+        : undefined,
     });
-    if (numberPrefix.suffix === 'tab')
+    if (numberPrefix.suffix === 'tab' && !usesNumberingGeometry)
       inlines.splice(1, 0, { type: 'tab', style: style.style });
   }
   const text = textFromInlines(inlines).trim();
@@ -329,29 +505,85 @@ function parseParagraph(
     style.outlineLevel <= 8
       ? style.outlineLevel
       : undefined;
-  const fontSize = style.style?.fontSize ?? 14;
+  const visibleRunFontSize = inlines.reduce((maximum, inline) => {
+    if (inline.type !== 'text' || !inline.text) return maximum;
+    return Math.max(maximum, inline.style?.fontSize ?? 0);
+  }, 0);
+  const visibleRunLineMetricStyle = inlines.reduce<
+    DocxTextStyle | undefined
+  >((current, inline) => {
+    if (inline.type !== 'text' || !inline.text) return current;
+    const currentSize =
+      current?.lineBoxFontSize ?? current?.fontSize ?? 0;
+    const inlineSize =
+      inline.style?.lineBoxFontSize ?? inline.style?.fontSize ?? 0;
+    return inlineSize > currentSize ? inline.style : current;
+  }, undefined);
+  const visibleRunLineBoxFontSize =
+    visibleRunLineMetricStyle?.lineBoxFontSize ??
+    visibleRunLineMetricStyle?.fontSize ??
+    0;
+  // 段落标记格式只影响空段落；存在可见 run 时，文字与行盒均以 run 为准。
+  const paragraphMarkFontSize =
+    style.paragraphMarkStyle?.fontSize ?? style.style?.fontSize ?? 0;
+  const paragraphMarkLineBoxFontSize =
+    style.paragraphMarkStyle?.lineBoxFontSize ?? paragraphMarkFontSize;
+  const fontSize = visibleRunFontSize || paragraphMarkFontSize || 14;
+  const lineBoxFontSize = visibleRunFontSize
+    ? Math.max(fontSize, visibleRunLineBoxFontSize)
+    : Math.max(fontSize, paragraphMarkLineBoxFontSize);
+  const paragraphTextStyle =
+    visibleRunFontSize > 0
+      ? style.style?.fontSize !== fontSize
+        ? { ...style.style, fontSize }
+        : style.style
+      : style.paragraphMarkStyle ?? style.style;
   const explicitLineHeightPx =
     style.lineHeight === undefined
       ? undefined
       : style.lineHeight <= 4
       ? fontSize * style.lineHeight
       : style.lineHeight;
-  // Word 会把行盒向上吸附到完整网格；按段落实际字号计算，避免正文被浏览器默认行高压缩。
+  // WPS 的纯浮动锚点段落仍按段落标记的字体场景占用网格，不能只使用浏览器默认行盒。
+  const usesAnchorYaHeiLineMetrics =
+    !visibleRunFontSize &&
+    !options?.insideShape &&
+    containsOnlyPositionedInlines(inlines) &&
+    Boolean(paragraphTextStyle?.bold) &&
+    DOCX_YAHEI_FONT_PATTERN.test(paragraphTextStyle?.fontFamily ?? '');
+  // 正文与文本框使用不同的默认行盒倍率，但都需按 Word 规则向上吸附文档网格。
+  // 网格占用必须按实际可见 run 的字体度量判断；段落标记字体只作为空段落回退。
+  const lineMetricFontFamily =
+    visibleRunLineMetricStyle?.fontFamily ??
+    paragraphTextStyle?.fontFamily ??
+    '';
+  const defaultLineHeightMultiplier = options?.insideShape
+    ? DOCX_SHAPE_LINE_HEIGHT_MULTIPLIER
+    : usesAnchorYaHeiLineMetrics
+    ? DOCX_ANCHOR_YAHEI_LINE_HEIGHT_MULTIPLIER
+    : DOCX_COMPACT_SERIF_FONT_PATTERN.test(lineMetricFontFamily)
+    ? DOCX_COMPACT_SERIF_LINE_HEIGHT_MULTIPLIER
+    : DOCX_BODY_LINE_HEIGHT_MULTIPLIER;
   const snappedDocumentLineHeight =
     style.snapToGrid !== false && context.documentGridLineHeight !== undefined
       ? Math.ceil(
-          (explicitLineHeightPx ?? fontSize * (4 / 3)) /
+          (explicitLineHeightPx ??
+            lineBoxFontSize * defaultLineHeightMultiplier) /
             context.documentGridLineHeight,
         ) * context.documentGridLineHeight
       : undefined;
-  const gridLineHeight = options?.insideTable
+  const gridLineHeight = options?.insideShape
+    ? snappedDocumentLineHeight
+    : options?.insideTable
     ? context.documentGridLineHeight
     : context.defaultLineHeight ?? snappedDocumentLineHeight;
   const lineHeight =
-    style.snapToGrid !== false &&
-    gridLineHeight !== undefined &&
-    (explicitLineHeightPx === undefined ||
-      explicitLineHeightPx < gridLineHeight)
+    style.lineHeightRule === 'exact' && style.lineHeight !== undefined
+      ? style.lineHeight
+      : style.snapToGrid !== false &&
+        gridLineHeight !== undefined &&
+        (explicitLineHeightPx === undefined ||
+          explicitLineHeightPx < gridLineHeight)
       ? gridLineHeight
       : style.lineHeight;
 
@@ -365,12 +597,12 @@ function parseParagraph(
     tabStops: style.tabStops,
     align: style.align,
     lineHeight,
-    style: style.style,
+    style: paragraphTextStyle,
     spacingBefore: style.spacingBefore,
     spacingAfter: style.spacingAfter,
-    indentLeft: style.indentLeft,
+    indentLeft: numberingIndentLeft,
     indentRight: style.indentRight,
-    firstLineIndent: style.firstLineIndent,
+    firstLineIndent: numberingFirstLineIndent,
     backgroundColor: style.backgroundColor,
     borderTop: style.borderTop,
     borderRight: style.borderRight,
@@ -596,16 +828,9 @@ function getParagraphAnchorLineHeight(block: DocxParagraphBlock) {
 function isPositionedOnlyParagraph(
   block: DocxBlock | undefined,
 ): block is DocxParagraphBlock {
-  if (!block || block.type !== 'paragraph' || !block.inlines.length)
-    return false;
-  return block.inlines.every((inline) => {
-    if (inline.type === 'text') return !inline.text.trim();
-    if (inline.type === 'break') return false;
-    if (inline.type === 'image') return Boolean(inline.image.position);
-    if (inline.type === 'shape') return Boolean(inline.shape.position);
-    if (inline.type === 'chart') return Boolean(inline.chart.position);
-    return false;
-  });
+  return Boolean(
+    block?.type === 'paragraph' && containsOnlyPositionedInlines(block.inlines),
+  );
 }
 
 function offsetTableAfterPositionedParagraph(
@@ -617,7 +842,8 @@ function offsetTableAfterPositionedParagraph(
   if (!table.position) {
     return {
       ...table,
-      marginTop: (table.marginTop ?? 0) + lineHeight,
+      // 锚点段落自身已占用一个正文行盒；流式表格应紧接该行，不能再叠加通用表格留白。
+      marginTop: 0,
     };
   }
   if (table.position.relativeFromV !== 'text') return table;

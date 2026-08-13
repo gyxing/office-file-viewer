@@ -1,5 +1,5 @@
-import type { OfficeChartModel } from '../../shared/ooxml/charts';
 import type { OfficeHyperlink } from '../../shared/hyperlink';
+import type { OfficeChartModel } from '../../shared/ooxml/charts';
 import type { OfficeResourceSource } from '../resource-store';
 
 /** 描述电子表格标准模型过程中可继续处理的警告。 */

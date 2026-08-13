@@ -6,11 +6,49 @@ import {
   buildChartGrid,
   buildLegend,
   normalizeSeriesType,
-  resolveBarWidthFromGap,
+  resolveBarCategoryGap,
   resolveCategories,
   resolveSeriesColor,
 } from './officeChartOptionShared';
 import type { OfficeChartModel } from './officeChartTypes';
+
+/** 判断图表是否需要为轴外数据标签预留一个主刻度。 */
+function hasVisibleDataLabels(chart: OfficeChartModel) {
+  if (chart.showDataLabels) return true;
+  return chart.series.some((series) => {
+    const labels = series.dataLabels;
+    return (
+      !labels?.delete &&
+      Boolean(
+        labels?.showVal ||
+          labels?.showCatName ||
+          labels?.showSerName ||
+          labels?.showPercent,
+      )
+    );
+  });
+}
+
+/** 按 Office 常用的 1/2/5 刻度序列估算自动数值轴上界。 */
+function resolveValueAxisMaximum(chart: OfficeChartModel) {
+  if (chart.valueAxisMaximum !== undefined) return chart.valueAxisMaximum;
+  if (!hasVisibleDataLabels(chart)) return undefined;
+  const maximum = Math.max(
+    0,
+    ...chart.series.flatMap((series) => series.values),
+  );
+  if (maximum <= 0) return undefined;
+  const rawStep = maximum / 5;
+  const magnitude = 10 ** Math.floor(Math.log10(rawStep));
+  const normalized = rawStep / magnitude;
+  const stepMultiplier = normalized <= 1 ? 1 : normalized <= 2 ? 2 : 5;
+  const step = stepMultiplier * magnitude;
+  const roundedMaximum = Math.ceil(maximum / step) * step;
+  // 最大数据点正好压在主刻度上时，Office 会再留一格展示轴外标签。
+  return Math.abs(roundedMaximum - maximum) <= step * 1e-9
+    ? roundedMaximum + step
+    : roundedMaximum;
+}
 
 /** 构建柱形、条形、折线、面积、散点、气泡和组合图配置。 */
 export function buildCartesianChartOption(
@@ -21,6 +59,9 @@ export function buildCartesianChartOption(
     normalizeSeriesType(item.type ?? chart.type),
   );
   const isHorizontalBar = chart.type === 'bar';
+  const showCategoryAxis = chart.showCategoryAxis !== false;
+  const showValueAxis = chart.showValueAxis !== false;
+  const valueAxisMaximum = resolveValueAxisMaximum(chart);
   const isScatter =
     normalizedSeriesTypes.length > 0 &&
     normalizedSeriesTypes.every((type) => type === 'scatter');
@@ -48,8 +89,8 @@ export function buildCartesianChartOption(
         normalizeSeriesType(seriesItem.type ?? chart.type) === 'bar' &&
         !seriesItem.stackGroup,
     ).length;
-    const barWidth = isBarSeries
-      ? resolveBarWidthFromGap(
+    const barCategoryGap = isBarSeries
+      ? resolveBarCategoryGap(
           item.gapWidth ?? chart.gapWidth,
           barSeriesCount,
           item.overlap ?? chart.overlap,
@@ -132,18 +173,56 @@ export function buildCartesianChartOption(
               )
           : item.marker?.size ?? (isBubbleSeries ? 14 : 8),
       label: labelConfig,
-      barWidth,
       barGap:
         isBarSeries && item.overlap !== undefined
           ? `${-item.overlap}%`
           : undefined,
-      barCategoryGap:
-        isBarSeries && item.gapWidth !== undefined
-          ? `${item.gapWidth}%`
-          : undefined,
-      barMaxWidth: isBarSeries && !barWidth ? 32 : undefined,
+      barCategoryGap,
+      barMaxWidth:
+        isBarSeries && item.gapWidth === undefined ? 32 : undefined,
     };
   }) as EChartsOption['series'];
+
+  const categoryAxisOption = {
+    type: 'category' as const,
+    data: categories,
+    axisLine: {
+      show: showCategoryAxis,
+      lineStyle: { color: '#cbd5e1' },
+    },
+    axisTick: {
+      show: showCategoryAxis,
+      lineStyle: { color: '#cbd5e1' },
+    },
+    axisLabel: {
+      show: showCategoryAxis,
+      hideOverlap: true,
+      color: '#475569',
+    },
+  };
+  const valueAxisOption = {
+    type: 'value' as const,
+    min: chart.valueAxisMinimum,
+    max: valueAxisMaximum,
+    interval: chart.valueAxisMajorUnit,
+    axisLine: {
+      show: showValueAxis,
+      lineStyle: { color: '#cbd5e1' },
+    },
+    axisTick: {
+      show: showValueAxis,
+      lineStyle: { color: '#cbd5e1' },
+    },
+    // Office 可隐藏数值轴但保留主网格线，二者不能共用同一个可见性开关。
+    splitLine: {
+      lineStyle: { color: '#eef2f7' },
+    },
+    axisLabel: {
+      show: showValueAxis,
+      hideOverlap: true,
+      color: '#475569',
+    },
+  };
 
   return {
     animation: false,
@@ -181,87 +260,8 @@ export function buildCartesianChartOption(
     },
     legend: buildLegend(chart),
     grid: buildChartGrid(chart),
-    xAxis: isHorizontalBar
-      ? {
-          type: 'value',
-          axisLine: {
-            lineStyle: {
-              color: '#cbd5e1',
-            },
-          },
-          axisTick: {
-            lineStyle: {
-              color: '#cbd5e1',
-            },
-          },
-          splitLine: {
-            lineStyle: {
-              color: '#eef2f7',
-            },
-          },
-          axisLabel: {
-            hideOverlap: true,
-            color: '#475569',
-          },
-        }
-      : {
-          type: 'category',
-          data: categories,
-          axisLine: {
-            lineStyle: {
-              color: '#cbd5e1',
-            },
-          },
-          axisTick: {
-            lineStyle: {
-              color: '#cbd5e1',
-            },
-          },
-          axisLabel: {
-            hideOverlap: true,
-            color: '#475569',
-          },
-        },
-    yAxis: isHorizontalBar
-      ? {
-          type: 'category',
-          data: categories,
-          axisLine: {
-            lineStyle: {
-              color: '#cbd5e1',
-            },
-          },
-          axisTick: {
-            lineStyle: {
-              color: '#cbd5e1',
-            },
-          },
-          axisLabel: {
-            hideOverlap: true,
-            color: '#475569',
-          },
-        }
-      : {
-          type: 'value',
-          axisLine: {
-            lineStyle: {
-              color: '#cbd5e1',
-            },
-          },
-          axisTick: {
-            lineStyle: {
-              color: '#cbd5e1',
-            },
-          },
-          splitLine: {
-            lineStyle: {
-              color: '#eef2f7',
-            },
-          },
-          axisLabel: {
-            color: '#475569',
-          },
-        },
+    xAxis: isHorizontalBar ? valueAxisOption : categoryAxisOption,
+    yAxis: isHorizontalBar ? categoryAxisOption : valueAxisOption,
     series,
   };
 }

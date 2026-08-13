@@ -173,10 +173,12 @@ type OfficeFileViewerUri = File | string | OfficeFileViewerUriLoader;
 | `onFileParsed`                   | `(parsed: ParsedOfficeFile, file: File) => void`     | -          | 完整实体化解析结果可用时触发一次       |
 | `onPreviewReady`                 | `(info: OfficePreviewReadyInfo, file: File) => void` | -          | 首个可用预览就绪时触发一次             |
 | `onError`                        | `(error: Error, file?: File) => void`                | -          | 加载、解析或预览器操作失败时触发       |
-| `onWarning`                      | `(warning, file) => void`                            | -          | 非致命解析降级或部分预览保留时触发     |
+| `onWarning`                      | `(warning, file) => void`                            | -          | 非致命解析降级、部分预览或字体回退警告 |
 | `parseOptions`                   | `OfficeParseOptions`                                 | `{}`       | Worker 策略与可选资源限制              |
 | `imagePreview`                   | `boolean \| OfficeFileViewerImagePreviewOptions`     | `true`     | 内容图片预览、下载与右键菜单配置       |
 | `hyperlink`                      | `boolean`                                            | `true`     | 是否启用源文档明确声明的超链接         |
+| `search`                         | `false \| OfficeFileViewerSearchOptions`             | `{}`       | 全文查找入口、运行时与初始匹配选项     |
+| `fontOptions`                    | `OfficeFileViewerFontOptions`                        | `{}`       | 字体别名、回退字体和缺失字体诊断       |
 | `onHyperlinkActivate`            | `(event: OfficeHyperlinkActivateEvent) => void`      | -          | 链接有效激活时触发，可阻止默认导航     |
 | `onParseProgress`                | `(progress: ParseProgress) => void`                  | -          | 解析阶段或完成度变化时触发             |
 
@@ -246,6 +248,44 @@ export default function OfficePreview({ file }: { file: File }) {
 
 设置 `hyperlink={false}` 会关闭链接焦点、提示和激活行为，但不会改变源文档保存的颜色、下划线或版式。
 
+### 全文查找
+
+DOC、DOCX、WPS、XLS、XLSX、PPT 和 PPTX 均支持工具栏查找入口与 `Ctrl + F`（macOS 为 `Command + F`）。查询采用可取消的增量扫描，结果生成后即可导航，不需要等待整个大文件扫描完成。`Esc` 关闭查找侧栏；切换文件会清空上一文件的查询和结果。
+
+```ts | pure
+type OfficeFileViewerSearchOptions = {
+  defaultVisible?: boolean;
+  matchCase?: boolean;
+  wholeWord?: boolean;
+};
+```
+
+不传 `search` 时默认启用；传入 `false` 会同时移除入口、快捷键和查找运行时。对象配置只设置非受控初始值，后续显隐可以通过 `viewState.searchVisible` 控制。查找范围为 Word 正文、Excel 单元格和 PowerPoint 幻灯片中的可见文本；当前不包含 Word 批注和 PowerPoint 演讲者备注。
+
+### 字体别名与回退
+
+组件不捆绑或下载 Office 字体。渲染时会保留源字体优先级，并依次加入内置别名、宿主别名、全局回退字体和通用字体族。宿主可以按部署环境补充字体映射：
+
+```tsx | pure
+<OfficeFileViewer
+  uri={file}
+  fontOptions={{
+    aliases: {
+      'Source Office Font': ['Available Corporate Font', 'Arial'],
+    },
+    fallbackFamilies: ['Noto Sans CJK SC', 'sans-serif'],
+    warnOnMissing: true,
+  }}
+  onWarning={(warning) => {
+    if (warning.code === 'FONT_FALLBACK_APPLIED') {
+      console.warn(warning.requestedFamily, warning.candidates);
+    }
+  }}
+/>
+```
+
+`aliases` 会覆盖同名的内置别名，比较字体名时不区分大小写；`fallbackFamilies` 追加到全部字体链。`warnOnMissing` 默认为 `true`，但只有同时提供 `onWarning` 且浏览器支持 Font Loading API 时才进行诊断。诊断在首屏就绪后批量执行，同一文档会话内每种缺失字体只报告一次，警告代码固定为 `FONT_FALLBACK_APPLIED`。缺失字体只触发回退警告，不会阻止预览。
+
 ### 统一视图状态
 
 `defaultViewState` 用于设置非受控初始值；`viewState` 只控制实际传入的字段，未传字段仍由组件内部管理。可控制字段如下：
@@ -256,6 +296,7 @@ type OfficeFileViewerViewState = {
   activeSlideIndex: number;
   activeSheetId?: string;
   wordOutlineVisible: boolean;
+  searchVisible: boolean;
   speakerNotesVisible: boolean;
   spreadsheetViewMode: 'source' | 'reading';
 };
@@ -270,7 +311,7 @@ type OfficeFileViewerViewState = {
 - `onPreviewReady` 在完整模型（`mode: 'materialized'`）或按需数据源（`mode: 'source'`）能够渲染首个可用预览时触发。
 - `onFileParsed` 在完整实体化结果就绪后触发；渐进解析的中间结果不会触发它。
 - `onParseProgress` 可以多次触发，且可能不包含精确数量或 `percent`。
-- `onWarning` 用稳定的 `code`、`previewKind` 和 `source` 区分解析器警告与保留部分预览；它不会代替 `onError`。
+- `onWarning` 用稳定的 `code`、`previewKind` 和 `source` 区分解析器、保留部分预览、链接与字体警告；它不会代替 `onError`。
 - 错误发生在有效文件解析出来之前时，`onError` 可能收不到 `file`。资源策略错误可以通过 `OfficeResourceLimitError.code` 进一步判断。
 
 ## 解析配置与进度
@@ -294,13 +335,15 @@ type OfficeParseOptions = {
 };
 ```
 
-| 模式       | DOC/WPS、XLS、PPT                       | DOCX、XLSX、PPTX                    |
-| ---------- | --------------------------------------- | ----------------------------------- |
-| `'auto'`   | 优先使用 Worker，必要时回退到主线程     | 当前在主线程解析                    |
-| `'always'` | 必须创建兼容 Worker，无法创建时直接失败 | Worker 迁移尚未完成，会抛出配置错误 |
-| `'never'`  | 始终在主线程解析                        | 始终在主线程解析                    |
+| 模式       | 七种格式的行为                                                                                                                    |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `'auto'`   | 默认模式。旧格式优先使用 Worker；小型 OOXML 使用完整模型，大型 OOXML 使用 Worker 持有的按需数据源；仅 Worker 启动失败时回退主线程 |
+| `'always'` | 强制七种格式使用 Worker；Worker 不可用、加载失败或协议不兼容时直接报错，不进行主线程降级                                          |
+| `'never'`  | 禁用 Worker；解析在主线程执行，大文件仍可采用按需数据源与虚拟渲染                                                                 |
 
-每个正在运行的旧格式解析会话拥有独立 Worker。来源切换或组件卸载时，预览器会取消并释放当前会话。`workerFactory` 主要用于需要特殊资源路径或内容安全策略的宿主；大多数应用应使用内置工厂。
+每个活动解析会话只持有自己的 Worker 与资源读取器。来源切换、取消解析或组件卸载时，预览器会取消请求并释放对应 Worker、归档读取器和 Blob URL。大文件的查找和按需页、工作表或幻灯片读取会继续在 Worker 中执行，主线程只接收当前需要的结构化数据和惰性资源。`workerFactory` 主要用于需要特殊资源路径或内容安全策略的宿主；大多数应用应使用内置工厂。
+
+`auto` 使用的文件画像阈值只决定完整解析、按需读取、虚拟渲染和任务让出策略，不是文件大小限制，也不会因为命中阈值而拒绝文件。小文件刻意保留更简单的完整模型路径，避免 Worker 通信和惰性读取带来额外开销。
 
 ### 资源限制
 
@@ -374,6 +417,22 @@ type OfficeParseSession<TParsed> = {
 ```
 
 `createOfficeParseSession(file, options)` 接收受支持的 `File`，返回 `OfficeParseSession<ParsedOfficeFile>`。取消操作会使 `result` 被拒绝；调用方等待该 Promise 时，应像处理其他解析失败一样处理取消错误。
+
+### `.ppt` 兼容解析接口
+
+根入口保留 `parsePpt(file)`，用于把单个未加密的 `.ppt` 文件完整解析为 `PresentationDocument`。该兼容接口会在主线程实体化整个演示文稿，不提供 Worker 策略、解析进度、取消或资源限制；新接入应优先使用 `createOfficeParseSession`。
+
+```ts | pure
+import { disposePresentationDocument, parsePpt } from 'office-file-viewer';
+
+const presentation = await parsePpt(file);
+
+try {
+  console.info(presentation.slides.length);
+} finally {
+  disposePresentationDocument(presentation);
+}
+```
 
 ### 会话生命周期
 
@@ -464,6 +523,7 @@ try {
 - 旧格式 DOC/WPS、XLS 和 PPT 优先保证内容可读。复杂分页、锚点、文字环绕、OfficeArt 效果和动画可能与桌面应用不同。
 - DOC/WPS 的页面级 OfficeArt 画布当前以单张 SVG 图片显示，无法精确保留画布内每个子形状的独立链接点击区；这类链接会产生非阻断降级提示，字段链接和正文书签不受影响。
 - OOXML 文件可能包含尚未支持的宏、ActiveX 控件、OLE 对象、SmartArt、厂商扩展或复杂动画。这些内容可能被忽略、降级，或使用内嵌静态快照显示。
+- Word 文档当前显示最终正文状态，不呈现批注、修订标记或审阅气泡；脚注和尾注也未纳入正文渲染与全文查找。
 - 预览器为只读组件，不提供编辑、保存、格式转换、打印排版，也不把 Office 文件导出为 PDF 或图片。
 - 外部链接图片和动态地图数据仍可能需要网络。地图数据失败时会优先使用内嵌快照；没有快照时显示明确失败状态。
 
@@ -471,9 +531,9 @@ try {
 
 组件面向现代浏览器，依赖 `File`、`fetch`、`DOMParser`、`AbortController`、`IntersectionObserver`、`ResizeObserver`、Blob URL、Canvas、Web Worker 和 Fullscreen API 等能力。
 
-Worker 可以减少受支持旧格式在主线程上的解析工作，但不会消除源文件或解析模型占用的内存。DOCX、XLSX 和 PPTX 当前在主线程解析，因此超大或复杂文件可能短暂降低界面响应速度。
+七种格式均可把解析工作移入 Worker；大型 DOCX、XLSX 和 PPTX 还会由 Worker 长期持有归档读取器，并按当前视口加载页面、区域、幻灯片和资源。Worker 与虚拟渲染能减少主线程长任务和一次性模型成本，但不会消除源文件、已加载内容或浏览器图形资源占用的内存。
 
-组件默认不限制源文件大小、ZIP 条目数量、单条目大小或解压后总量。处理不可信文件时，宿主应通过 `parseOptions.resourcePolicy` 按目标设备和安全模型设置限制。
+组件默认不限制源文件大小、ZIP 条目数量、单条目大小或解压后总量，且内部大文件阈值不会拒绝文件。处理不可信文件时，宿主应通过 `parseOptions.resourcePolicy` 按目标设备和安全模型显式设置限制。
 
 ### 不可信文件与远程访问
 

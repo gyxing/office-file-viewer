@@ -4,7 +4,9 @@ import type { PresentationDocument } from './services/presentation/types';
 export type { OfficeFileViewerLocale } from './locale';
 export { OfficeFileViewer } from './OfficeFileViewer';
 export type {
+  OfficeFileViewerFontOptions,
   OfficeFileViewerProps,
+  OfficeFileViewerSearchOptions,
   OfficeFileViewerUri,
   OfficeFileViewerUriLoader,
 } from './OfficeFileViewer';
@@ -48,6 +50,7 @@ export type { ParsedOfficeFile, PreviewKind } from './services/preview';
 export type {
   OfficeFileViewerWarning,
   OfficeFileViewerWarningSource,
+  OfficeFontFallbackWarning,
 } from './services/previewWarnings';
 export { disposeSpreadsheetWorkbook } from './services/spreadsheet/types';
 export type {

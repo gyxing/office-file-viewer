@@ -10,6 +10,8 @@ import type {
 
 /** DOC 图片并排布局时的行内间距，单位为标准化渲染像素。 */
 export const DOC_IMAGE_ROW_GAP = 6;
+/** 结构化 DOC 表格相对正文网格的顶部修正量。 */
+export const DOC_STRUCTURED_TABLE_TOP_OFFSET = 8;
 
 // 页面可用高度已扣除上下页边距；不再重复预留缓冲，避免把本应同页的图片组拆页。
 /** DOC 分页高度估算预留量，单位为标准化渲染像素。 */
@@ -21,6 +23,15 @@ const DOC_PAGE_HEIGHT_TOLERANCE = 2;
 const DOC_IMAGE_LAYOUT_ROW_GAP = 12;
 /** DOC 图片布局上下预留的空白，单位为标准化渲染像素。 */
 const DOC_IMAGE_LAYOUT_VERTICAL_MARGIN = 10;
+/** 表格至少可在页尾显示此比例时才拆行，避免只留下表头和孤立首行。 */
+const DOC_TABLE_SPLIT_MIN_VISIBLE_RATIO = 0.5;
+/** 常用汉字在中文字体中按全角字宽参与换行估算。 */
+const DOC_HAN_CHAR_PATTERN = /[\u4e00-\u9fa5]/;
+/** 12pt 及以上中文正文中与汉字占用相同网格的全角字符范围。 */
+const DOC_FULL_WIDTH_CHAR_PATTERN =
+  /[\u2e80-\u9fff\uf900-\ufaff\uff01-\uff60\uffe0-\uffe6]/;
+/** 12pt 中文正文换算成标准化渲染像素后的字号。 */
+const DOC_FULL_WIDTH_PUNCTUATION_FONT_SIZE = 16;
 
 // DOC 没有 OOXML 的显式页面模型，这里记录前端估算分页后的页面块集合。
 /** 完成内容块分页后的 DOC 页面。 */
@@ -117,11 +128,27 @@ export function imageRows(images: DocImage[], contentWidth: number) {
   return rows;
 }
 
-function weightedTextLength(text: string) {
-  return Array.from(text).reduce(
-    (sum, char) => sum + (/[\u4e00-\u9fa5]/.test(char) ? 1 : 0.55),
-    0,
-  );
+function weightedTextLength(text: string, fontSize: number) {
+  const fullWidthPattern =
+    fontSize >= DOC_FULL_WIDTH_PUNCTUATION_FONT_SIZE
+      ? DOC_FULL_WIDTH_CHAR_PATTERN
+      : DOC_HAN_CHAR_PATTERN;
+  return Array.from(text).reduce((sum, char) => {
+    // 12pt 中文网格中的全角标点占满字格；较小字号沿用 Word 的紧凑标点宽度。
+    if (char === '\t') return sum + 4;
+    return sum + (fullWidthPattern.test(char) ? 1 : 0.55);
+  }, 0);
+}
+
+/** 读取浏览器实际渲染的行内文字，保留编号制表符等分页所需字符。 */
+function renderedTextFromInlines(
+  fallbackText: string,
+  inlines?: DocTextInline[],
+) {
+  const inlineText = inlines
+    ?.flatMap((inline) => (inline.type === 'text' ? [inline.text] : []))
+    .join('');
+  return inlineText?.length ? inlineText : fallbackText;
 }
 
 function estimateLineCount(
@@ -138,7 +165,11 @@ function estimateLineCount(
     .split('\n')
     .reduce(
       (lines, line) =>
-        lines + Math.max(1, Math.ceil(weightedTextLength(line) / charsPerLine)),
+        lines +
+        Math.max(
+          1,
+          Math.ceil(weightedTextLength(line, fontSize) / charsPerLine),
+        ),
       0,
     );
 }
@@ -159,20 +190,48 @@ function estimateParagraphLineCount(
     fontSize * 4,
     paragraphWidth - (block.style?.firstLineIndent ?? 0),
   );
+  // 12pt 两端对齐正文按完整中文网格换行；较小字号与非两端对齐正文保留紧凑字宽。
+  const characterWidthFactor =
+    fontSize >= DOC_FULL_WIDTH_PUNCTUATION_FONT_SIZE &&
+    block.style?.textAlign === 'justify'
+      ? 1
+      : 0.95;
   const normalCapacity = Math.max(
     8,
-    Math.floor(paragraphWidth / (fontSize * 0.95)),
+    Math.floor(paragraphWidth / (fontSize * characterWidthFactor)),
   );
   const firstLineCapacity = Math.max(
     4,
-    Math.floor(firstLineWidth / (fontSize * 0.95)),
+    Math.floor(firstLineWidth / (fontSize * characterWidthFactor)),
   );
+  const wrappedLineCapacity = normalCapacity;
 
-  return (block.text || ' ').split('\n').reduce((lines, line) => {
-    const length = weightedTextLength(line);
-    if (length <= firstLineCapacity) return lines + 1;
-    return lines + 1 + Math.ceil((length - firstLineCapacity) / normalCapacity);
-  }, 0);
+  return renderedTextFromInlines(block.text, block.inlines)
+    .split('\n')
+    .reduce((lines, line) => {
+      const length = weightedTextLength(line, fontSize);
+      if (length <= firstLineCapacity) return lines + 1;
+      return (
+        lines +
+        1 +
+        Math.ceil((length - firstLineCapacity) / wrappedLineCapacity)
+      );
+    }, 0);
+}
+
+/** 读取段落及其文字片段实际使用的最大字号，避免行内样式放大后分页仍按段落默认值估算。 */
+function resolveParagraphFontSize(
+  block: DocParagraphBlock,
+  fallbackFontSize: number,
+) {
+  return Math.max(
+    block.style?.fontSize ?? fallbackFontSize,
+    ...(block.inlines ?? []).flatMap((inline) =>
+      inline.type === 'text' && inline.style?.fontSize !== undefined
+        ? [inline.style.fontSize]
+        : [],
+    ),
+  );
 }
 
 /** 把无单位倍数或已标准化的绝对行距统一换算为像素。 */
@@ -180,32 +239,196 @@ function resolveLineHeightPx(fontSize: number, lineHeight: number) {
   return lineHeight > 4 ? lineHeight : fontSize * lineHeight;
 }
 
+type DocParagraphLayoutMetrics = {
+  fontSize: number;
+  lineHeightPx: number;
+  spacingBefore: number;
+  spacingAfter: number;
+  paddingTop: number;
+  paddingBottom: number;
+};
+
+/** 统一读取 DOC 段落估高与跨页拆分共用的垂直排版参数。 */
+function resolveParagraphLayoutMetrics(
+  block: DocParagraphBlock,
+): DocParagraphLayoutMetrics {
+  const isTitle = block.role === 'title';
+  const isHeading = block.role === 'heading';
+  const fontSize = resolveParagraphFontSize(
+    block,
+    isTitle ? 22 : isHeading ? 16 : 14,
+  );
+  const lineHeight =
+    block.style?.lineHeight ?? (isTitle ? 1.45 : isHeading ? 1.65 : 1.8);
+  return {
+    fontSize,
+    lineHeightPx: resolveLineHeightPx(fontSize, lineHeight),
+    spacingBefore: block.style?.spacingBefore ?? 0,
+    spacingAfter:
+      block.style?.spacingAfter ?? (isTitle ? 18 : isHeading ? 14 : 12),
+    paddingTop: block.style?.paddingTop ?? 0,
+    paddingBottom: block.style?.paddingBottom ?? 0,
+  };
+}
+
 function estimateParagraphTextHeight(
   block: DocParagraphBlock,
   contentWidth: number,
 ) {
-  const isTitle = block.role === 'title';
-  const isHeading = block.role === 'heading';
-  const fontSize =
-    block.style?.fontSize ?? (isTitle ? 22 : isHeading ? 16 : 14);
-  const lineHeight =
-    block.style?.lineHeight ?? (isTitle ? 1.45 : isHeading ? 1.65 : 1.8);
-  const defaultSpacingAfter = isTitle ? 18 : isHeading ? 14 : 12;
-  const spacingBefore = block.style?.spacingBefore ?? 0;
-  const spacingAfter = block.style?.spacingAfter ?? defaultSpacingAfter;
-  const padding =
-    (block.style?.paddingTop ?? 0) + (block.style?.paddingBottom ?? 0);
-  const lines = estimateParagraphLineCount(block, contentWidth, fontSize);
-
+  const metrics = resolveParagraphLayoutMetrics(block);
+  const lines = estimateParagraphLineCount(
+    block,
+    contentWidth,
+    metrics.fontSize,
+  );
   return Math.max(
     18,
-    lines * resolveLineHeightPx(fontSize, lineHeight) +
-      spacingBefore +
-      spacingAfter +
-      padding,
+    lines * metrics.lineHeightPx +
+      metrics.spacingBefore +
+      metrics.spacingAfter +
+      metrics.paddingTop +
+      metrics.paddingBottom,
   );
 }
+/** 按可见文字偏移拆分行内节点，同时保留两侧文字样式和超链接。 */
+function splitTextInlinesAtOffset(
+  inlines: DocTextInline[] | undefined,
+  offset: number,
+) {
+  const leading: DocTextInline[] = [];
+  const trailing: DocTextInline[] = [];
+  let remaining = offset;
+  let reachedTrailing = false;
+  (inlines ?? []).forEach((inline) => {
+    if (inline.type !== 'text') {
+      (reachedTrailing ? trailing : leading).push(inline);
+      return;
+    }
+    if (reachedTrailing || remaining <= 0) {
+      reachedTrailing = true;
+      trailing.push(inline);
+      return;
+    }
+    if (inline.text.length <= remaining) {
+      leading.push(inline);
+      remaining -= inline.text.length;
+      return;
+    }
+    leading.push({ ...inline, text: inline.text.slice(0, remaining) });
+    trailing.push({ ...inline, text: inline.text.slice(remaining) });
+    remaining = 0;
+    reachedTrailing = true;
+  });
+  return { leading, trailing };
+}
 
+/** 根据真实行数比例定位分页文字边界，兼顾中英文混排的近似字宽。 */
+function resolveParagraphSplitOffset(
+  text: string,
+  fontSize: number,
+  leadingLines: number,
+  totalLines: number,
+) {
+  const totalWeight = weightedTextLength(text, fontSize);
+  const targetWeight = (totalWeight * leadingLines) / totalLines;
+  let consumedWeight = 0;
+  let offset = 0;
+  for (const char of Array.from(text)) {
+    const nextWeight = weightedTextLength(char, fontSize);
+    if (consumedWeight + nextWeight > targetWeight && offset > 0) break;
+    consumedWeight += nextWeight;
+    offset += char.length;
+  }
+  return Math.min(Math.max(1, offset), Math.max(1, text.length - 1));
+}
+/** 把允许跨页的正文段落拆成当前页片段和后续页片段。 */
+function splitParagraphForAvailableHeight(
+  block: DocParagraphBlock,
+  totalHeight: number,
+  availableHeight: number,
+) {
+  if (
+    block.role === 'title' ||
+    block.role === 'heading' ||
+    block.isTableOfContents ||
+    block.inlines?.some((inline) => inline.type === 'image')
+  ) {
+    return undefined;
+  }
+  const text = renderedTextFromInlines(block.text, block.inlines);
+  if (!text.trim()) return undefined;
+  const metrics = resolveParagraphLayoutMetrics(block);
+  const fixedHeight =
+    metrics.spacingBefore +
+    metrics.spacingAfter +
+    metrics.paddingTop +
+    metrics.paddingBottom;
+  const totalLines = Math.max(
+    1,
+    Math.round((totalHeight - fixedHeight) / metrics.lineHeightPx),
+  );
+  const leadingLines = Math.min(
+    totalLines - 1,
+    Math.floor(
+      (availableHeight - metrics.spacingBefore - metrics.paddingTop) /
+        metrics.lineHeightPx,
+    ),
+  );
+  if (leadingLines < 1) return undefined;
+
+  const offset = resolveParagraphSplitOffset(
+    text,
+    metrics.fontSize,
+    leadingLines,
+    totalLines,
+  );
+  if (offset <= 0 || offset >= text.length) return undefined;
+  const { leading, trailing } = splitTextInlinesAtOffset(block.inlines, offset);
+  const sourceBlockId = block.sourceBlockId ?? block.id;
+  const leadingBlock: DocParagraphBlock = {
+    ...block,
+    id: `${block.id}-page-head`,
+    sourceBlockId,
+    text: text.slice(0, offset),
+    inlines: leading.length ? leading : undefined,
+    estimatedHeight: undefined,
+    style: {
+      ...block.style,
+      spacingAfter: 0,
+      paddingBottom: 0,
+    },
+  };
+  const trailingBlock: DocParagraphBlock = {
+    ...block,
+    id: `${block.id}-page-tail`,
+    sourceBlockId,
+    text: text.slice(offset),
+    inlines: trailing.length ? trailing : undefined,
+    role: 'body',
+    outlineLevel: undefined,
+    isTableOfContents: undefined,
+    pageBreakBefore: undefined,
+    estimatedHeight: undefined,
+    style: {
+      ...block.style,
+      firstLineIndent: 0,
+      spacingBefore: 0,
+      paddingTop: 0,
+    },
+  };
+  return {
+    leadingBlock,
+    leadingHeight:
+      metrics.spacingBefore +
+      metrics.paddingTop +
+      leadingLines * metrics.lineHeightPx,
+    trailingBlock,
+    trailingHeight:
+      (totalLines - leadingLines) * metrics.lineHeightPx +
+      metrics.spacingAfter +
+      metrics.paddingBottom,
+  };
+}
 /** 按 DOC 图片长宽比和并排数量计算源版式中的渲染宽度。 */
 export function getDocImageRenderWidth(
   image: DocImage,
@@ -257,6 +480,7 @@ function estimateTableHeight(
     }
   >,
   contentWidth: number,
+  includeTopOffset = true,
 ) {
   const columnCount = Math.max(...block.rows.map((row) => row.cells.length), 1);
   const columns = block.columns?.length
@@ -294,7 +518,7 @@ function estimateTableHeight(
           cell.width ?? (spannedWidth / totalColumns) * tableContentWidth;
         return (
           estimateLineCount(
-            cell.text || ' ',
+            renderedTextFromInlines(cell.text, cell.inlines) || ' ',
             Math.max(fontSize, width - horizontalPadding),
             fontSize,
             block.width ? 1 : 8,
@@ -312,6 +536,7 @@ function estimateTableHeight(
   });
 
   return (
+    (includeTopOffset && block.width ? DOC_STRUCTURED_TABLE_TOP_OFFSET : 0) +
     (block.spacingBefore ?? 0) +
     rowHeights.reduce((sum, height) => sum + height, 0) +
     (block.spacingAfter ?? 16)
@@ -331,10 +556,21 @@ function estimateListHeight(
   const fontSize = block.style?.fontSize ?? 14;
   const lineHeight = block.style?.lineHeight ?? 1.7;
   const itemSpacingAfter = block.style?.spacingAfter ?? 8;
+  const listContentWidth = Math.max(
+    fontSize * 4,
+    contentWidth -
+      24 -
+      (block.style?.indentLeft ?? 0) -
+      (block.style?.indentRight ?? 0),
+  );
   const itemHeight = block.items.reduce(
     (sum, item) =>
       sum +
-      estimateLineCount(item.text || ' ', contentWidth - 24, fontSize) *
+      estimateLineCount(
+        renderedTextFromInlines(item.text, item.inlines) || ' ',
+        listContentWidth,
+        fontSize,
+      ) *
         resolveLineHeightPx(fontSize, lineHeight) +
       itemSpacingAfter,
     0,
@@ -405,8 +641,10 @@ function estimateLeadingBlockHeight(block: DocBlock, contentWidth: number) {
   }
   const isTitle = block.role === 'title';
   const isHeading = block.role === 'heading';
-  const fontSize =
-    block.style?.fontSize ?? (isTitle ? 22 : isHeading ? 16 : 14);
+  const fontSize = resolveParagraphFontSize(
+    block,
+    isTitle ? 22 : isHeading ? 16 : 14,
+  );
   const lineHeight =
     block.style?.lineHeight ?? (isTitle ? 1.45 : isHeading ? 1.65 : 1.8);
   return (
@@ -473,7 +711,11 @@ export class DocPaginationState {
   private completed = false;
   private sawBlock = false;
 
-  constructor(page: DocPage, private readonly contentWidth: number) {
+  constructor(
+    page: DocPage,
+    private readonly contentWidth: number,
+    private readonly measuredBlockHeights?: ReadonlyMap<string, number>,
+  ) {
     this.contentHeight = Math.max(
       240,
       page.minHeight -
@@ -544,14 +786,47 @@ export class DocPaginationState {
   }
 
   private appendBlock(block: DocBlock, estimatedHeight: number) {
+    const sourceBlockId = block.sourceBlockId ?? block.id;
+    const measuredHeight =
+      block.id === sourceBlockId
+        ? this.measuredBlockHeights?.get(sourceBlockId)
+        : undefined;
+    const calibratedHeight = Math.max(estimatedHeight, measuredHeight ?? 0);
+    const availableHeight = this.contentHeight - this.currentHeight;
+    const canSplitMeasuredParagraph =
+      block.type === 'paragraph' &&
+      measuredHeight !== undefined &&
+      measuredHeight > estimatedHeight + 0.75;
+    const canSplitOrdinaryParagraph =
+      block.type === 'paragraph' &&
+      measuredHeight === undefined &&
+      estimatedHeight > availableHeight;
+    if (
+      (canSplitMeasuredParagraph && calibratedHeight > availableHeight) ||
+      canSplitOrdinaryParagraph
+    ) {
+      const split = splitParagraphForAvailableHeight(
+        block,
+        calibratedHeight,
+        availableHeight,
+      );
+      if (split) {
+        this.appendBlock(split.leadingBlock, split.leadingHeight);
+        this.flushPage();
+        this.appendBlock(split.trailingBlock, split.trailingHeight);
+        return;
+      }
+    }
     if (
       this.currentBlocks.length &&
-      this.currentHeight + estimatedHeight > this.contentHeight
+      this.currentHeight + calibratedHeight > this.contentHeight
     ) {
       this.flushPage();
     }
-    this.currentBlocks.push(block);
-    this.currentHeight += estimatedHeight;
+    const measuredBlock =
+      block.type === 'table' ? block : { ...block, estimatedHeight };
+    this.currentBlocks.push(measuredBlock);
+    this.currentHeight += calibratedHeight;
   }
 
   private appendImageRows(images: DocImage[], style?: DocTextStyle) {
@@ -622,6 +897,16 @@ export class DocPaginationState {
       }
       if (currentBlock.type === 'paragraph' && currentBlock.pageBreakBefore) {
         this.flushPage();
+        if (
+          !currentBlock.text.trim() &&
+          !(currentBlock.inlines ?? []).some(
+            (inline) => inline.type === 'image',
+          )
+        ) {
+          // 纯分页符只负责结束上一页，本身不应在新页额外生成一个空行盒。
+          index += 1;
+          continue;
+        }
         if (pageDrawingOnly) {
           this.appendBlock(currentBlock, 0);
           index += 1;
@@ -639,17 +924,34 @@ export class DocPaginationState {
       const isTableCaption =
         currentBlock.type === 'paragraph' &&
         !currentBlock.pageBreakBefore &&
+        currentBlock.text.trim().length > 0 &&
+        !(currentBlock.inlines ?? []).some(
+          (inline) => inline.type === 'image',
+        ) &&
         currentBlock.text.replace(/\s+/g, '').length <= 40 &&
         followingTable?.type === 'table';
       if (isTableCaption) {
-        // 单页可容纳的表格与表题整体保持；超长表格至少保留表头和首个数据行。
+        const captionHeight = estimateBlockHeight(
+          currentBlock,
+          this.contentWidth,
+        );
         const fullTableHeight = estimateBlockHeight(
           followingTable,
           this.contentWidth,
         );
+        const availableTableHeight = Math.max(
+          0,
+          this.contentHeight - this.currentHeight - captionHeight,
+        );
+        const canUseCurrentPageForTable =
+          fullTableHeight > this.contentHeight ||
+          availableTableHeight / Math.max(1, fullTableHeight) >=
+            DOC_TABLE_SPLIT_MIN_VISIBLE_RATIO;
+        // 页尾可承载足够比例时按行拆表；若只能留下表头和孤立首行，
+        // 则把可单页容纳的整表移至下一页，兼顾 Word 的连续表格行为。
         const keepHeight =
-          estimateBlockHeight(currentBlock, this.contentWidth) +
-          (fullTableHeight <= this.contentHeight
+          captionHeight +
+          (fullTableHeight <= this.contentHeight && !canUseCurrentPageForTable
             ? fullTableHeight
             : estimateLeadingBlockHeight(followingTable, this.contentWidth));
         if (
@@ -758,7 +1060,13 @@ export class DocPaginationState {
         this.flushPage();
         availableHeight = this.contentHeight;
       }
-      availableHeight = Math.max(0, availableHeight - partSpacingBefore);
+      const tableTopOffset = currentBlock.width
+        ? DOC_STRUCTURED_TABLE_TOP_OFFSET
+        : 0;
+      availableHeight = Math.max(
+        0,
+        availableHeight - partSpacingBefore - tableTopOffset,
+      );
       const startRowIndex = rowIndex;
       const spacingAfter = currentBlock.spacingAfter ?? 16;
       let rowsHeight = 0;
@@ -772,6 +1080,7 @@ export class DocPaginationState {
             spacingAfter: 0,
           },
           this.contentWidth,
+          false,
         );
         if (
           rowIndex > startRowIndex &&
@@ -796,7 +1105,7 @@ export class DocPaginationState {
           spacingBefore: partSpacingBefore || undefined,
           spacingAfter: partSpacingAfter,
         },
-        partSpacingBefore + rowsHeight + partSpacingAfter,
+        partSpacingBefore + tableTopOffset + rowsHeight + partSpacingAfter,
       );
       if (rowIndex < currentBlock.rows.length) this.flushPage();
     }
@@ -811,6 +1120,11 @@ export function paginateDocBlocks(
   blocks: DocBlock[],
   page: DocPage,
   contentWidth: number,
+  measuredBlockHeights?: ReadonlyMap<string, number>,
 ): PaginatedDocPage[] {
-  return new DocPaginationState(page, contentWidth).append(blocks, true);
+  return new DocPaginationState(
+    page,
+    contentWidth,
+    measuredBlockHeights,
+  ).append(blocks, true);
 }

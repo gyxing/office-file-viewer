@@ -1,0 +1,136 @@
+.office-file-navigation-panel {
+  --office-file-navigation-panel-width: 260px;
+
+  position: relative;
+  box-sizing: border-box;
+  flex: 0 0 var(--office-file-navigation-panel-width);
+  width: var(--office-file-navigation-panel-width);
+  min-width: 0;
+  height: 100%;
+  visibility: visible;
+  transition: flex-basis 280ms cubic-bezier(0.2, 0, 0, 1),
+    width 280ms cubic-bezier(0.2, 0, 0, 1), visibility 0s linear;
+}
+
+.office-file-navigation-panel[data-visible='false'] {
+  flex-basis: 0;
+  width: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: flex-basis 220ms cubic-bezier(0.4, 0, 1, 1),
+    width 220ms cubic-bezier(0.4, 0, 1, 1), visibility 0s linear 220ms;
+}
+
+.office-file-navigation-panel[data-resizing='true'] {
+  transition: none;
+}
+
+.office-file-navigation-panel__resize-handle {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  right: -6px;
+  display: flex;
+  width: 12px;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.office-file-navigation-panel__resize-handle::before {
+  width: 1px;
+  height: 100%;
+  background: transparent;
+  content: '';
+  transition: background 160ms ease;
+}
+
+.office-file-navigation-panel__resize-handle > span {
+  position: absolute;
+  width: 3px;
+  height: 44px;
+  background: #b8c2cf;
+  border-radius: 999px;
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+.office-file-navigation-panel__resize-handle:hover::before,
+.office-file-navigation-panel__resize-handle:focus-visible::before,
+.office-file-navigation-panel[data-resizing='true']
+  .office-file-navigation-panel__resize-handle::before {
+  background: #1677ff;
+}
+
+.office-file-navigation-panel__resize-handle:hover > span,
+.office-file-navigation-panel__resize-handle:focus-visible > span,
+.office-file-navigation-panel[data-resizing='true']
+  .office-file-navigation-panel__resize-handle
+  > span {
+  opacity: 1;
+}
+
+.office-file-navigation-panel__resize-handle:focus-visible {
+  outline: 2px solid #1677ff;
+  outline-offset: -2px;
+}
+
+.office-file-navigation-tabs {
+  display: inline-flex;
+  min-width: 0;
+  height: 32px;
+  align-items: stretch;
+  gap: 2px;
+  padding: 2px;
+  background: #f1f5f9;
+  border-radius: 7px;
+}
+
+.office-file-navigation-tabs__tab {
+  min-width: 52px;
+  padding: 0 10px;
+  color: #64748b;
+  font: inherit;
+  font-size: 13px;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.office-file-navigation-tabs__tab[aria-selected='true'] {
+  color: #0958d9;
+  font-weight: 600;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 12%);
+}
+
+.office-file-navigation-tabs__tab:hover:not([aria-selected='true']) {
+  color: #1f2937;
+  background: rgb(255 255 255 / 65%);
+}
+
+.office-file-navigation-tabs__tab:focus-visible {
+  outline: 2px solid #1677ff;
+  outline-offset: -1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  // 仍保留短暂宽度过渡，避免侧栏显隐造成正文瞬时跳变。
+  .office-file-navigation-panel {
+    transition: flex-basis 180ms ease-out, width 180ms ease-out,
+      visibility 0s linear;
+  }
+
+  .office-file-navigation-panel[data-visible='false'] {
+    transition: flex-basis 150ms ease-in, width 150ms ease-in,
+      visibility 0s linear 150ms;
+  }
+
+  .office-file-navigation-panel__resize-handle::before,
+  .office-file-navigation-panel__resize-handle > span {
+    transition-duration: 80ms;
+  }
+}

@@ -1,4 +1,11 @@
-import React, { memo, useEffect, useMemo, useRef } from 'react';
+import React, {
+  memo,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   pageDrawingImagesFromBlock,
   paginateDocBlocks,
@@ -10,8 +17,10 @@ import type { OfficeFileViewerPreviewState } from '../../services/parsing/intern
 import { collectWordPerformanceStats } from '../../services/word/collectWordPerformanceStats';
 import { createMaterializedWordPageSource } from '../../services/word/createMaterializedWordPageSource';
 import { createMemoryWordOutlineProvider } from '../../services/word/createMemoryWordOutlineProvider';
+import { collectDocSearchBlocks } from '../../services/word/WordSearchProvider';
 import { useExternalStoreSnapshot } from '../../shared/react/useExternalStoreSnapshot';
 import { OfficePreviewEmpty } from '../common/OfficePreviewEmpty';
+import { useOfficeSearchProviderRegistration } from '../search/OfficeSearchContext';
 import { useWordTargetNavigation } from '../word-hyperlink/useWordTargetNavigation';
 import { useWordOutlinePresence } from '../word-outline/useWordOutlinePresence';
 import { WordOutlineSidebar } from '../word-outline/WordOutlineSidebar';
@@ -19,6 +28,7 @@ import type { WordPageNavigationController } from '../word-pages/types';
 import { VirtualWordPageList } from '../word-pages/VirtualWordPageList';
 import { WordBlockPageIndex } from '../word-pages/WordBlockPageIndex';
 import { useWordPerformanceProfile } from '../word-performance/useWordPerformanceProfile';
+import { useWordSearchNavigation } from '../word-search/useWordSearchNavigation';
 import { DocContentRenderer } from './DocContentRenderer';
 import { DocImageGallery } from './DocImageGallery';
 import { DocPageFrame } from './DocPageFrame';
@@ -37,6 +47,15 @@ type DocViewerProps = {
   showOutline: boolean;
   /** 关闭文档大纲。 */
   onCloseOutline: () => void;
+  /** 搜索能力启用时切换到查找侧栏。 */
+  onOpenSearch?: () => void;
+};
+/** 浏览器真实排版与静态估算不一致时记录的 DOC 块高度。 */
+type DocLayoutCalibration = {
+  /** 当前校准结果所属的解析会话。 */
+  sessionId: string;
+  /** 按原始块 ID 保存的真实外框高度。 */
+  blockHeights: ReadonlyMap<string, number>;
 };
 
 /** 收集普通 DOC 模型中已锚定的图片，避免尾页 Gallery 重复显示。 */
@@ -88,6 +107,7 @@ function DocViewerComponent({
   zoom,
   showOutline,
   onCloseOutline,
+  onOpenSearch,
 }: DocViewerProps) {
   const document =
     preview.mode === 'materialized' ? preview.model.document : undefined;
@@ -99,6 +119,15 @@ function DocViewerComponent({
     documentSessionId,
   );
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [layoutCalibration, setLayoutCalibration] =
+    useState<DocLayoutCalibration>(() => ({
+      sessionId: '',
+      blockHeights: new Map(),
+    }));
+  const calibratedBlockHeights =
+    layoutCalibration.sessionId === documentSessionId
+      ? layoutCalibration.blockHeights
+      : undefined;
   const documentMetadata = summary ?? document;
   const page = documentMetadata?.page;
   const contentWidth = page
@@ -108,13 +137,18 @@ function DocViewerComponent({
     const startedAt = performance.now();
     const nextPages =
       document && !source && page
-        ? paginateDocBlocks(document.blocks, page, contentWidth)
+        ? paginateDocBlocks(
+            document.blocks,
+            page,
+            contentWidth,
+            calibratedBlockHeights,
+          )
         : [];
     return {
       pages: nextPages,
       durationMs: performance.now() - startedAt,
     };
-  }, [contentWidth, document, page, source]);
+  }, [calibratedBlockHeights, contentWidth, document, page, source]);
   const materializedPages = pagination.pages;
   const footerPageNumberStartIndex = useMemo(
     () => resolveFooterPageNumberStartIndex(materializedPages),
@@ -131,14 +165,18 @@ function DocViewerComponent({
             ...(block.sourceBlockId ? [block.sourceBlockId] : []),
             ...docBookmarkMarkerIdsFromBlock(block),
           ]),
+        searchBlocks: document
+          ? collectDocSearchBlocks(document.blocks)
+          : undefined,
       }),
-    [materializedPages, page?.minHeight],
+    [document, materializedPages, page?.minHeight],
   );
   useEffect(
     () => () => void materializedPageSource.dispose(),
     [materializedPageSource],
   );
   const pageSource = source?.pages ?? materializedPageSource;
+  useOfficeSearchProviderRegistration(pageSource.searchProvider);
   const pageSnapshot = useExternalStoreSnapshot(pageSource);
   const blockPageIndex = useMemo(() => {
     const index = new WordBlockPageIndex();
@@ -179,8 +217,62 @@ function DocViewerComponent({
   const { profile: materializedProfile, reportPaginationDuration } =
     useWordPerformanceProfile(documentSessionId, performanceStats);
   const profile = source?.getPerformanceProfile() ?? materializedProfile;
+  useLayoutEffect(() => {
+    if (source || profile.pageMode === 'windowed') return;
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const scale = Math.max(zoom / 100, 0.01);
+    const nextBlockHeights = new Map(calibratedBlockHeights ?? []);
+    let changed = false;
+    container
+      .querySelectorAll<HTMLElement>('[data-office-doc-pagination-id]')
+      .forEach((element) => {
+        // 图片有独立的尺寸估算与加载时机，只校准浏览器字体实际换行造成的文字高度差。
+        if (element.querySelector('img')) return;
+        if (element.dataset.officeDocPaginationFragment === 'true') return;
+        const blockId = element.dataset.officeDocPaginationId;
+        const estimatedHeight = Number(
+          element.dataset.officeDocEstimatedHeight,
+        );
+        if (!blockId || !Number.isFinite(estimatedHeight)) return;
+        const style = window.getComputedStyle(element);
+        const actualHeight =
+          element.getBoundingClientRect().height / scale +
+          (Number.parseFloat(style.marginTop) || 0) +
+          (Number.parseFloat(style.marginBottom) || 0);
+        if (actualHeight <= estimatedHeight + 0.75) return;
+        const calibratedHeight = Math.ceil(actualHeight * 10) / 10;
+        if (calibratedHeight <= (nextBlockHeights.get(blockId) ?? 0) + 0.5) {
+          return;
+        }
+        nextBlockHeights.set(blockId, calibratedHeight);
+        changed = true;
+      });
+    if (changed) {
+      setLayoutCalibration({
+        sessionId: documentSessionId,
+        blockHeights: nextBlockHeights,
+      });
+    }
+  }, [
+    calibratedBlockHeights,
+    documentSessionId,
+    materializedPages,
+    profile.pageMode,
+    source,
+    zoom,
+  ]);
   useWordTargetNavigation({
     bookmarks: documentMetadata?.bookmarks,
+    scrollContainerRef,
+    pageMode: profile.pageMode,
+    pageSource,
+    blockPageIndex,
+    pageNavigationControllerRef,
+    documentSessionId,
+  });
+  useWordSearchNavigation({
     scrollContainerRef,
     pageMode: profile.pageMode,
     pageSource,
@@ -257,6 +349,7 @@ function DocViewerComponent({
           documentSessionId={documentSessionId}
           layoutKey={layoutKey}
           onClose={onCloseOutline}
+          onOpenSearch={onOpenSearch}
         />
         <div
           ref={scrollContainerRef}

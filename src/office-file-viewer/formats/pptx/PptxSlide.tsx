@@ -25,6 +25,8 @@ type PptxSlideProps = {
   renderKey?: string;
   /** 是否允许幻灯片内部对象响应链接交互。 */
   interactive?: boolean;
+  /** 主视口中的零基幻灯片索引；缩略图不传入以避免重复高亮。 */
+  searchSlideIndex?: number;
 };
 
 const ChartFrame = memo(function ChartFrame({
@@ -86,6 +88,7 @@ function PptxSlideComponent({
   zoom,
   renderKey,
   interactive = true,
+  searchSlideIndex,
 }: PptxSlideProps) {
   const scale = zoom / 100;
   const backgroundSource = useMemo<OfficeResourceSource | undefined>(
@@ -142,6 +145,7 @@ function PptxSlideComponent({
                   element={element}
                   renderKey={slideRenderKey}
                   interactive={interactive}
+                  searchSlideIndex={searchSlideIndex}
                 />
               );
             case 'shape':
@@ -167,6 +171,7 @@ function PptxSlideComponent({
                   key={element.id}
                   element={element}
                   interactive={interactive}
+                  searchSlideIndex={searchSlideIndex}
                 />
               );
             case 'chart':

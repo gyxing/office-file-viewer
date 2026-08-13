@@ -49,6 +49,7 @@ function PptxSlideViewportComponent({
             slide={slide}
             zoom={zoom}
             renderKey={`slide-${slide.id}`}
+            searchSlideIndex={activeIndex}
           />
         ) : loading || error ? (
           <PresentationSlideState

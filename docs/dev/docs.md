@@ -173,10 +173,12 @@ Remote source rules:
 | `onFileParsed`                   | `(parsed: ParsedOfficeFile, file: File) => void`     | -                 | Called once when the complete materialized result is available   |
 | `onPreviewReady`                 | `(info: OfficePreviewReadyInfo, file: File) => void` | -                 | Called once when the first usable preview is ready               |
 | `onError`                        | `(error: Error, file?: File) => void`                | -                 | Called when loading, parsing, or a viewer operation fails        |
-| `onWarning`                      | `(warning, file) => void`                            | -                 | Called for non-fatal parse degradation or retained partial views |
+| `onWarning`                      | `(warning, file) => void`                            | -                 | Called for non-fatal parse, partial-preview, or font warnings    |
 | `parseOptions`                   | `OfficeParseOptions`                                 | `{}`              | Worker strategy and optional resource limits                     |
 | `imagePreview`                   | `boolean \| OfficeFileViewerImagePreviewOptions`     | `true`            | Content-image preview, download, and context-menu configuration  |
 | `hyperlink`                      | `boolean`                                            | `true`            | Enables hyperlinks explicitly declared by the source document    |
+| `search`                         | `false \| OfficeFileViewerSearchOptions`             | `{}`              | Full-document search runtime and initial matching options        |
+| `fontOptions`                    | `OfficeFileViewerFontOptions`                        | `{}`              | Font aliases, fallback families, and missing-font diagnostics    |
 | `onHyperlinkActivate`            | `(event: OfficeHyperlinkActivateEvent) => void`      | -                 | Called on valid activation and can prevent default navigation    |
 | `onParseProgress`                | `(progress: ParseProgress) => void`                  | -                 | Called when the current parse stage or progress changes          |
 
@@ -246,6 +248,44 @@ export default function OfficePreview({ file }: { file: File }) {
 
 Set `hyperlink={false}` to remove link focus, hints, and activation behavior without changing source colors, underlines, or layout.
 
+### Full-document search
+
+DOC, DOCX, WPS, XLS, XLSX, PPT, and PPTX expose the toolbar search action and `Ctrl + F` (`Command + F` on macOS). Queries use cancellable incremental scanning, so generated results are navigable before a large document has been scanned completely. `Esc` closes the sidebar, and switching files clears the previous query and results.
+
+```ts | pure
+type OfficeFileViewerSearchOptions = {
+  defaultVisible?: boolean;
+  matchCase?: boolean;
+  wholeWord?: boolean;
+};
+```
+
+Search is enabled when the prop is omitted. Pass `false` to remove its action, keyboard shortcut, and runtime. Object values are uncontrolled defaults; use `viewState.searchVisible` for controlled visibility. Search covers Word body content, Excel cells, and visible text on PowerPoint slides. Word comments and PowerPoint speaker notes are currently excluded.
+
+### Font aliases and fallback
+
+The package does not bundle or download Office fonts. Rendering keeps the source font first, then adds built-in aliases, host aliases, global fallback families, and a CSS generic family. Hosts can extend the mapping for their deployment environment:
+
+```tsx | pure
+<OfficeFileViewer
+  uri={file}
+  fontOptions={{
+    aliases: {
+      'Source Office Font': ['Available Corporate Font', 'Arial'],
+    },
+    fallbackFamilies: ['Noto Sans CJK SC', 'sans-serif'],
+    warnOnMissing: true,
+  }}
+  onWarning={(warning) => {
+    if (warning.code === 'FONT_FALLBACK_APPLIED') {
+      console.warn(warning.requestedFamily, warning.candidates);
+    }
+  }}
+/>
+```
+
+`aliases` override case-insensitively matching built-in aliases, and `fallbackFamilies` are appended to every font chain. `warnOnMissing` defaults to `true`, but diagnostics run only when `onWarning` is supplied and the browser supports the Font Loading API. Checks are batched after the first usable preview, and each missing family is reported once per document session with the stable code `FONT_FALLBACK_APPLIED`. Missing fonts fall back without blocking preview.
+
 ### Unified view state
 
 Use `defaultViewState` for uncontrolled initial values. `viewState` controls only the fields that are present, while omitted fields remain internally managed:
@@ -256,6 +296,7 @@ type OfficeFileViewerViewState = {
   activeSlideIndex: number;
   activeSheetId?: string;
   wordOutlineVisible: boolean;
+  searchVisible: boolean;
   speakerNotesVisible: boolean;
   spreadsheetViewMode: 'source' | 'reading';
 };
@@ -270,7 +311,7 @@ The legacy `defaultZoom`, `defaultShowSpeakerNotes`, `showSpeakerNotes`, and `on
 - `onPreviewReady` fires when either a complete model (`mode: 'materialized'`) or an on-demand source (`mode: 'source'`) can render its first usable preview.
 - `onFileParsed` fires after the complete materialized result is ready; progressive intermediate results do not trigger it.
 - `onParseProgress` can fire many times and may omit exact counts or `percent`.
-- `onWarning` uses stable `code`, `previewKind`, and `source` fields to distinguish parser warnings from retained partial previews; it does not replace `onError`.
+- `onWarning` uses stable `code`, `previewKind`, and `source` fields to distinguish parser, retained-partial-preview, hyperlink, and font warnings; it does not replace `onError`.
 - `onError` can receive no `file` when an error occurs before a usable file has been resolved. Resource-policy failures can be inspected through `OfficeResourceLimitError.code`.
 
 ## Parsing configuration and progress
@@ -294,13 +335,15 @@ type OfficeParseOptions = {
 };
 ```
 
-| Mode       | DOC/WPS, XLS, PPT                                              | DOCX, XLSX, PPTX                                                   |
-| ---------- | -------------------------------------------------------------- | ------------------------------------------------------------------ |
-| `'auto'`   | Prefers a Worker and falls back to the main thread if needed   | Currently parses on the main thread                                |
-| `'always'` | Requires a compatible Worker and fails if it cannot be created | Worker migration is incomplete and a configuration error is thrown |
-| `'never'`  | Always parses on the main thread                               | Always parses on the main thread                                   |
+| Mode       | Behavior for all seven formats                                                                                                                                                                  |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `'auto'`   | Default. Legacy formats prefer a Worker; small OOXML files use complete models, large OOXML files use Worker-owned on-demand sources; only Worker startup failures fall back to the main thread |
+| `'always'` | Forces a Worker for every format. An unavailable Worker, load failure, or protocol mismatch fails instead of falling back                                                                       |
+| `'never'`  | Disables Workers. Parsing runs on the main thread, while large files can still use on-demand sources and virtual rendering                                                                      |
 
-Each active legacy-format session owns its Worker. The viewer cancels and disposes the current session when the source changes or the component unmounts. `workerFactory` is intended for hosts with special asset paths or Content Security Policy requirements; most applications should use the built-in factory.
+Each active parse session owns its Worker and resource reader. Source changes, cancellation, and unmounting cancel requests and release the Worker, archive reader, and Blob URLs. Searches plus on-demand page, worksheet, slide, and lazy-resource reads stay inside the Worker for large files; the main thread receives only the structured data currently needed for display. `workerFactory` is intended for hosts with special asset paths or Content Security Policy requirements; most applications should use the built-in factory.
+
+The file-profile thresholds used by `auto` select complete parsing, on-demand reads, virtual rendering, and task-yielding strategies. They are not file-size limits and never reject a file by themselves. Small files intentionally keep the simpler complete-model path to avoid unnecessary Worker messaging and lazy-read overhead.
 
 ### Resource limits
 
@@ -374,6 +417,22 @@ type OfficeParseSession<TParsed> = {
 ```
 
 `createOfficeParseSession(file, options)` accepts a supported `File` and returns `OfficeParseSession<ParsedOfficeFile>`. Cancellation rejects `result`; callers should handle it in the same way as other parse failures when they await the promise.
+
+### `.ppt` compatibility parser
+
+The root entry keeps `parsePpt(file)` for fully parsing a single unencrypted `.ppt` file into a `PresentationDocument`. This compatibility API materializes the whole presentation on the main thread and does not provide Worker selection, parse progress, cancellation, or resource limits. Prefer `createOfficeParseSession` for new integrations.
+
+```ts | pure
+import { disposePresentationDocument, parsePpt } from 'office-file-viewer';
+
+const presentation = await parsePpt(file);
+
+try {
+  console.info(presentation.slides.length);
+} finally {
+  disposePresentationDocument(presentation);
+}
+```
 
 ### Session lifecycle
 
@@ -464,6 +523,7 @@ The display-mode selector appears only for XLS/XLSX previews:
 - Legacy DOC/WPS, XLS, and PPT parsing prioritizes readable content. Complex pagination, anchors, text wrapping, OfficeArt effects, and animations may differ from desktop applications.
 - Page-level DOC/WPS OfficeArt canvases are currently displayed as a single SVG image, so independent link hit areas for child shapes cannot be retained precisely. These links emit a non-fatal degradation warning; field links and body bookmarks are unaffected.
 - OOXML files can contain unsupported macros, ActiveX controls, OLE objects, SmartArt, vendor extensions, or complex animations. Such content may be ignored, degraded, or represented by an embedded static snapshot.
+- Word documents currently display the final body state. Comments, tracked-change markup, and review balloons are not shown; footnotes and endnotes are also excluded from body rendering and full-document search.
 - The viewer is read-only. It does not edit, save, convert, print-layout, or export Office files to PDF or images.
 - Externally linked images and dynamic map data can still require network access. If map data fails, an embedded snapshot is used when available; otherwise the viewer shows an explicit failure state.
 
@@ -471,9 +531,9 @@ The display-mode selector appears only for XLS/XLSX previews:
 
 The component targets modern browsers and depends on APIs such as `File`, `fetch`, `DOMParser`, `AbortController`, `IntersectionObserver`, `ResizeObserver`, Blob URLs, Canvas, Web Workers, and the Fullscreen API.
 
-Workers reduce main-thread parsing work for supported legacy formats, but they do not eliminate the memory cost of the source file or parsed model. DOCX, XLSX, and PPTX currently parse on the main thread, so very large or complex files can briefly make the UI less responsive.
+All seven formats can move parsing work into a Worker. Large DOCX, XLSX, and PPTX files additionally keep their archive reader in the Worker and load pages, ranges, slides, and resources on demand. Workers and virtual rendering reduce main-thread long tasks and one-time model cost, but they do not eliminate memory used by the source file, loaded content, or browser graphics resources.
 
-The library does not enable a maximum source size, ZIP entry count, individual entry size, or total decompressed size by default. For untrusted files, hosts should configure `parseOptions.resourcePolicy` according to their devices and threat model.
+The library does not enable a maximum source size, ZIP entry count, individual entry size, or total decompressed size by default, and internal large-file thresholds never reject a file. For untrusted files, hosts should explicitly configure `parseOptions.resourcePolicy` according to their devices and threat model.
 
 ### Untrusted files and remote access
 

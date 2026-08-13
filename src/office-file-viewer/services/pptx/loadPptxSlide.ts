@@ -1,3 +1,4 @@
+import { getOfficePartRelationshipsPath } from '../../shared/ooxml/relationships';
 import type { SlideModel } from '../presentation/types';
 import { parseSlideXml } from './parsePptxSlide';
 import type {
@@ -22,20 +23,38 @@ async function loadReferencedXml(
         !target.includes('slideLayouts/') &&
         !target.includes('notesSlides/'),
     );
-  await Promise.all(
-    targets.map(async (target) => {
-      if (
-        !context.reader.has(target) ||
-        context.packageState.entries.has(target)
-      ) {
-        return;
-      }
-      context.packageState.entries.set(
-        target,
-        await context.reader.readText(target, signal),
-      );
-    }),
+  const readTargets = async (paths: readonly string[]) => {
+    await Promise.all(
+      paths.map(async (target) => {
+        if (
+          !context.reader.has(target) ||
+          context.packageState.entries.has(target)
+        ) {
+          return;
+        }
+        context.packageState.entries.set(
+          target,
+          await context.reader.readText(target, signal),
+        );
+      }),
+    );
+  };
+
+  await readTargets(targets);
+
+  // 图表可通过自身关系文件覆盖主题；按页加载时必须连同覆盖 XML 一并读取。
+  const chartThemeTargets = targets.flatMap((target) =>
+    Object.values(
+      context.packageState.relationships[
+        getOfficePartRelationshipsPath(target)
+      ] ?? {},
+    )
+      .filter((relationship) =>
+        relationship.type?.toLowerCase().endsWith('/themeoverride'),
+      )
+      .map((relationship) => relationship.target),
   );
+  await readTargets(chartThemeTargets);
 }
 
 /** 只读取并解析目标 PPTX Slide，复用完整解析器的格式计算规则。 */
@@ -62,6 +81,7 @@ export async function loadPptxSlide(
     Object.fromEntries(
       context.descriptors.map((item, index) => [item.slidePath, index]),
     ),
+    context.defaultTextStyle,
   );
   slide.hidden = descriptor.hidden;
   slide.speakerNotes = undefined;

@@ -234,6 +234,8 @@ export type DocxChartBlock = {
   width: number;
   /** 高度，单位为标准化渲染像素。 */
   height: number;
+  /** 源图片在显示区域内使用的裁剪范围。 */
+  crop?: DocxImageCrop;
   /** 对象的定位信息及其参考坐标系。 */
   position?: DocxPosition;
 };
@@ -310,10 +312,14 @@ export type DocxTextInline = {
   type: 'text';
   /** 文本内容。 */
   text: string;
+  /** 是否保留 OOXML 中有布局意义的连续或首尾空格。 */
+  preserveSpace?: boolean;
   /** 当前内容使用的渲染样式。 */
   style?: DocxTextStyle;
   /** 源文档为该段文字声明的超链接。 */
   hyperlink?: OfficeHyperlink;
+  /** 当前文字需占用的固定行内宽度，主要用于自动编号的悬挂缩进。 */
+  advanceWidth?: number;
 };
 
 /** DOCX 书签起点使用的零宽行内标记。 */
@@ -382,12 +388,28 @@ export type DocxShape = {
   width: number;
   /** 高度，单位为标准化渲染像素。 */
   height: number;
+  /** 源图片在显示区域内使用的裁剪范围。 */
+  crop?: DocxImageCrop;
   /** 对象的定位信息及其参考坐标系。 */
   position?: DocxPosition;
   /** 按显示顺序排列的项目。 */
   items: DocxShapeItem[];
   /** 源文档为整个形状声明的超链接。 */
   hyperlink?: OfficeHyperlink;
+};
+
+/** DOCX 复合形状中的单层矢量路径。 */
+export type DocxShapePathLayer = {
+  /** 当前图层使用的 SVG 路径数据。 */
+  path: string;
+  /** 当前图层的填充颜色。 */
+  fillColor?: string;
+  /** 当前图层的轮廓颜色。 */
+  strokeColor?: string;
+  /** 当前图层的轮廓宽度，单位为标准化渲染像素。 */
+  strokeWidth?: number;
+  /** 当前图层的轮廓虚线配置。 */
+  strokeDasharray?: string;
 };
 
 /** DOCX 形状子项的几何、样式和内容。 */
@@ -404,6 +426,12 @@ export type DocxShapeItem = {
   width: number;
   /** 高度，单位为标准化渲染像素。 */
   height: number;
+  /** 子图形围绕自身中心旋转的角度。 */
+  rotation?: number;
+  /** 是否沿水平方向翻转子图形。 */
+  flipH?: boolean;
+  /** 是否沿垂直方向翻转子图形。 */
+  flipV?: boolean;
   /** 上内边距，单位为标准化渲染像素。 */
   paddingTop?: number;
   /** 右内边距，单位为标准化渲染像素。 */
@@ -416,6 +444,8 @@ export type DocxShapeItem = {
   path?: string;
   /** 矢量路径使用的坐标范围。 */
   viewBox?: string;
+  /** 按绘制顺序排列的复合矢量图层。 */
+  pathLayers?: DocxShapePathLayer[];
   /** 填充颜色，使用 CSS 颜色值。 */
   fillColor?: string;
   /** 形状背景图可直接使用 URL，也可在页面挂载后按需读取。 */
@@ -434,6 +464,8 @@ export type DocxShapeItem = {
   textVerticalAlign?: 'top' | 'middle' | 'bottom';
   /** 是否根据文本内容自动调整形状尺寸。 */
   fitShapeToText?: boolean;
+  /** 是否按源 DrawingML 设置裁切超出文本框底部的内容。 */
+  clipVerticalOverflow?: boolean;
   /** 是否禁止单元格内容自动换行。 */
   noWrap?: boolean;
   /** 按源文档顺序排列的内容块。 */
@@ -442,6 +474,30 @@ export type DocxShapeItem = {
   paragraphs?: DocxParagraphBlock[];
   /** 源文档为当前子形状声明的超链接。 */
   hyperlink?: OfficeHyperlink;
+};
+
+/** DOCX 图片在原始资源四边裁掉的比例。 */
+export type DocxImageCrop = {
+  /** 左侧裁剪比例。 */
+  left: number;
+  /** 顶部裁剪比例。 */
+  top: number;
+  /** 右侧裁剪比例。 */
+  right: number;
+  /** 底部裁剪比例。 */
+  bottom: number;
+};
+
+/** DrawingML 图片声明的单次颜色替换效果。 */
+export type DocxImageColorChange = {
+  /** 需要被替换的源 RGB 颜色，使用 CSS 十六进制格式。 */
+  from: string;
+  /** 替换后的目标 RGB 颜色，使用 CSS 十六进制格式。 */
+  to: string;
+  /** 目标颜色的不透明度，取值范围为 0 到 1。 */
+  alpha: number;
+  /** 是否把源像素的透明度也纳入颜色匹配。 */
+  useAlpha?: boolean;
 };
 
 /** DOCX 图片资源及其显示信息。 */
@@ -458,6 +514,10 @@ export type DocxImage = {
   width: number;
   /** 高度，单位为标准化渲染像素。 */
   height: number;
+  /** 源图片在显示区域内使用的裁剪范围。 */
+  crop?: DocxImageCrop;
+  /** 源文档要求在绘制图片前执行的颜色替换。 */
+  colorChange?: DocxImageColorChange;
   /** 对象的定位信息及其参考坐标系。 */
   position?: DocxPosition;
   /** 源文档为图片声明的超链接。 */
@@ -482,12 +542,20 @@ export type DocxTextStyle = {
   color?: string;
   /** 字号，单位为标准化渲染像素。 */
   fontSize?: number;
+  /** 字符间距，单位为标准化渲染像素。 */
+  letterSpacing?: number;
+  /** 计算 Word 行盒时需保留的最大脚本字号，单位为标准化渲染像素。 */
+  lineBoxFontSize?: number;
   /** 字体族名称。 */
   fontFamily?: string;
+  /** OOXML 字体脚本提示，用于选择空格和字符度量。 */
+  fontHint?: 'default' | 'eastAsia' | 'cs';
   /** 水平对齐方式。 */
   align?: 'left' | 'center' | 'right' | 'justify';
   /** 行高，单位为标准化渲染像素。 */
   lineHeight?: number;
+  /** OOXML 行距规则，用于区分精确行高、最小行高和自动倍数。 */
+  lineHeightRule?: 'auto' | 'exact' | 'atLeast';
   /** 段前间距，单位为标准化渲染像素。 */
   spacingBefore?: number;
   /** 段后间距，单位为标准化渲染像素。 */

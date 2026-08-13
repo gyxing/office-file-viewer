@@ -6,6 +6,10 @@ import { useOfficeResourceUrl } from '../../services/resource-store/useOfficeRes
 import { useOfficeHyperlink } from '../../shared/hyperlink';
 import { OfficePreviewableImage } from '../../shared/image-preview';
 import { calculatePositionStyle } from './positionUtils';
+import {
+  resolveDocxCroppedImageStyle,
+  useDocxImageColorChange,
+} from './useDocxImageColorChange';
 
 /** DOCX图片组件属性。 */
 type DocxImageProps = {
@@ -27,6 +31,10 @@ function DocxImageComponent({ inline }: DocxImageProps) {
   const image = inline.image;
   const positionStyle = calculatePositionStyle(image.position);
   const resource = useOfficeResourceUrl(image.src);
+  const effectedResource = useDocxImageColorChange(
+    resource.url,
+    image.colorChange,
+  );
   const hyperlinkProps = useOfficeHyperlink<HTMLImageElement>({
     hyperlink: image.hyperlink,
     source: { type: 'image', id: image.id },
@@ -41,23 +49,37 @@ function DocxImageComponent({ inline }: DocxImageProps) {
     }),
     [image.height, image.position, image.width, positionStyle],
   );
+  const croppedImageStyle = useMemo<CSSProperties | undefined>(
+    () =>
+      image.crop ? resolveDocxCroppedImageStyle(image.crop) : undefined,
+    [image.crop],
+  );
 
-  return (
+  const previewableImage = (
     <OfficePreviewableImage
       {...hyperlinkProps}
       className="office-file-docx-inline-image"
       previewId={image.id}
       previewName={image.name}
       previewSource={image.src}
-      src={resource.url}
+      src={effectedResource.url}
       alt={image.alt ?? ''}
       title={image.name}
-      style={imageStyle}
+      style={croppedImageStyle ?? imageStyle}
       loading="lazy"
       decoding="async"
-      aria-busy={resource.loading || undefined}
-      data-resource-error={resource.error ? 'true' : undefined}
+      aria-busy={resource.loading || effectedResource.loading || undefined}
+      data-resource-error={
+        resource.error || effectedResource.error ? 'true' : undefined
+      }
     />
+  );
+  if (!croppedImageStyle) return previewableImage;
+
+  return (
+    <span className="office-file-docx-inline-image-crop" style={imageStyle}>
+      {previewableImage}
+    </span>
   );
 }
 

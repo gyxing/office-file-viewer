@@ -263,6 +263,18 @@ function readDocxLineHeight(spacingNode: Element | null | undefined) {
   return value / 240;
 }
 
+/** 读取 OOXML 行距规则，避免精确行距被正文网格扩张。 */
+function readDocxLineHeightRule(
+  spacingNode: Element | null | undefined,
+): DocxTextStyle['lineHeightRule'] {
+  const value = Number(
+    attr(spacingNode, 'w:line') ?? attr(spacingNode, 'line'),
+  );
+  if (!Number.isFinite(value) || value <= 0) return undefined;
+  const rule = attr(spacingNode, 'w:lineRule') ?? attr(spacingNode, 'lineRule');
+  return rule === 'exact' || rule === 'atLeast' ? rule : 'auto';
+}
+
 function halfPointToPx(value?: string) {
   const numberValue = Number(value);
   if (!Number.isFinite(numberValue)) return undefined;
@@ -534,6 +546,7 @@ function readParagraphPropertyStyle(
       attr(ind, 'w:firstLine') ?? attr(ind, 'firstLine'),
     ),
     lineHeight: readDocxLineHeight(spacing),
+    lineHeightRule: readDocxLineHeightRule(spacing),
     backgroundColor: readShading(childByLocalName(pPr, 'shd'), theme),
     ...readParagraphBorders(pPr),
   };
@@ -590,7 +603,11 @@ function firstDefined<T>(...values: Array<T | undefined>) {
   return values.find((value) => value !== undefined);
 }
 
-function readThemeFont(rFonts: Element | null | undefined, theme: OfficeTheme) {
+function readThemeFont(
+  rPr: Element | null | undefined,
+  rFonts: Element | null | undefined,
+  theme: OfficeTheme,
+) {
   const themeFont =
     attr(rFonts, 'w:eastAsiaTheme') ??
     attr(rFonts, 'eastAsiaTheme') ??
@@ -601,9 +618,28 @@ function readThemeFont(rFonts: Element | null | undefined, theme: OfficeTheme) {
     attr(rFonts, 'w:cstheme') ??
     attr(rFonts, 'cstheme');
   if (!themeFont) return undefined;
-  return themeFont.toLowerCase().includes('major')
-    ? theme.fontScheme?.majorFont
-    : theme.fontScheme?.minorFont;
+
+  const bucket = themeFont.toLowerCase().includes('major')
+    ? 'majorFont'
+    : 'minorFont';
+  const language = (
+    attr(childByLocalName(rPr, 'lang'), 'w:eastAsia') ??
+    attr(childByLocalName(rPr, 'lang'), 'eastAsia') ??
+    ''
+  ).toLowerCase();
+  const script = language.startsWith('ja')
+    ? 'Jpan'
+    : language.startsWith('ko')
+    ? 'Hang'
+    : /zh-(tw|hk|mo)/.test(language)
+    ? 'Hant'
+    : language.startsWith('zh')
+    ? 'Hans'
+    : undefined;
+  return (
+    (script ? theme.fontScheme?.[`${bucket}:${script}`] : undefined) ??
+    theme.fontScheme?.[bucket]
+  );
 }
 
 function quoteFontFamily(value?: string) {
@@ -629,13 +665,20 @@ function readFontFamily(
   const hAnsi = attr(rFonts, 'w:hAnsi') ?? attr(rFonts, 'hAnsi');
   const cs = attr(rFonts, 'w:cs') ?? attr(rFonts, 'cs');
   const themeFonts = theme.fontScheme ?? {};
-  // CSS 会为每个字符选择字体栈中首个可用字形；西文字体在前可同时还原 ASCII 与中文。
-  const explicitFonts = [ascii ?? hAnsi ?? cs, eastAsia]
+  const themeFont = readThemeFont(rPr, rFonts, theme);
+  const scriptHint = attr(rFonts, 'w:hint') ?? attr(rFonts, 'hint');
+  // 字体脚本提示决定 CSS 字体链优先级，避免系统字体链接为中文粗体选择错误的替代字体。
+  const fontCandidates =
+    scriptHint === 'eastAsia'
+      ? [eastAsia, ascii ?? hAnsi, themeFont, cs]
+      : scriptHint === 'cs'
+      ? [cs, ascii ?? hAnsi, eastAsia, themeFont]
+      : [ascii ?? hAnsi, eastAsia, themeFont, cs];
+  const explicitFonts = fontCandidates
     .filter((font): font is string => Boolean(font))
     .filter((font, index, fonts) => fonts.indexOf(font) === index);
   if (explicitFonts.length) return quoteFontFamily(explicitFonts.join(','));
-  const themeFont = readThemeFont(rFonts, theme);
-  if (themeFont || !allowFallback) return quoteFontFamily(themeFont);
+  if (!allowFallback) return undefined;
   return quoteFontFamily(
     themeFonts.minorFont ?? themeFonts.majorFont ?? DEFAULT_DOCX_FONT_FAMILY,
   );
@@ -750,14 +793,32 @@ function readTextStyle(
   const runFonts = childByLocalName(rPr, 'rFonts');
   const scriptHint =
     attr(runFonts, 'w:hint') ?? attr(runFonts, 'hint') ?? undefined;
+  const fontHint =
+    scriptHint === 'default' || scriptHint === 'eastAsia' || scriptHint === 'cs'
+      ? scriptHint
+      : undefined;
   const usesComplexScript =
-    scriptHint === 'cs' || Boolean(childByLocalName(rPr, 'cs'));
+    fontHint === 'cs' || Boolean(childByLocalName(rPr, 'cs'));
   const color =
     readDrawingColor(childByLocalName(rPr, 'textFill'), theme) ??
     parseHexColor(
       attr(childByLocalName(rPr, 'color'), 'w:val') ??
         attr(childByLocalName(rPr, 'color'), 'val'),
     );
+  const fontSize = halfPointToPx(
+    attr(childByLocalName(rPr, 'sz'), 'w:val') ??
+      attr(childByLocalName(rPr, 'sz'), 'val'),
+  );
+  const complexScriptFontSize = halfPointToPx(
+    attr(childByLocalName(rPr, 'szCs'), 'w:val') ??
+      attr(childByLocalName(rPr, 'szCs'), 'val'),
+  );
+  const fontFamily = readFontFamily(rPr, theme, allowFontFallback);
+  // szCs 只有与复杂脚本或显式字体声明成对出现时才参与行盒，单独的兼容字号不能撑高普通东亚文字。
+  const lineBoxFontSize =
+    complexScriptFontSize !== undefined && (usesComplexScript || fontFamily)
+      ? Math.max(fontSize ?? 0, complexScriptFontSize)
+      : fontSize;
   const style: DocxTextStyle = {
     bold: firstDefined(
       readOnOff(childByLocalName(rPr, 'b')),
@@ -778,11 +839,14 @@ function readTextStyle(
     backgroundColor:
       readHighlight(childByLocalName(rPr, 'highlight')) ??
       readShading(childByLocalName(rPr, 'shd'), theme),
-    fontSize: halfPointToPx(
-      attr(childByLocalName(rPr, 'sz'), 'w:val') ??
-        attr(childByLocalName(rPr, 'sz'), 'val'),
+    fontHint,
+    fontSize,
+    letterSpacing: twipToPx(
+      attr(childByLocalName(rPr, 'spacing'), 'w:val') ??
+        attr(childByLocalName(rPr, 'spacing'), 'val'),
     ),
-    fontFamily: readFontFamily(rPr, theme, allowFontFallback),
+    lineBoxFontSize: lineBoxFontSize || undefined,
+    fontFamily,
   };
 
   const cleaned = Object.fromEntries(
@@ -800,9 +864,11 @@ function mergeTwoTextStyles(
     ...base,
     ...next,
     fontSize: next?.fontSize ?? base?.fontSize,
+    lineBoxFontSize: next?.lineBoxFontSize ?? base?.lineBoxFontSize,
     fontFamily: next?.fontFamily ?? base?.fontFamily,
     color: next?.color ?? base?.color,
     lineHeight: next?.lineHeight ?? base?.lineHeight,
+    lineHeightRule: next?.lineHeightRule ?? base?.lineHeightRule,
     spacingBefore: next?.spacingBefore ?? base?.spacingBefore,
     spacingAfter: next?.spacingAfter ?? base?.spacingAfter,
     indentLeft: next?.indentLeft ?? base?.indentLeft,
@@ -938,7 +1004,7 @@ export function resolveParagraphStyle(
   catalog: DocxStyleCatalog,
   theme: OfficeTheme,
 ) {
-  // 段落最终样式 = 默认段落样式 + 命名段落样式 + 段落直接属性 + 段落内 run 属性。
+  // 段落正文继承命名样式；pPr/rPr 只描述段落标记，不能覆盖可见 run 的文字格式。
   const styleId =
     attr(childByLocalName(pPr, 'pStyle'), 'w:val') ??
     attr(childByLocalName(pPr, 'pStyle'), 'val');
@@ -954,6 +1020,11 @@ export function resolveParagraphStyle(
     namedStyle,
   );
   const directStyle = readParagraphPropertyStyle(pPr, theme);
+  const contentStyle = mergeTextStyle(style, directStyle);
+  const paragraphMarkStyle = mergeTextStyle(
+    contentStyle,
+    readTextStyle(childByLocalName(pPr, 'rPr'), theme),
+  );
   return {
     align: directStyle?.align ?? style?.align,
     spacingBefore: directStyle?.spacingBefore ?? style?.spacingBefore,
@@ -962,6 +1033,8 @@ export function resolveParagraphStyle(
     indentRight: directStyle?.indentRight ?? style?.indentRight,
     firstLineIndent: directStyle?.firstLineIndent ?? style?.firstLineIndent,
     lineHeight: directStyle?.lineHeight ?? style?.lineHeight,
+    lineHeightRule:
+      directStyle?.lineHeightRule ?? style?.lineHeightRule,
     backgroundColor: directStyle?.backgroundColor ?? style?.backgroundColor,
     borderTop: directStyle?.borderTop ?? style?.borderTop,
     borderRight: directStyle?.borderRight ?? style?.borderRight,
@@ -989,11 +1062,8 @@ export function resolveParagraphStyle(
       readDocxOutlineLevel(pPr) ??
       resolveDocxOutlineLevel(effectiveStyleId, catalog),
     isTocStyle: isDocxTocStyle(effectiveStyleId, catalog),
-    style: mergeTextStyle(
-      style,
-      directStyle,
-      readTextStyle(childByLocalName(pPr, 'rPr'), theme),
-    ),
+    style: contentStyle,
+    paragraphMarkStyle,
   };
 }
 

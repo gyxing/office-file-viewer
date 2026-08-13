@@ -111,6 +111,8 @@ type OfficePreviewStageProps = {
   state: OfficePreviewStageState;
   /** 关闭文字文档大纲。 */
   onCloseWordOutline: () => void;
+  /** 搜索启用时打开文字文档查找侧栏。 */
+  onOpenSearch?: () => void;
   /** 选择指定幻灯片。 */
   onSelectSlide: (index: number) => void;
   /** 选择指定工作表。 */
@@ -121,6 +123,7 @@ type OfficePreviewStageProps = {
 function OfficePreviewStageComponent({
   state,
   onCloseWordOutline,
+  onOpenSearch,
   onSelectSlide,
   onSelectSheet,
 }: OfficePreviewStageProps) {
@@ -164,6 +167,7 @@ function OfficePreviewStageComponent({
           zoom={state.zoom}
           showOutline={state.showOutline}
           onCloseOutline={onCloseWordOutline}
+          onOpenSearch={onOpenSearch}
         />
       );
       break;
@@ -175,6 +179,7 @@ function OfficePreviewStageComponent({
           zoom={state.zoom}
           showOutline={state.showOutline}
           onCloseOutline={onCloseWordOutline}
+          onOpenSearch={onOpenSearch}
         />
       );
       break;

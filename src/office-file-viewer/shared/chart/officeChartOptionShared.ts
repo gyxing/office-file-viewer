@@ -160,21 +160,28 @@ export function buildLegend(
     default:
       return {
         ...base,
-        top: chart.title ? 30 : 8,
+        top: chart.title ? 45 : 8,
       };
   }
 }
 
-/** 根据标题和图例位置计算笛卡尔绘图区边距。 */
+/** 根据标题、图例和坐标轴可见性计算笛卡尔绘图区边距。 */
 export function buildChartGrid(chart: OfficeChartModel) {
   const isBottomLegend = chart.legendPosition === 'bottom';
   const isSideLegend =
     chart.legendPosition === 'left' || chart.legendPosition === 'right';
+  const hasTopLegend =
+    chart.showLegend !== false &&
+    (!chart.legendPosition || chart.legendPosition === 'top');
+  const hidesVerticalValueAxis =
+    chart.type !== 'bar' && chart.showValueAxis === false;
   return {
-    left: isSideLegend ? 70 : 40,
-    right: isSideLegend ? 70 : 24,
-    top: chart.title ? 56 : chart.legendPosition === 'top' ? 40 : 24,
-    bottom: isBottomLegend ? 56 : 32,
+    left: isSideLegend ? 70 : hidesVerticalValueAxis ? 15 : 40,
+    right: isSideLegend ? 70 : hidesVerticalValueAxis ? 15 : 24,
+    // 标题和顶部图例各占一行，绘图区不能与图例重叠。
+    top: chart.title ? (hasTopLegend ? 82 : 56) : hasTopLegend ? 40 : 24,
+    // containLabel 会额外计入分类轴标签高度，普通底边距无需再次重复预留。
+    bottom: isBottomLegend ? 56 : 12,
     containLabel: true,
   };
 }
@@ -231,8 +238,8 @@ export function resolveOfficeRadarCenter(
   return ['50%', chart.title ? '56%' : '52%'];
 }
 
-/** 按 Office 间距和重叠比例估算柱条宽度。 */
-export function resolveBarWidthFromGap(
+/** 将 Office 以柱宽为基准的分类间距换算为 ECharts 分类带宽百分比。 */
+export function resolveBarCategoryGap(
   gapWidth: number | undefined,
   seriesCount: number,
   overlap?: number,
@@ -240,13 +247,13 @@ export function resolveBarWidthFromGap(
   if (!Number.isFinite(gapWidth) || gapWidth === undefined) return undefined;
   const visibleSeriesCount = Math.max(1, seriesCount);
   const overlapRatio = Math.max(-1, Math.min(1, (overlap ?? 0) / 100));
-  const effectiveSeriesCount = Math.max(
+  const groupUnits = Math.max(
     1,
-    visibleSeriesCount - Math.max(0, overlapRatio) * (visibleSeriesCount - 1),
+    visibleSeriesCount - overlapRatio * (visibleSeriesCount - 1),
   );
-  const categoryWidth = 72;
-  const width = categoryWidth / (effectiveSeriesCount + gapWidth / 100);
-  return Math.max(6, Math.min(46, Math.round(width)));
+  const gapUnits = Math.max(0, gapWidth / 100);
+  const categoryGap = (gapUnits / (groupUnits + gapUnits)) * 100;
+  return `${Math.min(95, Math.round(categoryGap * 1000) / 1000)}%`;
 }
 
 function readPieLabelPosition(
@@ -399,7 +406,7 @@ export function buildPieDataLabelConfig(
     position,
     formatter,
     color: position === 'inside' ? '#ffffff' : '#334155',
-    fontSize: 9,
+    fontSize: 12,
     fontFamily: OFFICE_FONT_FAMILY,
   };
 }

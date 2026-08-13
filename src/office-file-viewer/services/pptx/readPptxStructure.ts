@@ -32,6 +32,7 @@ import {
   readTableStyles,
   readTheme,
 } from './readPptxPresentationParts';
+import { readPptxDefaultTextStyle } from './parsePptxSlide';
 
 /** PPTX 压缩包的大文件判定指标。 */
 export type PptxArchiveProfile = {
@@ -199,6 +200,7 @@ export async function readPptxStructure(
   const theme = themeXml
     ? readTheme(themeXml)
     : { colorScheme: {}, fontScheme: {}, colorMap: {} };
+  const defaultTextStyle = readPptxDefaultTextStyle(presentationXml, theme);
   const tableStyles = readTableStyles(
     (entries.get('ppt/tableStyles.xml') as string | undefined) ?? '',
     theme,
@@ -250,6 +252,7 @@ export async function readPptxStructure(
     width: size.width,
     height: size.height,
     theme,
+    defaultTextStyle,
     tableStyles,
     masterDefinitions,
     layoutDefinitions: Object.values(masterLayoutDefinitions).flat(),

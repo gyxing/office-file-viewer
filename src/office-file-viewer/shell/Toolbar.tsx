@@ -15,6 +15,7 @@ import {
   FullscreenIcon,
   NotesIcon,
   OutlineIcon,
+  SearchIcon,
 } from '../shared/ui/OfficeIcons';
 import { OfficeTooltip } from '../shared/ui/OfficeTooltip';
 import { OfficeFileTypeIcon } from './OfficeFileTypeIcon';
@@ -84,6 +85,19 @@ export type FullscreenControls = {
   toggle(): void;
 };
 
+/** 工具栏文档查找入口的显式能力。 */
+export type OfficeToolbarSearchControls =
+  | { kind: 'disabled' }
+  | {
+      kind: 'enabled';
+      /** 查找侧栏当前是否展开。 */
+      visible: boolean;
+      /** 当前是否尚无可搜索内容。 */
+      disabled: boolean;
+      /** 切换查找侧栏。 */
+      toggle(): void;
+    };
+
 /** 顶部工具栏组合所需的文件与操作能力。 */
 type OfficeToolbarProps = {
   /** 当前显示的文件名。 */
@@ -96,6 +110,8 @@ type OfficeToolbarProps = {
   zoomControls: ZoomControls;
   /** 通用全屏能力。 */
   fullscreenControls: FullscreenControls;
+  /** 文档查找入口能力。 */
+  searchControls: OfficeToolbarSearchControls;
   /** 解析用户在文件选择器中选中的文件。 */
   onSelectFile(file: File): void;
 };
@@ -222,6 +238,7 @@ function OfficeToolbarComponent({
   formatControls,
   zoomControls,
   fullscreenControls,
+  searchControls,
   onSelectFile,
 }: OfficeToolbarProps) {
   const messages = useOfficeFileViewerMessages();
@@ -277,6 +294,23 @@ function OfficeToolbarComponent({
             disabled={formatControls.viewMode.disabled}
             onChange={formatControls.viewMode.change}
           />
+        ) : null}
+        {searchControls.kind === 'enabled' ? (
+          <OfficeButton
+            data-testid="office-search-toggle"
+            aria-label={
+              searchControls.visible
+                ? messages.search.collapse
+                : messages.search.expand
+            }
+            aria-pressed={searchControls.visible}
+            variant={searchControls.visible ? 'primary' : 'default'}
+            icon={<SearchIcon />}
+            disabled={searchControls.disabled}
+            onClick={searchControls.toggle}
+          >
+            {messages.search.title}
+          </OfficeButton>
         ) : null}
         <ZoomControl controls={zoomControls} />
         <FullscreenControl controls={fullscreenControls} messages={messages} />

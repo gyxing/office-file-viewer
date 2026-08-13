@@ -311,9 +311,10 @@ export function buildPieChartOption(
             Math.min(90, Math.round(68 * (chart.holeSize / 100))),
           )}%`
         : '0%';
+    const hasLegend = chart.showLegend !== false;
     const radius: [string, string] = chart.roseType
       ? scaleRoseRadius(chart.radius) ?? [innerRadius, '58%']
-      : chart.radius ?? [innerRadius, '68%'];
+      : chart.radius ?? [innerRadius, hasLegend ? '68%' : '82%'];
 
     return {
       animation: false,
@@ -352,7 +353,16 @@ export function buildPieChartOption(
           roseType: chart.roseType,
           startAngle: resolveOfficePieStartAngle(chart),
           padAngle: 0,
-          center: ['50%', chart.roseType ? '50%' : chart.title ? '58%' : '50%'],
+          center: [
+            '50%',
+            chart.roseType
+              ? '50%'
+              : chart.title
+              ? hasLegend
+                ? '58%'
+                : '55%'
+              : '50%',
+          ],
           avoidLabelOverlap: true,
           label: buildPieDataLabelConfig(pieLabels, chart.showDataLabels),
           labelLayout: {

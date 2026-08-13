@@ -3,6 +3,11 @@ import {
   resolvePackageMediaRef,
   type OfficeRelationship,
 } from '../../shared/ooxml/media';
+import { getOfficePartRelationshipsPath } from '../../shared/ooxml/relationships';
+import {
+  readOfficeTheme,
+  type OfficeTheme,
+} from '../../shared/ooxml/theme';
 import { emuToPx } from '../../shared/ooxml/units';
 import { parseWpsWebExtensionChartModel } from '../../shared/ooxml/wpsChart';
 import {
@@ -15,6 +20,10 @@ import {
   parseXml,
   textContent,
 } from '../../shared/ooxml/xml';
+import {
+  resolveOfficePanoseFontWeight,
+  resolveOfficeThemeFontFamily,
+} from '../fonts/OfficeFontResolver';
 import {
   alphaToOpacity,
   alphaToRatio,
@@ -46,6 +55,7 @@ import type {
   GradientFill,
   ImageCrop,
   ImageElement,
+  ReflectionStyle,
   ShadowStyle,
   ShapeElement,
   SlideBackground,
@@ -61,6 +71,15 @@ import type {
   UnsupportedElement,
 } from './types';
 
+/** DrawingML 文本框未声明左右内边距时采用的 0.1 英寸默认值。 */
+const DEFAULT_TEXT_BODY_HORIZONTAL_INSET = emuToPx(91440);
+
+/** DrawingML 文本框未声明上下内边距时采用的 0.05 英寸默认值。 */
+const DEFAULT_TEXT_BODY_VERTICAL_INSET = emuToPx(45720);
+
+/** Office 百分比行距基于字体常规行高，CSS 无单位行高则直接基于字号。 */
+const OFFICE_FONT_LINE_HEIGHT_RATIO = 1.2;
+
 function emuValue(node: Element | null, name: string) {
   const value = attr(node, name);
   return value ? emuToPx(Number(value)) : undefined;
@@ -73,11 +92,11 @@ function pointToPx(point?: string) {
   return (value / 100) * (96 / 72);
 }
 
-function pctToRatio(value?: string) {
+function pctToLineHeightRatio(value?: string) {
   if (!value) return undefined;
   const next = Number(value);
   if (!Number.isFinite(next)) return undefined;
-  return next / 100000;
+  return (next / 100000) * OFFICE_FONT_LINE_HEIGHT_RATIO;
 }
 
 function clamp01(value: number) {
@@ -111,9 +130,19 @@ function mergePlaceholderStyle(
   if (!base && !override) return {};
   if (!base) return { ...override };
   if (!override) return { ...base };
+  // 版式经常只补充文本样式而省略坐标；省略字段不能清空母版中已经定义的几何信息。
+  const definedOverride = Object.fromEntries(
+    Object.entries(override).filter(([, value]) => value !== undefined),
+  ) as Partial<PlaceholderStyle>;
+  const levels = { ...(base.levels ?? {}) };
+  Object.entries(override.levels ?? {}).forEach(([level, style]) => {
+    const levelIndex = Number(level);
+    // 空的版式级别样式不能整项覆盖母版，否则会丢失对齐、缩进等继承属性。
+    levels[levelIndex] = mergeTextStyles(base.levels?.[levelIndex], style);
+  });
   return {
     ...base,
-    ...override,
+    ...definedOverride,
     fill: override.fill !== undefined ? override.fill : base.fill,
     fillOpacity:
       override.fillOpacity !== undefined
@@ -131,12 +160,10 @@ function mergePlaceholderStyle(
     strokeDash:
       override.strokeDash !== undefined ? override.strokeDash : base.strokeDash,
     shadow: override.shadow ?? base.shadow,
+    reflection: override.reflection ?? base.reflection,
     text: mergeTextStyles(base.text, override.text),
     body: mergeTextStyles(base.body, override.body),
-    levels: {
-      ...(base.levels ?? {}),
-      ...(override.levels ?? {}),
-    },
+    levels,
   };
 }
 
@@ -176,6 +203,16 @@ function readBodyPrStyle(bodyPr: Element | null): TextStyle {
   };
 }
 
+function applyDefaultTextBodyInsets(style: TextStyle): TextStyle {
+  return {
+    ...style,
+    marginLeft: style.marginLeft ?? DEFAULT_TEXT_BODY_HORIZONTAL_INSET,
+    marginRight: style.marginRight ?? DEFAULT_TEXT_BODY_HORIZONTAL_INSET,
+    marginTop: style.marginTop ?? DEFAULT_TEXT_BODY_VERTICAL_INSET,
+    marginBottom: style.marginBottom ?? DEFAULT_TEXT_BODY_VERTICAL_INSET,
+  };
+}
+
 function readDefaultRunStyle(
   node: Element | null,
   theme: ThemeModel,
@@ -183,13 +220,32 @@ function readDefaultRunStyle(
   if (!node) return {};
   const solidFill = childByLocalName(node, 'solidFill');
   const textFillNode = solidFill ?? childByLocalName(node, 'gradFill');
-  const fontNode =
-    childByLocalName(node, 'latin') ??
-    childByLocalName(node, 'ea') ??
-    childByLocalName(node, 'cs');
+  const latinFontNode = childByLocalName(node, 'latin');
+  const eastAsiaFontNode = childByLocalName(node, 'ea');
+  const complexScriptFontNode = childByLocalName(node, 'cs');
+  const fontNode = latinFontNode ?? eastAsiaFontNode ?? complexScriptFontNode;
+  const themeFonts = {
+    majorFont: theme.fontScheme.majorLatin ?? theme.fontScheme.majorFont,
+    minorFont: theme.fontScheme.minorLatin ?? theme.fontScheme.minorFont,
+    majorEastAsiaFont:
+      theme.fontScheme.majorEastAsia ?? theme.fontScheme.majorFont,
+    minorEastAsiaFont:
+      theme.fontScheme.minorEastAsia ?? theme.fontScheme.minorFont,
+  };
+  const fontFamily = resolveOfficeThemeFontFamily(
+    attr(fontNode, 'typeface'),
+    themeFonts,
+  );
+  const eastAsiaFontFamily = resolveOfficeThemeFontFamily(
+    attr(eastAsiaFontNode, 'typeface'),
+    themeFonts,
+  );
+  const capitalization = attr(node, 'cap');
   return {
-    fontFamily: attr(fontNode, 'typeface'),
+    fontFamily,
+    eastAsiaFontFamily,
     fontSize: pointToPx(attr(node, 'sz')),
+    fontWeight: resolveOfficePanoseFontWeight(attr(fontNode, 'panose')),
     bold: boolAttr(node, 'b'),
     italic: boolAttr(node, 'i'),
     underline: attr(node, 'u') === 'sng' || attr(node, 'u') === '1',
@@ -201,11 +257,25 @@ function readDefaultRunStyle(
         : attr(node, 'strike') === 'none'
         ? 'none'
         : undefined,
-    smallCaps: boolAttr(node, 'smCap'),
-    allCaps: boolAttr(node, 'cap'),
+    smallCaps:
+      capitalization === 'small'
+        ? true
+        : capitalization === 'none'
+        ? false
+        : boolAttr(node, 'smCap'),
+    allCaps:
+      capitalization === 'all'
+        ? true
+        : capitalization === 'none'
+        ? false
+        : boolAttr(node, 'cap'),
     color: parseColorNode(solidFill, theme),
     textFill: parsePaintNode(textFillNode, theme),
     opacity: parseAlphaNode(textFillNode),
+    reflection: parseReflectionNode(
+      childByLocalName(node, 'effectLst') ??
+        childByLocalName(node, 'effectDag'),
+    ),
     charSpace: pointToPx(attr(node, 'spc')),
     baseline: attr(node, 'baseline')
       ? Number(attr(node, 'baseline')) / 1000
@@ -220,6 +290,17 @@ function readParagraphLevelStyle(
   if (!node) return {};
   const solidFill = childByLocalName(node, 'solidFill');
   const bulletChar = attr(childByLocalName(node, 'buChar'), 'char');
+  const bulletFontFamily = resolveOfficeThemeFontFamily(
+    attr(childByLocalName(node, 'buFont'), 'typeface'),
+    {
+      majorFont: theme.fontScheme.majorLatin ?? theme.fontScheme.majorFont,
+      minorFont: theme.fontScheme.minorLatin ?? theme.fontScheme.minorFont,
+      majorEastAsiaFont:
+        theme.fontScheme.majorEastAsia ?? theme.fontScheme.majorFont,
+      minorEastAsiaFont:
+        theme.fontScheme.minorEastAsia ?? theme.fontScheme.minorFont,
+    },
+  );
   const bulletSize = pointToPx(attr(childByLocalName(node, 'buSzPts'), 'val'));
   const bulletColorNode = childByLocalName(node, 'buClr');
   const bulletColor = parseColorNode(
@@ -239,7 +320,9 @@ function readParagraphLevelStyle(
 
   return {
     align:
-      attr(node, 'algn') === 'ctr'
+      attr(node, 'algn') === 'l'
+        ? 'left'
+        : attr(node, 'algn') === 'ctr'
         ? 'center'
         : attr(node, 'algn') === 'r'
         ? 'right'
@@ -247,7 +330,8 @@ function readParagraphLevelStyle(
         ? 'justify'
         : undefined,
     lineHeight:
-      pctToRatio(attr(spcPct, 'val')) ?? pointToPx(attr(spcPts, 'val')),
+      pctToLineHeightRatio(attr(spcPct, 'val')) ??
+      pointToPx(attr(spcPts, 'val')),
     marginLeft: attr(node, 'marL')
       ? emuToPx(Number(attr(node, 'marL')))
       : undefined,
@@ -261,6 +345,7 @@ function readParagraphLevelStyle(
       bulletChar || bulletNone
         ? {
             char: bulletChar,
+            fontFamily: bulletFontFamily,
             color: bulletColor,
             size: bulletSize,
             none: bulletNone,
@@ -307,6 +392,19 @@ function readTextStyleFamily(
   }
 
   return { text, body, levels };
+}
+
+/** 读取 presentation.xml 中适用于普通文本框的文稿级默认文字样式。 */
+export function readPptxDefaultTextStyle(
+  presentationXml: string,
+  theme: ThemeModel,
+): PlaceholderStyle {
+  if (!presentationXml) return {};
+  const document = parseXml(presentationXml);
+  return readTextStyleFamily(
+    descendantByLocalName(document.documentElement, 'defaultTextStyle'),
+    theme,
+  );
 }
 
 /** 读取母版或版式的文字预设，供演示结构解析复用。 */
@@ -463,10 +561,50 @@ function readCustomGeometry(spPr: Element | null | undefined) {
   };
 }
 
+function readShapeReferenceStyle(
+  styleNode: Element | null | undefined,
+  theme: ThemeModel,
+) {
+  const fillRef = childByLocalName(styleNode, 'fillRef');
+  const lineRef = childByLocalName(styleNode, 'lnRef');
+  const fontRef = childByLocalName(styleNode, 'fontRef');
+  const fontColor = parseColorNode(fontRef, theme);
+  const useMajorFont = attr(fontRef, 'idx') === 'major';
+  const fontTheme = {
+    majorFont: theme.fontScheme.majorLatin ?? theme.fontScheme.majorFont,
+    minorFont: theme.fontScheme.minorLatin ?? theme.fontScheme.minorFont,
+    majorEastAsiaFont:
+      theme.fontScheme.majorEastAsia ?? theme.fontScheme.majorFont,
+    minorEastAsiaFont:
+      theme.fontScheme.minorEastAsia ?? theme.fontScheme.minorFont,
+  };
+
+  return {
+    fill: parseColorNode(fillRef, theme),
+    stroke: parseColorNode(lineRef, theme),
+    text: fontRef
+      ? {
+          color: fontColor,
+          textFill: fontColor,
+          fontFamily: resolveOfficeThemeFontFamily(
+            useMajorFont ? '+mj-lt' : '+mn-lt',
+            fontTheme,
+          ),
+          eastAsiaFontFamily: resolveOfficeThemeFontFamily(
+            useMajorFont ? '+mj-ea' : '+mn-ea',
+            fontTheme,
+          ),
+        }
+      : undefined,
+  };
+}
+
 function readShapeVisualStyle(
   spPr: Element | null | undefined,
   theme: ThemeModel,
+  styleNode?: Element | null,
 ) {
+  const referenceStyle = readShapeReferenceStyle(styleNode, theme);
   const xfrm = childByLocalName(spPr, 'xfrm');
   const noFill = Boolean(childByLocalName(spPr, 'noFill'));
   const line = childByLocalName(spPr, 'ln');
@@ -478,19 +616,27 @@ function readShapeVisualStyle(
     childByLocalName(spPr, 'solidFill') ??
     childByLocalName(spPr, 'gradFill') ??
     childByLocalName(spPr, 'pattFill');
-  const fill = noFill || !fillNode ? null : parsePaintNode(fillNode, theme);
-  const strokeNone = !line || Boolean(childByLocalName(line, 'noFill'));
+  const fill = noFill
+    ? null
+    : fillNode
+    ? parsePaintNode(fillNode, theme)
+    : referenceStyle.fill;
+  const strokeNone = Boolean(line && childByLocalName(line, 'noFill'));
   const strokeNode =
     childByLocalName(line, 'solidFill') ??
     childByLocalName(line, 'gradFill') ??
     childByLocalName(line, 'pattFill');
-  const stroke =
-    strokeNone || !strokeNode
-      ? null
-      : parseColorNode(strokeNode ?? line, theme);
+  const stroke = strokeNone
+    ? null
+    : strokeNode
+    ? parseColorNode(strokeNode, theme)
+    : referenceStyle.stroke;
   const shadow = parseShadowNode(
     childByLocalName(spPr, 'effectLst') ?? childByLocalName(spPr, 'effectDag'),
     theme,
+  );
+  const reflection = parseReflectionNode(
+    childByLocalName(spPr, 'effectLst') ?? childByLocalName(spPr, 'effectDag'),
   );
 
   return {
@@ -501,8 +647,10 @@ function readShapeVisualStyle(
     stroke,
     strokeOpacity: parseAlphaNode(strokeNode ?? line),
     strokeWidth: attr(line, 'w') ? emuToPx(Number(attr(line, 'w'))) : undefined,
-    strokeDash: attr(line, 'prstDash') ?? undefined,
+    strokeDash: attr(childByLocalName(line, 'prstDash'), 'val') ?? undefined,
+    textStyle: referenceStyle.text,
     shadow,
+    reflection,
     rotate: attr(xfrm, 'rot') ? Number(attr(xfrm, 'rot')) / 60000 : undefined,
     flipH: attr(xfrm, 'flipH') === '1',
     flipV: attr(xfrm, 'flipV') === '1',
@@ -673,6 +821,44 @@ function parseShadowNode(
   };
 }
 
+/** 读取 DrawingML 倒影参数，渲染层再转换为浏览器盒倒影。 */
+function parseReflectionNode(
+  node: Element | null | undefined,
+): ReflectionStyle | undefined {
+  if (!node) return undefined;
+  const reflectionNode =
+    (matchesLocalName(node, 'reflection')
+      ? node
+      : childByLocalName(node, 'reflection') ??
+        descendantByLocalName(node, 'reflection')) ?? undefined;
+  if (!reflectionNode) return undefined;
+  const ratio = (name: string) => {
+    const value = attr(reflectionNode, name);
+    if (value === undefined) return undefined;
+    const parsed = Number(value) / 100000;
+    return Number.isFinite(parsed) ? clamp01(parsed) : undefined;
+  };
+  const emu = (name: string) => {
+    const value = attr(reflectionNode, name);
+    if (value === undefined) return undefined;
+    const parsed = Number(value) / 12700;
+    return Number.isFinite(parsed) ? parsed : undefined;
+  };
+  const direction = attr(reflectionNode, 'dir');
+  return {
+    blur: emu('blurRad'),
+    distance: emu('dist'),
+    direction:
+      direction !== undefined && Number.isFinite(Number(direction))
+        ? Number(direction) / 60000
+        : undefined,
+    startOpacity: ratio('stA'),
+    endOpacity: ratio('endA'),
+    startPosition: ratio('stPos'),
+    endPosition: ratio('endPos'),
+  };
+}
+
 /** 解析并确定 `resolveMediaRef` 对应的引用或配置。 */
 function resolveMediaRef(
   target: string | undefined,
@@ -746,7 +932,11 @@ export function readPptxPlaceholder(
   const xfrm = childByLocalName(spPr, 'xfrm');
   const off = childByLocalName(xfrm, 'off');
   const ext = childByLocalName(xfrm, 'ext');
-  const visual = readShapeVisualStyle(spPr, theme);
+  const visual = readShapeVisualStyle(
+    spPr,
+    theme,
+    childByLocalName(node, 'style'),
+  );
   const textBody = childByLocalName(node, 'txBody');
   const bodyPr = childByLocalName(textBody, 'bodyPr');
   const defRPr =
@@ -864,6 +1054,7 @@ function parseGroupElement(
   includePlaceholders = true,
   fieldContext?: PptxTextFieldContext,
   slideTargets?: PptxSlideTargetMap,
+  defaultTextStyle?: PlaceholderStyle,
 ) {
   const spPr = childByLocalName(node, 'grpSpPr');
   const xfrm = childByLocalName(spPr, 'xfrm');
@@ -893,6 +1084,7 @@ function parseGroupElement(
     includePlaceholders,
     fieldContext,
     slideTargets,
+    defaultTextStyle,
   );
   return childElements.map((element) => {
     const translated = transformGroupedElement(element, {
@@ -925,6 +1117,7 @@ export function parsePptxVisualTree(
   includePlaceholders = true,
   fieldContext?: PptxTextFieldContext,
   slideTargets?: PptxSlideTargetMap,
+  defaultTextStyle?: PlaceholderStyle,
 ) {
   const elements: SlideElement[] = [];
   const nodes = childrenByLocalName(spTree, 'sp')
@@ -999,6 +1192,7 @@ export function parsePptxVisualTree(
         includePlaceholders,
         fieldContext,
         slideTargets,
+        defaultTextStyle,
       );
       elements.push(...groupElements);
       return;
@@ -1008,9 +1202,15 @@ export function parsePptxVisualTree(
     if (ph && !includePlaceholders) {
       return;
     }
+    const shapeStyleNode = childByLocalName(node, 'style');
     const inherited = ph
       ? resolvePlaceholderStyle(ph, placeholderStyles)
-      : undefined;
+      : shapeStyleNode
+      ? mergePlaceholderStyle(
+          defaultTextStyle,
+          placeholderStyles?.['other:0'],
+        )
+      : defaultTextStyle;
     const txBody = childByLocalName(node, 'txBody');
     const hasText = Boolean(txBody);
     const hasTextContent = Boolean(
@@ -1022,7 +1222,11 @@ export function parsePptxVisualTree(
     const visualNode = childByLocalName(node, 'spPr');
     const imageFill = descendantByLocalName(visualNode, 'blipFill');
     const visual = visualNode
-      ? readShapeVisualStyle(visualNode, theme)
+      ? readShapeVisualStyle(
+          visualNode,
+          theme,
+          shapeStyleNode,
+        )
       : undefined;
     const hasVisibleVisual = Boolean(
       imageFill ||
@@ -1080,16 +1284,64 @@ export function parsePptxVisualTree(
   return elements;
 }
 
-/** 合并 `mergePlaceholder` 接收的多份数据。 */
-function mergePlaceholder(
+function resolvePlaceholderPreset(
   key: string,
-  layoutPlaceholders: Record<string, PlaceholderStyle>,
-  masterPlaceholders: Record<string, PlaceholderStyle>,
+  presets: Record<string, PlaceholderStyle>,
 ) {
-  return mergePlaceholderStyle(
-    masterPlaceholders[key],
-    layoutPlaceholders[key],
+  const type = key.split(':', 1)[0];
+  const presetKey =
+    type === 'title' || type === 'ctrTitle'
+      ? 'title:0'
+      : type === 'dt' || type === 'ftr' || type === 'sldNum'
+      ? 'other:0'
+      : type === 'other'
+      ? 'other:0'
+      : 'body:0';
+  return mergePlaceholderStyle(presets[presetKey], presets[key]);
+}
+
+/** 页脚类占位符在母版和版式中可能使用不同 idx，需要按类型继续继承几何信息。 */
+function resolveFooterPlaceholder(
+  key: string,
+  placeholders: Record<string, PlaceholderStyle>,
+) {
+  if (placeholders[key]) return placeholders[key];
+  const type = key.split(':', 1)[0];
+  if (type !== 'dt' && type !== 'ftr' && type !== 'sldNum') return undefined;
+  const matchingKey = Object.keys(placeholders).find(
+    (candidate) => candidate.split(':', 1)[0] === type,
   );
+  return matchingKey ? placeholders[matchingKey] : undefined;
+}
+
+/** 按母版预设、母版占位符、版式预设、版式占位符的 Office 继承顺序组装样式。 */
+function buildPlaceholderStyles(
+  master?: MasterDefinition,
+  layout?: LayoutDefinition,
+  defaultTextStyle?: PlaceholderStyle,
+) {
+  const styles: Record<string, PlaceholderStyle> = {};
+  const keys = new Set([
+    ...Object.keys(master?.textPresets ?? {}),
+    ...Object.keys(master?.placeholders ?? {}),
+    ...Object.keys(layout?.textPresets ?? {}),
+    ...Object.keys(layout?.placeholders ?? {}),
+  ]);
+  keys.forEach((key) => {
+    const masterStyle = mergePlaceholderStyle(
+      resolvePlaceholderPreset(key, master?.textPresets ?? {}),
+      resolveFooterPlaceholder(key, master?.placeholders ?? {}),
+    );
+    const layoutStyle = mergePlaceholderStyle(
+      resolvePlaceholderPreset(key, layout?.textPresets ?? {}),
+      resolveFooterPlaceholder(key, layout?.placeholders ?? {}),
+    );
+    styles[key] = mergePlaceholderStyle(
+      mergePlaceholderStyle(defaultTextStyle, masterStyle),
+      layoutStyle,
+    );
+  });
+  return styles;
 }
 
 /** 将单个 DrawingML 文本形状转换为公共演示文本模型。 */
@@ -1108,9 +1360,15 @@ export function parsePptxTextElement(
   const ext = childByLocalName(xfrm, 'ext');
   const txBody = childByLocalName(node, 'txBody');
   const bodyPr = childByLocalName(txBody, 'bodyPr');
-  const visual = readShapeVisualStyle(spPr, theme);
+  const visual = readShapeVisualStyle(
+    spPr,
+    theme,
+    childByLocalName(node, 'style'),
+  );
   const localLevels = readLevelStyles(txBody, theme);
-  const bodyStyle = mergeTextStyles(inherited?.body, readBodyPrStyle(bodyPr));
+  const bodyStyle = applyDefaultTextBodyInsets(
+    mergeTextStyles(inherited?.body, readBodyPrStyle(bodyPr)),
+  );
 
   const paragraphs: TextParagraph[] = childrenByLocalName(txBody, 'p').map(
     (paragraphNode) => {
@@ -1127,7 +1385,11 @@ export function parsePptxTextElement(
         inherited?.body,
         inherited?.levels?.[level],
         localLevels[level],
+        visual.textStyle,
         readDefaultRunStyle(childByLocalName(paragraphProps, 'defRPr'), theme),
+      );
+      const endParagraphStyle = mergeTextStyles(
+        defaultRunStyle,
         readDefaultRunStyle(
           childByLocalName(paragraphNode, 'endParaRPr'),
           theme,
@@ -1190,7 +1452,7 @@ export function parsePptxTextElement(
       if (!runs.length) {
         runs.push({
           text: paragraphNode.textContent ?? '',
-          style: defaultRunStyle,
+          style: endParagraphStyle,
         });
       }
 
@@ -1208,7 +1470,11 @@ export function parsePptxTextElement(
   const firstRunStyle =
     paragraphs.flatMap((paragraph) => paragraph.runs).find(Boolean)?.style ??
     {};
-  const fallbackStyle = mergeTextStyles(inherited?.text, bodyStyle);
+  const fallbackStyle = mergeTextStyles(
+    inherited?.text,
+    bodyStyle,
+    visual.textStyle,
+  );
 
   const objectProperties = descendantByLocalName(node, 'cNvPr');
   const hyperlink = parsePptxHyperlink(
@@ -1223,6 +1489,9 @@ export function parsePptxTextElement(
     y: emuValue(off, 'y') ?? inherited?.y ?? 0,
     width: emuValue(ext, 'cx') ?? inherited?.width ?? 0,
     height: emuValue(ext, 'cy') ?? inherited?.height ?? 0,
+    rotate: visual.rotate,
+    flipH: visual.flipH,
+    flipV: visual.flipV,
     placeholderType: inherited?.type,
     placeholderIdx: inherited?.idx,
     hyperlink,
@@ -1242,18 +1511,23 @@ export function parsePptxTextElement(
     strokeWidth: visual.strokeWidth ?? inherited?.strokeWidth,
     strokeDash: visual.strokeDash ?? inherited?.strokeDash,
     shadow: visual.shadow ?? inherited?.shadow,
+    reflection: visual.reflection ?? inherited?.reflection,
     borderRadius: visual.borderRadius,
     boxStyle: {
       fontFamily: firstRunStyle.fontFamily ?? fallbackStyle.fontFamily,
+      eastAsiaFontFamily:
+        firstRunStyle.eastAsiaFontFamily ?? fallbackStyle.eastAsiaFontFamily,
       fontSize: firstRunStyle.fontSize ?? fallbackStyle.fontSize,
-      bold: firstRunStyle.bold ?? fallbackStyle.bold,
-      italic: firstRunStyle.italic ?? fallbackStyle.italic,
-      underline: firstRunStyle.underline ?? fallbackStyle.underline,
-      color: firstRunStyle.color ?? fallbackStyle.color,
-      opacity: firstRunStyle.opacity ?? fallbackStyle.opacity,
+      // 行内格式已经落在各 run 上，文本框只保留继承默认值，避免首个粗体 run 污染后续普通正文。
+      fontWeight: fallbackStyle.fontWeight,
+      bold: fallbackStyle.bold,
+      italic: fallbackStyle.italic,
+      underline: fallbackStyle.underline,
+      color: fallbackStyle.color,
+      opacity: fallbackStyle.opacity,
       align:
         paragraphs[0]?.style?.align ?? bodyStyle.align ?? fallbackStyle.align,
-      lineHeight: paragraphs[0]?.style?.lineHeight ?? fallbackStyle.lineHeight,
+      lineHeight: fallbackStyle.lineHeight,
       marginLeft: bodyStyle.marginLeft,
       marginRight: bodyStyle.marginRight,
       marginTop: bodyStyle.marginTop,
@@ -1277,7 +1551,11 @@ function parseShapeElement(
   const spPr = childByLocalName(node, 'spPr');
   const xfrm = childByLocalName(spPr, 'xfrm');
   const ph = descendantByLocalName(node, 'ph');
-  const visual = readShapeVisualStyle(spPr, theme);
+  const visual = readShapeVisualStyle(
+    spPr,
+    theme,
+    childByLocalName(node, 'style'),
+  );
   const objectProperties = descendantByLocalName(node, 'cNvPr');
   const hyperlink = parsePptxHyperlink(
     objectProperties,
@@ -1308,6 +1586,7 @@ function parseShapeElement(
     opacity: visual.fillOpacity,
     strokeDash: visual.strokeDash ?? inherited?.strokeDash,
     shadow: visual.shadow ?? inherited?.shadow,
+    reflection: visual.reflection ?? inherited?.reflection,
     placeholderType: attr(ph, 'type') ?? inherited?.type,
     placeholderIdx: attr(ph, 'idx') ?? inherited?.idx,
     hyperlink,
@@ -1418,6 +1697,25 @@ function parseWpsWebExtensionChart(
   };
 }
 
+/** 解析图表部件关系中声明的专属主题覆盖。 */
+function resolveChartTheme(
+  chartPath: string,
+  theme: ThemeModel,
+  packageState: PackageState,
+): OfficeTheme {
+  const relationships =
+    packageState.relationships[getOfficePartRelationshipsPath(chartPath)] ?? {};
+  const overridePath = Object.values(relationships).find((relationship) =>
+    relationship.type?.toLowerCase().endsWith('/themeoverride'),
+  )?.target;
+  const overrideXml = overridePath
+    ? packageState.entries.get(overridePath)
+    : undefined;
+  return typeof overrideXml === 'string'
+    ? readOfficeTheme(overrideXml, theme)
+    : theme;
+}
+
 function parseChartElement(
   node: Element,
   index: number,
@@ -1432,9 +1730,12 @@ function parseChartElement(
   const xml = chartPath
     ? (packageState.entries.get(chartPath) as string | undefined)
     : undefined;
-  if (!xml) return undefined;
+  if (!chartPath || !xml) return undefined;
 
-  const chart = parseOfficeChartXml(xml, theme);
+  const chart = parseOfficeChartXml(
+    xml,
+    resolveChartTheme(chartPath, theme, packageState),
+  );
   const xfrm = childByLocalName(node, 'xfrm');
   const off = childByLocalName(xfrm, 'off');
   const ext = childByLocalName(xfrm, 'ext');
@@ -1749,6 +2050,7 @@ export function parseSlideXml(
   masterDefinitions: MasterDefinition[],
   tableStyles?: TableStyleMap,
   slideTargets?: PptxSlideTargetMap,
+  defaultTextStyle?: PlaceholderStyle,
 ): SlideModel {
   const doc = parseXml(xml);
   const slide = doc.documentElement;
@@ -1777,26 +2079,11 @@ export function parseSlideXml(
     ...resolvePptxSlideFields(master?.elements ?? [], index),
     ...resolvePptxSlideFields(layout?.elements ?? [], index),
   ];
-  const placeholderStyles = { ...(master?.placeholders ?? {}) };
-  Object.keys(layout?.placeholders ?? {}).forEach((key) => {
-    placeholderStyles[key] = mergePlaceholder(
-      key,
-      layout?.placeholders ?? {},
-      master?.placeholders ?? {},
-    );
-  });
-  Object.entries(master?.textPresets ?? {}).forEach(([key, preset]) => {
-    placeholderStyles[key] = mergePlaceholderStyle(
-      placeholderStyles[key],
-      preset,
-    );
-  });
-  Object.entries(layout?.textPresets ?? {}).forEach(([key, preset]) => {
-    placeholderStyles[key] = mergePlaceholderStyle(
-      placeholderStyles[key],
-      preset,
-    );
-  });
+  const placeholderStyles = buildPlaceholderStyles(
+    master,
+    layout,
+    defaultTextStyle,
+  );
 
   elements.push(
     ...parsePptxVisualTree(
@@ -1810,6 +2097,7 @@ export function parseSlideXml(
       true,
       { slideNumber: index },
       slideTargets,
+      defaultTextStyle,
     ),
   );
 

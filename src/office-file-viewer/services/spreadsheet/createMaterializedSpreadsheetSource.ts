@@ -3,6 +3,7 @@ import {
   createSpreadsheetPerformanceProfile,
   type SpreadsheetPerformanceProfile,
 } from './spreadsheetPerformance';
+import { SpreadsheetSearchProvider } from './SpreadsheetSearchProvider';
 import type {
   SpreadsheetSheetDescriptor,
   SpreadsheetSheetLayout,
@@ -104,7 +105,11 @@ export function createMaterializedSpreadsheetSource(
     })),
   });
 
-  return {
+  let searchProvider: SpreadsheetSearchProvider;
+  const source: SpreadsheetSource = {
+    get searchProvider() {
+      return searchProvider;
+    },
     getSnapshot: () => snapshot,
     subscribe: () => () => undefined,
     getProfile,
@@ -202,4 +207,6 @@ export function createMaterializedSpreadsheetSource(
     retrySheet: () => undefined,
     dispose: () => Promise.resolve(),
   };
+  searchProvider = new SpreadsheetSearchProvider(source);
+  return source;
 }

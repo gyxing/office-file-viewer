@@ -5,6 +5,7 @@ import type {
   DocParagraphBlock as DocParagraphBlockModel,
   DocTextInline,
 } from '../../services/doc/types';
+import { useOfficeFontResolver } from '../../shared/fonts/OfficeFontProvider';
 import { DocInlineContent } from './DocInlineContent';
 import { docTextStyleToCss } from './docRenderUtils';
 
@@ -46,10 +47,12 @@ function splitTableOfContentsInlines(inlines?: DocTextInline[]) {
 
 /** 渲染DOC段落内容块。 */
 function DocParagraphBlockComponent({ block }: DocParagraphBlockProps) {
+  const resolveFontFamily = useOfficeFontResolver();
+  const searchBlockId = block.sourceBlockId ?? block.id;
   const isTitle = block.role === 'title';
   const isHeading = block.role === 'heading';
   const paragraphStyle = useMemo<CSSProperties>(() => {
-    const sourceStyle = docTextStyleToCss(block.style);
+    const sourceStyle = docTextStyleToCss(block.style, resolveFontFamily);
     if (block.style?.borderStyle || block.style?.borderWidth) {
       // Word 段落边框贴正文版心，左右缩进只影响边框内文字，不能再次收窄边框外框。
       sourceStyle.marginLeft = 0;
@@ -62,7 +65,7 @@ function DocParagraphBlockComponent({ block }: DocParagraphBlockProps) {
       fontWeight: isTitle || isHeading ? 700 : 400,
       ...sourceStyle,
     };
-  }, [block.style, isHeading, isTitle]);
+  }, [block.style, isHeading, isTitle, resolveFontFamily]);
   const tocInlines = block.isTableOfContents
     ? splitTableOfContentsInlines(block.inlines)
     : undefined;
@@ -73,9 +76,18 @@ function DocParagraphBlockComponent({ block }: DocParagraphBlockProps) {
         tocInlines ? ' office-file-doc-paragraph--toc' : ''
       }`}
       style={paragraphStyle}
+      data-office-doc-estimated-height={block.estimatedHeight}
+      data-office-doc-grid={
+        block.style?.useDocumentGrid === true ? 'true' : undefined
+      }
+      data-office-doc-pagination-id={block.sourceBlockId ?? block.id}
+      data-office-doc-pagination-fragment={
+        block.sourceBlockId ? 'true' : undefined
+      }
       data-office-word-outline-target={
         block.outlineLevel !== undefined ? block.id : undefined
       }
+      data-office-word-block-id={searchBlockId}
     >
       {tocInlines ? (
         <>
@@ -84,6 +96,7 @@ function DocParagraphBlockComponent({ block }: DocParagraphBlockProps) {
               inlines={tocInlines.left}
               fallback=""
               sourceId={`${block.id}-toc-left`}
+              searchBlockId={searchBlockId}
             />
           </span>
           <span
@@ -96,6 +109,7 @@ function DocParagraphBlockComponent({ block }: DocParagraphBlockProps) {
               inlines={tocInlines.right}
               fallback=""
               sourceId={`${block.id}-toc-right`}
+              searchBlockId={searchBlockId}
             />
           </span>
         </>
@@ -104,6 +118,7 @@ function DocParagraphBlockComponent({ block }: DocParagraphBlockProps) {
           inlines={block.inlines}
           fallback={block.text}
           sourceId={block.id}
+          searchBlockId={searchBlockId}
           preserveBlockTypography={isTitle || isHeading}
         />
       )}

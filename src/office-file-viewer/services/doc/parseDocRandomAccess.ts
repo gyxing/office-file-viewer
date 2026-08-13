@@ -13,11 +13,13 @@ export async function parseDocRandomAccess(
 ): Promise<DocCoreResult> {
   const source = await createCfbDocBinarySource(file, signal);
   try {
-    const [wordDocument, tableStream, dataStream] = await Promise.all([
-      source.readWordDocument(0, source.wordDocumentSize, signal),
-      source.readTable(0, source.tableSize, signal),
-      source.readData(0, source.dataSize, signal),
-    ]);
+    const [wordDocument, tableStream, dataStream, objectPreviewStreams] =
+      await Promise.all([
+        source.readWordDocument(0, source.wordDocumentSize, signal),
+        source.readTable(0, source.tableSize, signal),
+        source.readData(0, source.dataSize, signal),
+        source.readObjectPreviewStreams(signal),
+      ]);
     return await parseDocCore(
       {
         wordDocument,
@@ -26,6 +28,7 @@ export async function parseDocRandomAccess(
           ['WordDocument', wordDocument],
           [source.tableStreamName, tableStream],
           ['Data', dataStream],
+          ...objectPreviewStreams,
         ],
       },
       context,

@@ -103,6 +103,7 @@ function XlsxSheetTabsComponent({
               type="button"
               aria-selected={active}
               role="tab"
+              data-office-spreadsheet-sheet-id={item.key}
               tabIndex={active ? 0 : -1}
               title={item.label}
               onClick={() => onSelectSheet(item.key)}

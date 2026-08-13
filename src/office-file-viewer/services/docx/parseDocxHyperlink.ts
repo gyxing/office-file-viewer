@@ -1,11 +1,9 @@
-import {
-  createOfficeHyperlinkFromTarget,
-  type OfficeHyperlink,
-} from '../../shared/hyperlink';
+import { createOfficeHyperlinkFromTarget } from '../../shared/hyperlink/createOfficeHyperlink';
+import type { OfficeHyperlink } from '../../shared/hyperlink/types';
 import type { OfficeRelationship } from '../../shared/ooxml/media';
 import { attr, descendantByLocalName } from '../../shared/ooxml/xml';
 
-export { createOfficeHyperlinkFromTarget } from '../../shared/hyperlink';
+export { createOfficeHyperlinkFromTarget } from '../../shared/hyperlink/createOfficeHyperlink';
 
 /** 将 Word 书签名称转换为内部导航链接。 */
 export function createDocxBookmarkHyperlink(

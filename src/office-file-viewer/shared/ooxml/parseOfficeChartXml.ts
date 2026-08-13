@@ -594,6 +594,11 @@ function findChartNodes(plotArea: Element | null) {
   );
 }
 
+/** 按 Office 主题色槽循环取得系列或数据点的默认颜色。 */
+function resolveChartThemeAccent(theme: OfficeTheme, index: number) {
+  return resolveOfficeThemeColor(`accent${(index % 6) + 1}`, theme);
+}
+
 function readChartPlot(
   chartNode: Element,
   theme: OfficeTheme,
@@ -606,6 +611,9 @@ function readChartPlot(
   const plotDataLabels = readDataLabels(
     childrenByLocalName(chartNode, 'dLbls')[0],
   );
+  const varyColorsValue = attr(childByLocalName(chartNode, 'varyColors'), 'val');
+  const varyColors =
+    varyColorsValue === '1' || varyColorsValue?.toLowerCase() === 'true';
   const grouping = attr(childByLocalName(chartNode, 'grouping'), 'val');
   const stacking: OfficeChartSeries['stacking'] =
     grouping === 'stacked' || grouping === 'percentStacked'
@@ -624,30 +632,45 @@ function readChartPlot(
     attr(childByLocalName(chartNode, 'overlap'), 'val'),
   );
   const overlap = Number.isFinite(overlapValue) ? overlapValue : undefined;
-  const series = seriesNodes.map((seriesNode, index) => ({
-    name:
-      firstText(descendantByLocalName(seriesNode, 'tx')) ||
-      `Series ${index + 1}`,
-    type,
-    stacking,
-    stackGroup,
-    gapWidth,
-    overlap,
-    values: readNumericValues(descendantByLocalName(seriesNode, 'val')),
-    color: readSeriesColorWithTheme(seriesNode, theme),
-    lineWidth: readLineWidth(
-      childByLocalName(childByLocalName(seriesNode, 'spPr'), 'ln'),
-    ),
-    pointColors: readPointColors(seriesNode, theme),
-    pointStyles: readPointStyles(seriesNode, theme),
-    dataLabels:
-      readDataLabels(childrenByLocalName(seriesNode, 'dLbls')[0]) ??
-      plotDataLabels,
-    smooth:
-      attr(childByLocalName(seriesNode, 'smooth'), 'val') === '1' ||
-      attr(childByLocalName(seriesNode, 'smooth'), 'val') === 'true',
-    marker: readSeriesMarker(seriesNode),
-  }));
+  const series = seriesNodes.map((seriesNode, index) => {
+    const values = readNumericValues(descendantByLocalName(seriesNode, 'val'));
+    const pointColors = readPointColors(seriesNode, theme);
+    // varyColors 图表按数据点轮换主题色；显式 dPt 样式仍由 pointStyles 优先覆盖。
+    if (varyColors) {
+      values.forEach((_, pointIndex) => {
+        if (pointColors[pointIndex]) return;
+        const color = resolveChartThemeAccent(theme, pointIndex);
+        if (color) pointColors[pointIndex] = color;
+      });
+    }
+
+    return {
+      name:
+        firstText(descendantByLocalName(seriesNode, 'tx')) ||
+        `Series ${index + 1}`,
+      type,
+      stacking,
+      stackGroup,
+      gapWidth,
+      overlap,
+      values,
+      color:
+        readSeriesColorWithTheme(seriesNode, theme) ??
+        (!varyColors ? resolveChartThemeAccent(theme, index) : undefined),
+      lineWidth: readLineWidth(
+        childByLocalName(childByLocalName(seriesNode, 'spPr'), 'ln'),
+      ),
+      pointColors,
+      pointStyles: readPointStyles(seriesNode, theme),
+      dataLabels:
+        readDataLabels(childrenByLocalName(seriesNode, 'dLbls')[0]) ??
+        plotDataLabels,
+      smooth:
+        attr(childByLocalName(seriesNode, 'smooth'), 'val') === '1' ||
+        attr(childByLocalName(seriesNode, 'smooth'), 'val') === 'true',
+      marker: readSeriesMarker(seriesNode),
+    };
+  });
   const firstValueCount = series[0]?.values.length ?? 0;
   const ofPieTypeValue = attr(childByLocalName(chartNode, 'ofPieType'), 'val');
   const ofPieType =
@@ -711,6 +734,27 @@ function buildRadarIndicators(
   });
 }
 
+/** 读取坐标轴显式显示状态；未声明 delete 时交由渲染器采用默认值。 */
+function readAxisVisibility(axisNode: Element | null | undefined) {
+  if (!axisNode) return undefined;
+  const value = attr(childByLocalName(axisNode, 'delete'), 'val');
+  if (value === undefined) return undefined;
+  return value !== '1' && value.toLowerCase() !== 'true';
+}
+
+/** 读取坐标轴数值配置。 */
+function readAxisNumber(
+  axisNode: Element | null | undefined,
+  name: 'min' | 'max' | 'majorUnit',
+) {
+  const container =
+    name === 'majorUnit'
+      ? axisNode
+      : childByLocalName(axisNode, 'scaling');
+  const value = Number(attr(childByLocalName(container, name), 'val'));
+  return Number.isFinite(value) ? value : undefined;
+}
+
 /** 将 OOXML 图表部件解析为标准图表模型。 */
 export function parseOfficeChartXml(
   xml: string,
@@ -726,6 +770,8 @@ export function parseOfficeChartXml(
     readChartPlot(chartNode, theme, date1904),
   );
   const primaryPlot = plots[0];
+  const categoryAxis = childByLocalName(plotArea, 'catAx');
+  const valueAxis = childByLocalName(plotArea, 'valAx');
   const categories = primaryPlot?.categories ?? [];
   const series = plots.flatMap((plot) => plot.series);
   const type = primaryPlot?.type ?? 'unknown';
@@ -763,6 +809,11 @@ export function parseOfficeChartXml(
     secondPieSize: primaryPlot?.secondPieSize,
     gapWidth: primaryPlot?.gapWidth,
     overlap: primaryPlot?.overlap,
+    showCategoryAxis: readAxisVisibility(categoryAxis),
+    showValueAxis: readAxisVisibility(valueAxis),
+    valueAxisMinimum: readAxisNumber(valueAxis, 'min'),
+    valueAxisMaximum: readAxisNumber(valueAxis, 'max'),
+    valueAxisMajorUnit: readAxisNumber(valueAxis, 'majorUnit'),
     radarStyle: primaryPlot?.radarStyle,
   };
 }

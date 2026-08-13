@@ -9,6 +9,7 @@ import React, {
   useState,
 } from 'react';
 import { useOfficeFileViewerMessages } from '../../locale';
+import type { OfficeFontFamilyResolver } from '../../services/fonts/types';
 import {
   useOfficeResourceUrl,
   type OfficeResourceSource,
@@ -28,6 +29,7 @@ import type {
 } from '../../services/spreadsheet/types';
 import type { SpreadsheetViewMode } from '../../services/spreadsheet/viewMode';
 import { OfficeChartView } from '../../shared/chart/OfficeChartView';
+import { useOfficeFontResolver } from '../../shared/fonts/OfficeFontProvider';
 import { useOfficeHyperlink } from '../../shared/hyperlink';
 import { OfficePreviewableImage } from '../../shared/image-preview';
 import {
@@ -215,6 +217,7 @@ function VirtualSpreadsheetCell({
   height,
   contentBounds,
   viewMode,
+  resolveFontFamily,
 }: {
   sheetId: string;
   cell: SpreadsheetCell;
@@ -225,6 +228,8 @@ function VirtualSpreadsheetCell({
   height: number;
   contentBounds?: SpreadsheetCellContentBounds;
   viewMode: SpreadsheetViewMode;
+  /** 当前文档会话统一的字体链解析函数。 */
+  resolveFontFamily: OfficeFontFamilyResolver;
 }) {
   const style = cell.style ?? {};
   const shrinkToFit = isSpreadsheetShrinkToFitCell(cell);
@@ -232,7 +237,7 @@ function VirtualSpreadsheetCell({
     ? `${style.borderWidth ?? 1}px solid ${style.borderColor ?? '#b9c2d0'}`
     : '1px solid #d9e0ea';
   const cellStyle: CSSProperties = {
-    ...buildXlsxCellStyle(cell, viewMode),
+    ...buildXlsxCellStyle(cell, viewMode, resolveFontFamily),
     position: 'absolute',
     left,
     top,
@@ -258,6 +263,7 @@ function VirtualSpreadsheetCell({
       <SpreadsheetCellRenderer
         cell={cell}
         sourceId={`${sheetId}:${cell.ref}`}
+        sheetId={sheetId}
         contentWidth={width}
         contentHeight={
           viewMode === 'source' || shrinkToFit ? height : undefined
@@ -286,6 +292,7 @@ function VirtualSpreadsheetGridComponent({
   onReadingRowHeightsChange,
   navigationControllerRef,
 }: VirtualSpreadsheetGridProps) {
+  const resolveFontFamily = useOfficeFontResolver();
   const {
     viewportRef,
     viewport,
@@ -531,6 +538,7 @@ function VirtualSpreadsheetGridComponent({
     <div
       ref={viewportRef}
       className="office-file-xlsx-sheet-grid office-file-xlsx-virtual-grid"
+      data-office-spreadsheet-sheet-id={sheetId}
     >
       <div
         className="office-file-xlsx-sheet-grid__canvas office-file-xlsx-virtual-grid__canvas"
@@ -574,6 +582,7 @@ function VirtualSpreadsheetGridComponent({
                     height={rowAxis.rangeSize(row.index, endRow)}
                     contentBounds={contentBoundsByPosition.get(key)}
                     viewMode={viewMode}
+                    resolveFontFamily={resolveFontFamily}
                   />,
                 ];
               }),

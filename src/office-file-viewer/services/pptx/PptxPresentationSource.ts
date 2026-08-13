@@ -2,10 +2,12 @@ import type { OfficeArchiveResourcePolicy } from '../../shared/resource/OfficeRe
 import { createContentStore } from '../content-store/createContentStore';
 import type { OfficeContentStore } from '../content-store/types';
 import type { OfficeSourcePreviewFactory } from '../parsing/formatParserRegistry';
+import { WorkerPresentationSource } from '../parsing/runtime/source/WorkerPresentationSource';
 import {
   getPresentationSlideWeight,
   type PresentationPerformanceProfile,
 } from '../presentation/presentationPerformance';
+import { PresentationSearchProvider } from '../presentation/PresentationSearchProvider';
 import {
   createPresentationAbortError,
   throwIfPresentationAborted,
@@ -60,6 +62,7 @@ function waitForSharedResult<T>(
 
 /** 提供 PPTX 当前页优先、邻近预取和可重试缓存能力。 */
 export class PptxPresentationSource implements PresentationSource {
+  readonly searchProvider: PresentationSearchProvider;
   private readonly listeners = new Set<() => void>();
   private descriptors: PptxSlideDescriptor[];
   private readonly slideStore: OfficeContentStore<SlideStoreMeta, SlideModel>;
@@ -91,6 +94,7 @@ export class PptxPresentationSource implements PresentationSource {
       estimateSize: (slide) =>
         2048 + slide.elements.length * 512 + getPresentationSlideWeight(slide),
     });
+    this.searchProvider = new PresentationSearchProvider(this);
   }
 
   private ensureAvailable(index?: number) {
@@ -287,7 +291,13 @@ export async function createPptxPresentationSourceFromArchive(
 /** 仅在 PPTX 画像命中大文件阈值时创建按页预览源。 */
 export const tryCreatePptxSourcePreview: OfficeSourcePreviewFactory = async (
   file,
-  { documentSession, emitProgress, emitPartial, resourcePolicy },
+  {
+    documentSession,
+    emitProgress,
+    emitPartial,
+    resourcePolicy,
+    workerSourceClient,
+  },
 ) => {
   emitProgress({
     stage: 'container',
@@ -302,6 +312,38 @@ export const tryCreatePptxSourcePreview: OfficeSourcePreviewFactory = async (
   if (archive.profile.performance.slideMode !== 'lazy') {
     await archive.reader.close();
     return undefined;
+  }
+
+  if (workerSourceClient) {
+    await archive.reader.close();
+    const opened = await workerSourceClient.openSource(
+      file,
+      'pptx',
+      resourcePolicy,
+      {
+        signal: documentSession.signal,
+        onProgress: emitProgress,
+      },
+    );
+    if (!opened.available || opened.source.kind !== 'pptx') return undefined;
+    const source = new WorkerPresentationSource(
+      workerSourceClient,
+      opened.source,
+    );
+    documentSession.register({ dispose: () => source.dispose() });
+    documentSession.transferTo(source);
+    const state = {
+      sessionId: documentSession.id,
+      previewKind: 'pptx' as const,
+      mode: 'source' as const,
+      source,
+      summary: source.getSnapshot(),
+    };
+    emitPartial(state);
+    return {
+      ...state,
+      dispose: () => disposeDocumentSession(source),
+    };
   }
 
   let source: PptxPresentationSource | undefined;

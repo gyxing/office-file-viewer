@@ -1,3 +1,4 @@
+import { PresentationSearchProvider } from './PresentationSearchProvider';
 import type {
   PresentationSlideDescriptor,
   PresentationSource,
@@ -44,7 +45,11 @@ export function createMaterializedPresentationSource(
     }
   };
 
-  return {
+  let searchProvider: PresentationSearchProvider;
+  const source: PresentationSource = {
+    get searchProvider() {
+      return searchProvider;
+    },
     getSnapshot() {
       return snapshot;
     },
@@ -77,4 +82,6 @@ export function createMaterializedPresentationSource(
       disposed = true;
     },
   };
+  searchProvider = new PresentationSearchProvider(source);
+  return source;
 }

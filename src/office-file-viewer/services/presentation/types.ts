@@ -113,8 +113,12 @@ export type SlideBackground = {
 export type TextStyle = {
   /** 字体族名称。 */
   fontFamily?: string;
+  /** 东亚文字使用的字体族；与拉丁字体共同组成按字符回退的字体链。 */
+  eastAsiaFontFamily?: string;
   /** 字号，单位为标准化渲染像素。 */
   fontSize?: number;
+  /** 源字体的基础字重，不包含粗体修饰。 */
+  fontWeight?: number;
   /** 是否使用粗体。 */
   bold?: boolean;
   /** 是否使用斜体。 */
@@ -133,6 +137,8 @@ export type TextStyle = {
   textFill?: string | GradientFill;
   /** 整体透明度，0 表示完全透明，1 表示完全不透明。 */
   opacity?: number;
+  /** 文字片段使用的倒影效果。 */
+  reflection?: ReflectionStyle;
   /** 水平对齐方式。 */
   align?: 'left' | 'center' | 'right' | 'justify';
   /** 垂直对齐方式。 */
@@ -149,7 +155,7 @@ export type TextStyle = {
   marginTop?: number;
   /** 下外边距，单位为标准化渲染像素。 */
   marginBottom?: number;
-  /** 行高，单位为标准化渲染像素。 */
+  /** 行高；不大于 4 时表示倍数，大于 4 时表示标准化渲染像素。 */
   lineHeight?: number;
   /** 段前间距，单位为标准化渲染像素。 */
   spaceBefore?: number;
@@ -169,6 +175,8 @@ export type TextStyle = {
 export type TextBulletStyle = {
   /** 项目符号使用的字符。 */
   char?: string;
+  /** 项目符号使用的字体族，例如 Wingdings。 */
+  fontFamily?: string;
   /** 前景或文字颜色，使用 CSS 颜色值。 */
   color?: string;
   /** 项目符号字号，单位为标准化渲染像素。 */
@@ -225,6 +233,8 @@ export type BaseElement = {
   zIndex?: number;
   /** 整体透明度，0 表示完全透明，1 表示完全不透明。 */
   opacity?: number;
+  /** 绘制对象使用的倒影效果。 */
+  reflection?: ReflectionStyle;
   /** 元素继承的占位符类型。 */
   placeholderType?: string;
   /** 元素继承的占位符索引。 */
@@ -392,6 +402,24 @@ export type ShadowStyle = {
   offsetX?: number;
   /** 阴影的垂直偏移，单位为标准化渲染像素。 */
   offsetY?: number;
+};
+
+/** 描述文字或形状沿指定方向生成的倒影效果。 */
+export type ReflectionStyle = {
+  /** 倒影模糊半径，单位为标准化渲染像素。 */
+  blur?: number;
+  /** 倒影与原对象的间距，单位为标准化渲染像素。 */
+  distance?: number;
+  /** 倒影方向，单位为度。 */
+  direction?: number;
+  /** 渐隐起点透明度，取值范围为 0 到 1。 */
+  startOpacity?: number;
+  /** 渐隐终点透明度，取值范围为 0 到 1。 */
+  endOpacity?: number;
+  /** 渐隐起点位置，取值范围为 0 到 1。 */
+  startPosition?: number;
+  /** 渐隐终点位置，取值范围为 0 到 1。 */
+  endPosition?: number;
 };
 
 /** 标准化幻灯片支持的绘制元素联合类型。 */
