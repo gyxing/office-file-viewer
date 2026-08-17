@@ -63,10 +63,78 @@ type DocxTextSpacingOptions = {
   latinTextStyle?: React.CSSProperties;
   /** 当前运行末尾闭标点是否可以作为段落行尾悬挂。 */
   allowLineEndHanging: boolean;
+  /** 是否启用东亚文字与西文之间的自动间距。 */
+  autoSpaceLatin: boolean;
+  /** 是否启用东亚文字与数字之间的自动间距。 */
+  autoSpaceNumber: boolean;
+  /** 当前文字运行之前紧邻的可见字符。 */
+  previousTextCharacter?: string;
+  /** 当前文字运行之后紧邻的可见字符。 */
+  nextTextCharacter?: string;
 };
 
 /** 可按 OOXML 西文字体独立渲染的基础拉丁字符。 */
 const DOCX_LATIN_CHARACTER_PATTERN = /[\u0000-\u024f]/;
+
+/** Word 自动间距规则识别的东亚表意文字。 */
+const DOCX_EAST_ASIA_CHARACTER_PATTERN =
+  /[\u3040-\u30ff\u3100-\u312f\u31f0-\u31ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff]/;
+
+/** Word 自动间距规则识别的西文字母。 */
+const DOCX_LATIN_LETTER_PATTERN = /[A-Za-z\u00c0-\u024f]/;
+
+/** Word 自动间距规则识别的半角数字。 */
+const DOCX_NUMBER_PATTERN = /[0-9]/;
+
+/** 判断相邻字符之间是否需要补足 Word 的四分之一字宽。 */
+function needsDocxAutoSpacing(
+  leftCharacter: string | undefined,
+  rightCharacter: string | undefined,
+  options: Pick<DocxTextSpacingOptions, 'autoSpaceLatin' | 'autoSpaceNumber'>,
+) {
+  if (!leftCharacter || !rightCharacter) return false;
+  const leftIsEastAsia = DOCX_EAST_ASIA_CHARACTER_PATTERN.test(leftCharacter);
+  const rightIsEastAsia = DOCX_EAST_ASIA_CHARACTER_PATTERN.test(rightCharacter);
+  if (leftIsEastAsia === rightIsEastAsia) return false;
+  const westernCharacter = leftIsEastAsia ? rightCharacter : leftCharacter;
+  return (
+    (options.autoSpaceLatin &&
+      DOCX_LATIN_LETTER_PATTERN.test(westernCharacter)) ||
+    (options.autoSpaceNumber && DOCX_NUMBER_PATTERN.test(westernCharacter))
+  );
+}
+
+/** 检查当前文字运行及其相邻运行是否存在需要自动留白的脚本边界。 */
+function hasDocxAutoSpacingBoundary(
+  text: string,
+  options: Pick<
+    DocxTextSpacingOptions,
+    | 'autoSpaceLatin'
+    | 'autoSpaceNumber'
+    | 'previousTextCharacter'
+    | 'nextTextCharacter'
+  >,
+) {
+  const characters = Array.from(text);
+  if (!characters.length) return false;
+  if (
+    needsDocxAutoSpacing(options.previousTextCharacter, characters[0], options)
+  ) {
+    return true;
+  }
+  for (let index = 1; index < characters.length; index += 1) {
+    if (
+      needsDocxAutoSpacing(characters[index - 1], characters[index], options)
+    ) {
+      return true;
+    }
+  }
+  return needsDocxAutoSpacing(
+    characters[characters.length - 1],
+    options.nextTextCharacter,
+    options,
+  );
+}
 
 /** 按字符脚本拆分同一 OOXML 运行，避免中文字体覆盖西文字体。 */
 function renderScriptAwareText(
@@ -121,6 +189,20 @@ function renderOfficeTextSpacing(
 
   for (let index = 0; index < characters.length; index += 1) {
     const character = characters[index];
+    const previousCharacter =
+      index > 0 ? characters[index - 1] : options.previousTextCharacter;
+    if (needsDocxAutoSpacing(previousCharacter, character, options)) {
+      flushPlainText();
+      nodes.push(
+        <span
+          key={`auto-spacing-${index}`}
+          className="office-file-docx-auto-spacing"
+          aria-hidden="true"
+        >
+          {' '}
+        </span>,
+      );
+    }
 
     if (options.preserveEastAsiaSpaces && character === ' ') {
       let spaceEnd = index + 1;
@@ -143,6 +225,20 @@ function renderOfficeTextSpacing(
         </span>,
       );
       index = spaceEnd - 1;
+      continue;
+    }
+    const nextCharacter =
+      index + 1 < characters.length
+        ? characters[index + 1]
+        : options.nextTextCharacter;
+    if (
+      character === '+' &&
+      DOCX_EAST_ASIA_CHARACTER_PATTERN.test(nextCharacter ?? '')
+    ) {
+      // Word 允许西文运算符后的东亚文字另起一行，浏览器默认禁则会额外撑高窄表格。
+      plainText += character;
+      flushPlainText();
+      nodes.push(<wbr key={`word-break-${index}`} />);
       continue;
     }
     if (!options.compressPunctuation) {
@@ -235,6 +331,23 @@ function renderOfficeTextSpacing(
   }
 
   flushPlainText();
+  if (
+    needsDocxAutoSpacing(
+      characters[characters.length - 1],
+      options.nextTextCharacter,
+      options,
+    )
+  ) {
+    nodes.push(
+      <span
+        key="auto-spacing-end"
+        className="office-file-docx-auto-spacing"
+        aria-hidden="true"
+      >
+        {' '}
+      </span>,
+    );
+  }
   return nodes;
 }
 /** DOCX 行内内容组件属性。 */
@@ -249,6 +362,14 @@ type DocxInlineContentProps = {
   resolveFontFamily: OfficeFontFamilyResolver;
   /** 当前行内内容是否为段落最后一个文字运行。 */
   isParagraphEnd: boolean;
+  /** 是否启用东亚文字与西文之间的自动间距。 */
+  autoSpaceLatin: boolean;
+  /** 是否启用东亚文字与数字之间的自动间距。 */
+  autoSpaceNumber: boolean;
+  /** 当前文字运行之前紧邻的可见字符。 */
+  previousTextCharacter?: string;
+  /** 当前文字运行之后紧邻的可见字符。 */
+  nextTextCharacter?: string;
 };
 
 /** 渲染 DOCX 段落中的行内文字、图片和图表。 */
@@ -258,6 +379,10 @@ function DocxInlineContentComponent({
   searchBlockId,
   resolveFontFamily,
   isParagraphEnd,
+  autoSpaceLatin,
+  autoSpaceNumber,
+  previousTextCharacter,
+  nextTextCharacter,
 }: DocxInlineContentProps) {
   const compressPunctuation = useContext(DocxCharacterSpacingContext);
   const hyperlinkProps = useOfficeHyperlink<HTMLSpanElement>({
@@ -304,20 +429,47 @@ function DocxInlineContentComponent({
             : inline.style?.bold === false
             ? 400
             : undefined,
-        // 西文字体不继承宋体的描边粗体和小字号字宽补偿。
-        WebkitTextStroke: 0,
+        // 西文字体不继承宋体的小字号字宽补偿。
         letterSpacing: 0,
       }
     : undefined;
+  const hasAutoSpacing = hasDocxAutoSpacingBoundary(inline.text, {
+    autoSpaceLatin,
+    autoSpaceNumber,
+    previousTextCharacter,
+    nextTextCharacter,
+  });
+  const isNumberingSpacer =
+    inline.advanceWidth !== undefined && inline.text.length === 0;
   const renderText =
-    compressPunctuation || preserveEastAsiaSpaces || latinTextStyle
-      ? (text: string) =>
-          renderOfficeTextSpacing(text, {
+    !isNumberingSpacer &&
+    (compressPunctuation ||
+      preserveEastAsiaSpaces ||
+      latinTextStyle ||
+      hasAutoSpacing)
+      ? (text: string, startOffset: number, endOffset: number) => {
+          const precedingCharacters =
+            startOffset > 0
+              ? Array.from(inline.text.slice(0, startOffset))
+              : undefined;
+          const followingCharacters =
+            endOffset < inline.text.length
+              ? Array.from(inline.text.slice(endOffset))
+              : undefined;
+          return renderOfficeTextSpacing(text, {
             compressPunctuation,
             preserveEastAsiaSpaces,
             latinTextStyle,
-            allowLineEndHanging: isParagraphEnd,
-          })
+            allowLineEndHanging:
+              isParagraphEnd && endOffset === inline.text.length,
+            autoSpaceLatin,
+            autoSpaceNumber,
+            previousTextCharacter:
+              precedingCharacters?.[precedingCharacters.length - 1] ??
+              previousTextCharacter,
+            nextTextCharacter: followingCharacters?.[0] ?? nextTextCharacter,
+          });
+        }
       : undefined;
 
   return (
@@ -338,13 +490,23 @@ function DocxInlineContentComponent({
             : undefined,
         display: inline.advanceWidth !== undefined ? 'inline-block' : undefined,
         width: inline.advanceWidth,
+        // 编号容器会建立独立行盒，必须清除继承的负首行缩进，避免编号被二次左移。
+        textIndent: inline.advanceWidth !== undefined ? 0 : undefined,
+        // 悬挂编号只负责预留横向前进宽度；零高行盒避免编号标签把 24px 正文行距向上取整为 25px。
+        height: inline.advanceWidth !== undefined ? 0 : undefined,
+        lineHeight: inline.advanceWidth !== undefined ? 0 : undefined,
+        position: inline.advanceWidth !== undefined ? 'relative' : undefined,
+        // Word 的悬挂编号基线略低于同段正文，使用相对位移还原且不参与行盒计算。
+        top: inline.advanceWidth !== undefined ? '0.12em' : undefined,
       }}
     >
-      <OfficeSearchHighlightedText
-        text={inline.text}
-        target={{ kind: 'word', blockId: searchBlockId }}
-        renderText={renderText}
-      />
+      {isNumberingSpacer ? null : (
+        <OfficeSearchHighlightedText
+          text={inline.text}
+          target={{ kind: 'word', blockId: searchBlockId }}
+          renderText={renderText}
+        />
+      )}
     </span>
   );
 }

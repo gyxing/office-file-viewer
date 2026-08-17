@@ -161,7 +161,11 @@ export function OfficeSearchHighlightedText({
   /** 当前文本对应的格式定位目标。 */
   target: OfficeSearchHighlightTarget;
   /** 保留压缩标点等格式专属文本渲染方式。 */
-  renderText?: (value: string) => ReactNode;
+  renderText?: (
+    value: string,
+    startOffset: number,
+    endOffset: number,
+  ) => ReactNode;
 }) {
   const runtime = useOfficeSearchRuntime();
   const targetKey = getOfficeSearchTargetKey(target);
@@ -170,14 +174,14 @@ export function OfficeSearchHighlightedText({
     !runtime.matchingTargetKeys.has(targetKey) ||
     !runtime.controller.state.query
   ) {
-    return <>{renderText(text)}</>;
+    return <>{renderText(text, 0, text.length)}</>;
   }
   const matches = findSearchMatches(text, {
     text: runtime.controller.state.query,
     matchCase: runtime.controller.state.matchCase,
     wholeWord: runtime.controller.state.wholeWord,
   });
-  if (!matches.length) return <>{renderText(text)}</>;
+  if (!matches.length) return <>{renderText(text, 0, text.length)}</>;
 
   const current = runtime.currentTargetKey === targetKey;
   const nodes: ReactNode[] = [];
@@ -186,7 +190,11 @@ export function OfficeSearchHighlightedText({
     if (match.startOffset > offset) {
       nodes.push(
         <React.Fragment key={`text-${index}`}>
-          {renderText(text.slice(offset, match.startOffset))}
+          {renderText(
+            text.slice(offset, match.startOffset),
+            offset,
+            match.startOffset,
+          )}
         </React.Fragment>,
       );
     }
@@ -200,7 +208,11 @@ export function OfficeSearchHighlightedText({
         }
         data-office-search-highlight="true"
       >
-        {renderText(text.slice(match.startOffset, match.endOffset))}
+        {renderText(
+          text.slice(match.startOffset, match.endOffset),
+          match.startOffset,
+          match.endOffset,
+        )}
       </mark>,
     );
     offset = match.endOffset;
@@ -208,7 +220,7 @@ export function OfficeSearchHighlightedText({
   if (offset < text.length) {
     nodes.push(
       <React.Fragment key="text-tail">
-        {renderText(text.slice(offset))}
+        {renderText(text.slice(offset), offset, text.length)}
       </React.Fragment>,
     );
   }

@@ -7,10 +7,35 @@ import type {
 } from '../../services/docx/types';
 import { OfficeChartView } from '../../shared/chart/OfficeChartView';
 import { DocxParagraph } from './DocxParagraph';
+import { shouldSuppressDocxContextualSpacing } from './docxParagraphSpacing';
 import { calculatePositionStyle } from './positionUtils';
 
 /** DOCX 表格边线与内容区域之间的视觉修正量，单位为标准化渲染像素。 */
 const DOCX_TABLE_EDGE_OFFSET = 7;
+
+/** 读取 CSS 边框宽度，供 OOXML 单元格边距转换为内容区内边距。 */
+function readCssBorderWidth(border: string | undefined) {
+  if (!border || border === 'none') return 0;
+  const width = Number.parseFloat(border);
+  return Number.isFinite(width) ? width : 0;
+}
+
+/** Word 从网格线中心计算单元格边距，CSS 需扣除落在内容区内侧的边框宽度。 */
+function resolveHorizontalCellPadding(
+  margin: number | undefined,
+  border: string | undefined,
+) {
+  return Math.max(
+    0,
+    (margin ?? DOCX_TABLE_EDGE_OFFSET) - readCssBorderWidth(border),
+  );
+}
+
+/** 抵消浏览器把亚像素边框提升为一个布局像素造成的逐行累计误差。 */
+function resolveThinBorderLayoutCompensation(border: string | undefined) {
+  const width = readCssBorderWidth(border);
+  return width > 0 && width < 1 ? 1 - width : 0;
+}
 
 /** DOCX表格内容块组件属性。 */
 type DocxTableBlockProps = {
@@ -148,95 +173,169 @@ function DocxTableBlockComponent({
         <tbody>
           {block.rows.map((row) => {
             const hasExplicitRowHeight = row.height !== undefined;
+            const fragment = row.fragment;
             return (
               <tr
                 key={row.id}
                 style={{
-                  height: row.height,
+                  height: fragment?.height ?? row.height,
                 }}
               >
-                {row.cells.map((cell) => (
-                  <td
-                    key={cell.id}
-                    className="office-file-docx-table-block__cell"
-                    colSpan={
-                      cell.colSpan && cell.colSpan > 1
-                        ? cell.colSpan
-                        : undefined
-                    }
-                    rowSpan={
-                      cell.rowSpan && cell.rowSpan > 1
-                        ? cell.rowSpan
-                        : undefined
-                    }
-                    style={{
-                      borderTop:
-                        cell.borderTop ??
-                        (cell.hasBorderTop ? 'none' : '1px solid #cfd7e3'),
-                      borderRight:
-                        cell.borderRight ??
-                        (cell.hasBorderRight ? 'none' : '1px solid #cfd7e3'),
-                      borderBottom:
-                        cell.borderBottom ??
-                        (cell.hasBorderBottom ? 'none' : '1px solid #cfd7e3'),
-                      borderLeft:
-                        cell.borderLeft ??
-                        (cell.hasBorderLeft ? 'none' : '1px solid #cfd7e3'),
-                      paddingTop: resolveVerticalPadding(
-                        cell.paddingTop,
-                        hasExplicitRowHeight,
-                        cell,
-                      ),
-                      paddingRight: cell.paddingRight ?? 7,
-                      paddingBottom: resolveVerticalPadding(
-                        cell.paddingBottom,
-                        hasExplicitRowHeight,
-                        cell,
-                      ),
-                      paddingLeft: cell.paddingLeft ?? 7,
-                      width: shouldFit ? undefined : cell.width,
-                      verticalAlign: cell.verticalAlign,
-                      background: cell.backgroundColor ?? '#fff',
-                      wordBreak: cell.noWrap ? 'normal' : 'break-word',
-                      overflowWrap: cell.noWrap ? 'normal' : 'anywhere',
-                      whiteSpace: cell.noWrap ? 'nowrap' : undefined,
-                    }}
-                  >
-                    {cell.blocks.map((item) =>
-                      item.type === 'chart' ? (
+                {row.cells.map((cell) => {
+                  const paddingTop = resolveVerticalPadding(
+                    cell.paddingTop,
+                    hasExplicitRowHeight,
+                    cell,
+                  );
+                  const paddingBottom = resolveVerticalPadding(
+                    cell.paddingBottom,
+                    hasExplicitRowHeight,
+                    cell,
+                  );
+                  const borderRight =
+                    cell.borderRight ??
+                    (cell.hasBorderRight ? 'none' : '1px solid #cfd7e3');
+                  const borderLeft =
+                    cell.borderLeft ??
+                    (cell.hasBorderLeft ? 'none' : '1px solid #cfd7e3');
+                  const paddingRight = resolveHorizontalCellPadding(
+                    cell.paddingRight,
+                    borderRight,
+                  );
+                  const paddingLeft = resolveHorizontalCellPadding(
+                    cell.paddingLeft,
+                    borderLeft,
+                  );
+                  const content = cell.blocks.map((item, itemIndex) =>
+                    item.type === 'chart' ? (
+                      <div
+                        key={item.id}
+                        className="office-file-docx-table-block__chart"
+                      >
+                        <OfficeChartView
+                          chart={item.chart}
+                          width={item.width}
+                          height={item.height}
+                          zoom={100}
+                        />
+                      </div>
+                    ) : item.type === 'table' ? (
+                      <DocxTableBlockComponent
+                        key={item.id}
+                        block={item}
+                        availableWidth={cell.width ?? availableWidth}
+                        maximumWidth={
+                          cell.width ?? availableWidth ?? maximumWidth
+                        }
+                        searchBlockId={searchBlockId}
+                      />
+                    ) : (
+                      <DocxParagraph
+                        key={item.id}
+                        block={item}
+                        compact
+                        asDiv
+                        suppressSpacingBefore={shouldSuppressDocxContextualSpacing(
+                          item,
+                          cell.blocks[itemIndex - 1],
+                        )}
+                        suppressSpacingAfter={
+                          itemIndex === cell.blocks.length - 1 ||
+                          shouldSuppressDocxContextualSpacing(
+                            item,
+                            cell.blocks[itemIndex + 1],
+                          )
+                        }
+                        searchBlockId={searchBlockId}
+                      />
+                    ),
+                  );
+                  const borderTop =
+                    fragment && fragment.offset > 0.5
+                      ? 'none'
+                      : cell.borderTop ??
+                        (cell.hasBorderTop ? 'none' : '1px solid #cfd7e3');
+                  const borderBottom =
+                    fragment &&
+                    fragment.offset + fragment.height <
+                      fragment.sourceHeight - 0.5
+                      ? 'none'
+                      : cell.borderBottom ??
+                        (cell.hasBorderBottom ? 'none' : '1px solid #cfd7e3');
+                  const borderLayoutCompensation =
+                    resolveThinBorderLayoutCompensation(borderBottom);
+                  return (
+                    <td
+                      key={cell.id}
+                      className="office-file-docx-table-block__cell"
+                      colSpan={
+                        cell.colSpan && cell.colSpan > 1
+                          ? cell.colSpan
+                          : undefined
+                      }
+                      rowSpan={
+                        cell.rowSpan && cell.rowSpan > 1
+                          ? cell.rowSpan
+                          : undefined
+                      }
+                      style={{
+                        borderTop,
+                        borderRight,
+                        borderBottom,
+                        borderLeft,
+                        paddingTop: fragment ? 0 : paddingTop,
+                        paddingRight: fragment ? 0 : paddingRight,
+                        paddingBottom: fragment ? 0 : paddingBottom,
+                        paddingLeft: fragment ? 0 : paddingLeft,
+                        width: shouldFit ? undefined : cell.width,
+                        height: fragment?.height,
+                        verticalAlign: fragment ? 'top' : cell.verticalAlign,
+                        background: cell.backgroundColor ?? '#fff',
+                        wordBreak: cell.noWrap ? 'normal' : 'break-word',
+                        overflowWrap: cell.noWrap ? 'normal' : 'anywhere',
+                        whiteSpace: cell.noWrap ? 'nowrap' : undefined,
+                      }}
+                    >
+                      {fragment ? (
                         <div
-                          key={item.id}
-                          className="office-file-docx-table-block__chart"
+                          className="office-file-docx-table-block__fragment-clip"
+                          style={{ height: fragment.height }}
                         >
-                          <OfficeChartView
-                            chart={item.chart}
-                            width={item.width}
-                            height={item.height}
-                            zoom={100}
-                          />
+                          <div
+                            className="office-file-docx-table-block__fragment-content"
+                            style={{
+                              top: -fragment.offset,
+                              height: fragment.sourceHeight,
+                              paddingTop,
+                              paddingRight,
+                              paddingBottom,
+                              paddingLeft,
+                              justifyContent:
+                                cell.verticalAlign === 'middle'
+                                  ? 'center'
+                                  : cell.verticalAlign === 'bottom'
+                                  ? 'flex-end'
+                                  : undefined,
+                            }}
+                          >
+                            {content}
+                          </div>
                         </div>
-                      ) : item.type === 'table' ? (
-                        <DocxTableBlockComponent
-                          key={item.id}
-                          block={item}
-                          availableWidth={cell.width ?? availableWidth}
-                          maximumWidth={
-                            cell.width ?? availableWidth ?? maximumWidth
-                          }
-                          searchBlockId={searchBlockId}
-                        />
                       ) : (
-                        <DocxParagraph
-                          key={item.id}
-                          block={item}
-                          compact
-                          asDiv
-                          searchBlockId={searchBlockId}
-                        />
-                      ),
-                    )}
-                  </td>
-                ))}
+                        <div
+                          className="office-file-docx-table-block__cell-content"
+                          style={{
+                            marginBottom: borderLayoutCompensation
+                              ? -borderLayoutCompensation
+                              : undefined,
+                          }}
+                        >
+                          {content}
+                        </div>
+                      )}
+                    </td>
+                  );
+                })}
               </tr>
             );
           })}

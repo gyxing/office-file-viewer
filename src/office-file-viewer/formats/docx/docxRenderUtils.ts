@@ -15,10 +15,9 @@ const DOCX_EAST_ASIA_FONT_PATTERN =
 /** 判断当前文字是否按东亚脚本使用宋体字面。 */
 function usesEastAsiaSimSun(style?: DocxTextStyle) {
   return Boolean(
-    style?.fontHint === 'eastAsia' &&
-      /(?:^|,)\s*["']?(?:宋体|simsun)["']?\s*(?:,|$)/i.test(
-        style.fontFamily ?? '',
-      ),
+    /(?:^|,)\s*["']?(?:宋体|simsun)["']?\s*(?:,|$)/i.test(
+      style?.fontFamily ?? '',
+    ),
   );
 }
 
@@ -29,24 +28,34 @@ const DOCX_SHAPE_YAHEI_FONT_PATTERN = /微软雅黑|Microsoft\s+YaHei/i;
 /** Word 中 11 磅字号换算到浏览器后的标准像素值。 */
 const DOCX_SIMSUN_11PT_SIZE_PX = 44 / 3;
 
-/** 抵消浏览器对小字号宋体字宽整像素吸附造成的累计换行误差。 */
+/** 抵消浏览器对 11 磅宋体字宽整像素吸附造成的累计换行误差。 */
 const DOCX_SIMSUN_11PT_LETTER_SPACING_PX = -0.31;
+/** Windows 小字号宋体原生合成粗体增加的单字前进宽度。 */
+const DOCX_SIMSUN_HINTED_BOLD_ADVANCE_PX = 1;
+/** 宋体关闭整数像素 hinting 后，原生合成粗体增加的字号比例。 */
+const DOCX_SIMSUN_NATIVE_BOLD_ADVANCE_RATIO = 1 / 51.2;
+/** Windows 宋体仍使用整数像素 hinting 的最大字号。 */
+const DOCX_SIMSUN_HINTED_BOLD_MAX_SIZE_PX = 16;
 
-/** 宋体没有独立粗体字面，需保持原字宽并用描边模拟 Word 的合成粗体。 */
-function needsSyntheticSimSunBold(style?: DocxTextStyle) {
-  return Boolean(style?.bold && usesEastAsiaSimSun(style));
-}
-
-/** 还原 Word 打印度量中的 11 磅宋体字宽，避免浏览器整像素吸附导致提前换行。 */
-function resolveSyntheticSimSunLetterSpacing(style?: DocxTextStyle) {
+/** 保留源字符间距，并抵消浏览器宋体 hinting 与原生合成粗体造成的宽度漂移。 */
+function resolveSimSunLetterSpacing(style?: DocxTextStyle) {
+  if (!usesEastAsiaSimSun(style)) return style?.letterSpacing;
+  const fontSize = style?.fontSize;
+  let letterSpacing = style?.letterSpacing ?? 0;
   if (
-    !needsSyntheticSimSunBold(style) ||
-    style?.fontSize === undefined ||
-    Math.abs(style.fontSize - DOCX_SIMSUN_11PT_SIZE_PX) > 0.01
+    style?.letterSpacing === undefined &&
+    fontSize !== undefined &&
+    Math.abs(fontSize - DOCX_SIMSUN_11PT_SIZE_PX) <= 0.01
   ) {
-    return undefined;
+    letterSpacing += DOCX_SIMSUN_11PT_LETTER_SPACING_PX;
   }
-  return DOCX_SIMSUN_11PT_LETTER_SPACING_PX + 'px';
+  if (style?.bold && fontSize !== undefined) {
+    letterSpacing -=
+      fontSize <= DOCX_SIMSUN_HINTED_BOLD_MAX_SIZE_PX
+        ? DOCX_SIMSUN_HINTED_BOLD_ADVANCE_PX
+        : fontSize * DOCX_SIMSUN_NATIVE_BOLD_ADVANCE_RATIO;
+  }
+  return Math.abs(letterSpacing) > 0.0001 ? letterSpacing : undefined;
 }
 
 /** 按 OOXML 脚本提示调整字体链，避免系统字体链接改变东亚文字字宽。 */
@@ -113,19 +122,10 @@ export function buildDocxTextStyle(
   },
   resolveFontFamily?: OfficeFontFamilyResolver,
 ): CSSProperties {
-  const syntheticSimSunBold = needsSyntheticSimSunBold(style);
   const css: CSSProperties = {
+    // 缺少独立粗体字面时交给浏览器原生合成，避免描边造成文字重影。
     fontWeight:
-      style?.bold === true
-        ? syntheticSimSunBold
-          ? 400
-          : 700
-        : style?.bold === false
-        ? 400
-        : undefined,
-    WebkitTextStroke: syntheticSimSunBold
-      ? '0.35px currentColor'
-      : undefined,
+      style?.bold === true ? 700 : style?.bold === false ? 400 : undefined,
     fontStyle:
       style?.italic === true
         ? 'italic'
@@ -139,8 +139,7 @@ export function buildDocxTextStyle(
     color: style?.color,
     fontSize: style?.fontSize,
     fontFamily: resolveDocxTextFontFamily(style, resolveFontFamily),
-    letterSpacing:
-      style?.letterSpacing ?? resolveSyntheticSimSunLetterSpacing(style),
+    letterSpacing: resolveSimSunLetterSpacing(style),
 
     textTransform: style?.allCaps ? 'uppercase' : undefined,
     fontVariant: style?.smallCaps ? 'small-caps' : undefined,

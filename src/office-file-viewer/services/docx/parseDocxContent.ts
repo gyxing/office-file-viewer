@@ -12,14 +12,17 @@ import {
 } from '../../shared/ooxml/xml';
 import {
   DEFAULT_DOCX_PAGE,
-  inlineInheritedStyle,
   mapAlignment,
   mergeTextStyle,
   positiveTwipToPx,
   readBorder,
+  readDocxTableBorders,
   readOnOff,
   readShading,
   readVal,
+  resolveDocxStyle,
+  resolveDocxTableBorders,
+  resolveDocxTableCellMargins,
   resolveParagraphStyle,
   resolveRunStyle,
   twipToPx,
@@ -52,14 +55,15 @@ type ParseContext = DocxParseContext;
 
 const drawingParser = createDocxDrawingParser(readDocxBlockChildren);
 
-// Word 的正文流表格会在文档网格边界后保留约 6pt，浏览器表格需显式补回。
-/** DOCX 流式表格相对正文顶部的视觉修正量。 */
-const DOCX_FLOW_TABLE_TOP_OFFSET = 8;
 // 百分比表宽不包含首尾默认单元格边距，Word 会把两侧各约 7px 绘制到正文边界外。
 /** DOCX 表格缺少边缘设置时使用的默认修正量。 */
 const DOCX_DEFAULT_TABLE_EDGE_OFFSET = 7;
 /** Word/WPS 正文单倍行距的默认行盒倍率，用于判断段落占用的文档网格数。 */
 const DOCX_BODY_LINE_HEIGHT_MULTIPLIER = 4 / 3;
+/** WPS 非表格 auto 行距使用的 12 磅排版基准。 */
+const DOCX_AUTO_LINE_HEIGHT_BASE_FONT_SIZE_PX = 16;
+/** Word 未显式声明行距的标题使用的自然行盒倍率。 */
+const DOCX_HEADING_LINE_HEIGHT_MULTIPLIER = 1.8;
 /** WPS 纯浮动锚点段落使用微软雅黑段落标记时采用的兼容行盒倍率。 */
 const DOCX_ANCHOR_YAHEI_LINE_HEIGHT_MULTIPLIER = 1.8;
 /** 可按字体场景还原纯浮动锚点段落网格占用的微软雅黑字体。 */
@@ -71,6 +75,31 @@ const DOCX_SHAPE_LINE_HEIGHT_MULTIPLIER = 1.2;
 /** 使用紧凑东亚衬线字形度量的常见 Office 字体。 */
 const DOCX_COMPACT_SERIF_FONT_PATTERN =
   /宋体|新宋体|ＭＳ 明朝|SimSun|NSimSun|MS Mincho|Songti|Noto Serif CJK/i;
+/** 编号标签挤满悬挂区后，Word 在正文前保留的最小视觉间隔。 */
+const DOCX_NUMBERING_OVERFLOW_GAP_EM = 0.875;
+
+/** 估算编号标签占用宽度，避免长编号越过悬挂区后与正文重叠。 */
+function estimateDocxNumberingLabelWidth(text: string, fontSize: number) {
+  return Array.from(text).reduce((width, character) => {
+    if (/[0-9]/.test(character)) return width + fontSize * 0.5;
+    if (/[A-Za-z]/.test(character)) return width + fontSize * 0.55;
+    if (/[.,:;]/.test(character)) return width + fontSize * 0.25;
+    if (/\s/.test(character)) return width + fontSize * 0.33;
+    return width + fontSize;
+  }, 0);
+}
+
+/** 计算编号文字溢出悬挂区后，Word 在正文前追加的间隔。 */
+function resolveDocxNumberingGapWidth(
+  text: string,
+  hangingWidth: number,
+  fontSize: number,
+) {
+  const labelWidth = estimateDocxNumberingLabelWidth(text, fontSize);
+  return labelWidth >= hangingWidth
+    ? labelWidth - hangingWidth + fontSize * DOCX_NUMBERING_OVERFLOW_GAP_EM
+    : 0;
+}
 
 /** 复杂域解析时保留的指令和已确定链接。 */
 type DocxFieldState = {
@@ -180,8 +209,7 @@ function parseRun(
     insideShape,
   );
   const runStyle = mergeTextStyle(
-    inlineInheritedStyle(paragraphStyle),
-    resolveRunStyle(rPr, context.styles, context.theme),
+    resolveRunStyle(rPr, context.styles, context.theme, paragraphStyle),
     shapeThemeFontFamily ? { fontFamily: shapeThemeFontFamily } : undefined,
   );
   const inlines: DocxInline[] = [];
@@ -240,10 +268,7 @@ function parseRun(
 /** 判断修订是否连同段落标记一起删除。 */
 function hasDeletedParagraphMark(pNode: Element) {
   const paragraphProperties = childByLocalName(pNode, 'pPr');
-  const paragraphMarkProperties = childByLocalName(
-    paragraphProperties,
-    'rPr',
-  );
+  const paragraphMarkProperties = childByLocalName(paragraphProperties, 'rPr');
   return Array.from(paragraphMarkProperties?.children ?? []).some(
     (child) =>
       matchesLocalName(child, 'del') || matchesLocalName(child, 'moveFrom'),
@@ -442,7 +467,12 @@ function parseParagraph(
   options?: ReadBlockChildrenOptions,
 ): DocxParagraphBlock {
   const pPr = childByLocalName(pNode, 'pPr');
-  const style = resolveParagraphStyle(pPr, context.styles, context.theme);
+  const style = resolveParagraphStyle(
+    pPr,
+    context.styles,
+    context.theme,
+    options?.paragraphContextStyle,
+  );
   const inlines = readParagraphRuns(
     pNode,
     style.style,
@@ -461,19 +491,52 @@ function parseParagraph(
     sourceText && !options?.insidePageRegion && numberingReference
       ? nextDocxNumberPrefix(numberingReference, context.numbering)
       : undefined;
+  const directIndent = childByLocalName(pPr, 'ind');
+  const directIndentLeft = twipToPx(
+    attr(directIndent, 'w:start') ??
+      attr(directIndent, 'start') ??
+      attr(directIndent, 'w:left') ??
+      attr(directIndent, 'left'),
+  );
+  const directFirstLineIndent = twipToPx(
+    attr(directIndent, 'w:firstLine') ?? attr(directIndent, 'firstLine'),
+  );
+  const directHangingIndent = twipToPx(
+    attr(directIndent, 'w:hanging') ?? attr(directIndent, 'hanging'),
+  );
   const usesNumberingGeometry = Boolean(
     numberPrefix?.suffix === 'tab' &&
       numberPrefix.textStart !== undefined &&
       numberPrefix.hanging !== undefined &&
       numberPrefix.hanging > 0 &&
-      (style.firstLineIndent === undefined || style.firstLineIndent < 0),
+      directFirstLineIndent === undefined &&
+      (directHangingIndent === undefined || directHangingIndent > 0),
   );
+  // Word 的优先级是直接段落缩进 > 编号级别缩进 > 段落样式缩进。
   const numberingIndentLeft = usesNumberingGeometry
-    ? style.indentLeft ?? numberPrefix?.textStart
+    ? directIndentLeft ?? numberPrefix?.textStart ?? style.indentLeft
     : style.indentLeft;
   const numberingFirstLineIndent = usesNumberingGeometry
-    ? style.firstLineIndent ?? -(numberPrefix?.hanging ?? 0)
+    ? directHangingIndent !== undefined
+      ? -directHangingIndent
+      : -(numberPrefix?.hanging ?? 0)
     : style.firstLineIndent;
+  const numberingTextStyle =
+    inlines.find(
+      (inline): inline is Extract<DocxInline, { type: 'text' }> =>
+        inline.type === 'text' && Boolean(inline.text),
+    )?.style ?? style.style;
+  const numberingHangingWidth = Math.max(0, -(numberingFirstLineIndent ?? 0));
+  const numberingAdvanceWidth = usesNumberingGeometry
+    ? numberingHangingWidth
+    : undefined;
+  const numberingGapWidth = usesNumberingGeometry
+    ? resolveDocxNumberingGapWidth(
+        numberPrefix?.text ?? '',
+        numberingHangingWidth,
+        numberingTextStyle?.fontSize ?? 14,
+      )
+    : 0;
   if (
     numberPrefix &&
     sourceText !== numberPrefix.text &&
@@ -485,15 +548,23 @@ function parseParagraph(
       text: `${numberPrefix.text}${numberPrefix.suffix === 'space' ? ' ' : ''}`,
       // 项目符号通常依赖 numbering.xml 中的 Wingdings/Symbol 字体，不能套用正文中文字体。
       style: numberPrefix.fontFamily
-        ? { ...style.style, fontFamily: numberPrefix.fontFamily }
-        : style.style,
+        ? { ...numberingTextStyle, fontFamily: numberPrefix.fontFamily }
+        : numberingTextStyle,
       // 编号标记与正文共享同一悬挂缩进，固定前进宽度可让换行正文继续对齐。
-      advanceWidth: usesNumberingGeometry
-        ? Math.max(0, -(numberingFirstLineIndent ?? 0))
-        : undefined,
+      advanceWidth: numberingAdvanceWidth,
     });
-    if (numberPrefix.suffix === 'tab' && !usesNumberingGeometry)
-      inlines.splice(1, 0, { type: 'tab', style: style.style });
+    if (numberPrefix.suffix === 'tab') {
+      if (usesNumberingGeometry && numberingGapWidth > 0) {
+        inlines.splice(1, 0, {
+          type: 'text',
+          text: '',
+          style: numberingTextStyle,
+          advanceWidth: numberingGapWidth,
+        });
+      } else if (!usesNumberingGeometry) {
+        inlines.splice(1, 0, { type: 'tab', style: style.style });
+      }
+    }
   }
   const text = textFromInlines(inlines).trim();
   const outlineLevel =
@@ -509,16 +580,17 @@ function parseParagraph(
     if (inline.type !== 'text' || !inline.text) return maximum;
     return Math.max(maximum, inline.style?.fontSize ?? 0);
   }, 0);
-  const visibleRunLineMetricStyle = inlines.reduce<
-    DocxTextStyle | undefined
-  >((current, inline) => {
-    if (inline.type !== 'text' || !inline.text) return current;
-    const currentSize =
-      current?.lineBoxFontSize ?? current?.fontSize ?? 0;
-    const inlineSize =
-      inline.style?.lineBoxFontSize ?? inline.style?.fontSize ?? 0;
-    return inlineSize > currentSize ? inline.style : current;
-  }, undefined);
+  const visibleRunLineMetricStyle =
+    inlines.find(
+      (inline): inline is Extract<DocxInline, { type: 'text' }> =>
+        inline.type === 'text' &&
+        Boolean(inline.text) &&
+        inline.advanceWidth === undefined,
+    )?.style ??
+    inlines.find(
+      (inline): inline is Extract<DocxInline, { type: 'text' }> =>
+        inline.type === 'text' && Boolean(inline.text),
+    )?.style;
   const visibleRunLineBoxFontSize =
     visibleRunLineMetricStyle?.lineBoxFontSize ??
     visibleRunLineMetricStyle?.fontSize ??
@@ -530,7 +602,7 @@ function parseParagraph(
     style.paragraphMarkStyle?.lineBoxFontSize ?? paragraphMarkFontSize;
   const fontSize = visibleRunFontSize || paragraphMarkFontSize || 14;
   const lineBoxFontSize = visibleRunFontSize
-    ? Math.max(fontSize, visibleRunLineBoxFontSize)
+    ? visibleRunLineBoxFontSize || fontSize
     : Math.max(fontSize, paragraphMarkLineBoxFontSize);
   const paragraphTextStyle =
     visibleRunFontSize > 0
@@ -538,11 +610,17 @@ function parseParagraph(
         ? { ...style.style, fontSize }
         : style.style
       : style.paragraphMarkStyle ?? style.style;
+  // auto 行距必须采用可见 run 或空段落标记的实际字号，否则大字号标题会被正文行盒裁压。
+  const paragraphLineHeightFontSize = Math.max(
+    DOCX_AUTO_LINE_HEIGHT_BASE_FONT_SIZE_PX,
+    visibleRunFontSize ? lineBoxFontSize : paragraphMarkLineBoxFontSize,
+    style.style?.fontSize ?? 0,
+  );
   const explicitLineHeightPx =
     style.lineHeight === undefined
       ? undefined
       : style.lineHeight <= 4
-      ? fontSize * style.lineHeight
+      ? paragraphLineHeightFontSize * style.lineHeight
       : style.lineHeight;
   // WPS 的纯浮动锚点段落仍按段落标记的字体场景占用网格，不能只使用浏览器默认行盒。
   const usesAnchorYaHeiLineMetrics =
@@ -561,30 +639,75 @@ function parseParagraph(
     ? DOCX_SHAPE_LINE_HEIGHT_MULTIPLIER
     : usesAnchorYaHeiLineMetrics
     ? DOCX_ANCHOR_YAHEI_LINE_HEIGHT_MULTIPLIER
-    : DOCX_COMPACT_SERIF_FONT_PATTERN.test(lineMetricFontFamily)
+    : options?.insideTable &&
+      DOCX_COMPACT_SERIF_FONT_PATTERN.test(lineMetricFontFamily)
     ? DOCX_COMPACT_SERIF_LINE_HEIGHT_MULTIPLIER
     : DOCX_BODY_LINE_HEIGHT_MULTIPLIER;
+  const naturalLineHeight = lineBoxFontSize * defaultLineHeightMultiplier;
+  const resolvedAutoLineHeight =
+    style.lineHeightRule === 'auto' &&
+    style.lineHeight !== undefined &&
+    style.lineHeight <= 4
+      ? options?.insideTable
+        ? // 表格单倍行距仍采用字体自然行盒，避免单元格文字和自动行高被压扁。
+          naturalLineHeight * style.lineHeight
+        : explicitLineHeightPx ?? naturalLineHeight
+      : Math.max(explicitLineHeightPx ?? 0, naturalLineHeight);
+  const gridCandidateLineHeight =
+    style.lineHeightRule === 'auto' && explicitLineHeightPx !== undefined
+      ? explicitLineHeightPx
+      : resolvedAutoLineHeight;
   const snappedDocumentLineHeight =
     style.snapToGrid !== false && context.documentGridLineHeight !== undefined
-      ? Math.ceil(
-          (explicitLineHeightPx ??
-            lineBoxFontSize * defaultLineHeightMultiplier) /
-            context.documentGridLineHeight,
-        ) * context.documentGridLineHeight
+      ? Math.ceil(gridCandidateLineHeight / context.documentGridLineHeight) *
+        context.documentGridLineHeight
+      : undefined;
+  const autoGridLineHeight =
+    style.lineHeightRule === 'auto' &&
+    explicitLineHeightPx !== undefined &&
+    context.defaultLineHeight !== undefined
+      ? visibleRunFontSize
+        ? // 可见文字按正文行高的整数倍占格，空段落标记则保留自身声明的自动行距。
+          Math.ceil(explicitLineHeightPx / context.defaultLineHeight) *
+          context.defaultLineHeight
+        : Math.max(explicitLineHeightPx, context.defaultLineHeight)
+      : style.lineHeightRule === 'auto' &&
+        explicitLineHeightPx !== undefined &&
+        context.documentGridLineHeight !== undefined
+      ? // 未声明网格类型的 WPS 文档只把正文提升到单格，大字号不应被强制翻倍。
+        Math.max(explicitLineHeightPx, context.documentGridLineHeight)
       : undefined;
   const gridLineHeight = options?.insideShape
     ? snappedDocumentLineHeight
     : options?.insideTable
-    ? context.documentGridLineHeight
-    : context.defaultLineHeight ?? snappedDocumentLineHeight;
+    ? undefined
+    : autoGridLineHeight ??
+      context.defaultLineHeight ??
+      snappedDocumentLineHeight;
   const lineHeight =
     style.lineHeightRule === 'exact' && style.lineHeight !== undefined
       ? style.lineHeight
+      : options?.insideTable && style.snapToGrid !== false
+      ? resolvedAutoLineHeight
+      : style.lineHeightRule === 'auto'
+      ? style.snapToGrid !== false &&
+        explicitLineHeightPx !== undefined &&
+        gridLineHeight !== undefined
+        ? gridLineHeight
+        : resolvedAutoLineHeight
       : style.snapToGrid !== false &&
+        explicitLineHeightPx !== undefined &&
         gridLineHeight !== undefined &&
-        (explicitLineHeightPx === undefined ||
-          explicitLineHeightPx < gridLineHeight)
+        explicitLineHeightPx < gridLineHeight
       ? gridLineHeight
+      : style.lineHeight === undefined && style.keepNext && style.keepLines
+      ? // Word 标题即使未声明行距，也使用独立的字体自然行盒；浏览器 normal 会把标题高度压低。
+        lineBoxFontSize * DOCX_HEADING_LINE_HEIGHT_MULTIPLIER
+      : style.lineHeight === undefined &&
+        style.snapToGrid !== false &&
+        gridLineHeight !== undefined
+      ? // 未声明行距的普通正文仍需占用默认文档网格，否则连续段落会被压缩到浏览器自然行高。
+        gridLineHeight
       : style.lineHeight;
 
   return {
@@ -594,6 +717,14 @@ function parseParagraph(
     text,
     outlineLevel,
     isTableOfContents: style.isTocStyle || undefined,
+    keepNext: style.keepNext || undefined,
+    keepLines: style.keepLines || undefined,
+    // OOXML 未声明时沿用 Word 默认开启的孤行控制。
+    widowControl: style.widowControl !== false,
+    paragraphStyleId: style.styleId,
+    contextualSpacing: style.contextualSpacing || undefined,
+    autoSpaceLatin: style.autoSpaceLatin,
+    autoSpaceNumber: style.autoSpaceNumber,
     tabStops: style.tabStops,
     align: style.align,
     lineHeight,
@@ -667,19 +798,6 @@ function readCellBorders(tcPr: Element | null | undefined) {
   };
 }
 
-/** 读取表格级外框和内部网格线，供未单独声明边框的单元格继承。 */
-function readTableBorders(tblPr: Element | null | undefined) {
-  const borders = childByLocalName(tblPr, 'tblBorders');
-  return {
-    top: readBorder(childByLocalName(borders, 'top')),
-    right: readBorder(childByLocalName(borders, 'right')),
-    bottom: readBorder(childByLocalName(borders, 'bottom')),
-    left: readBorder(childByLocalName(borders, 'left')),
-    insideHorizontal: readBorder(childByLocalName(borders, 'insideH')),
-    insideVertical: readBorder(childByLocalName(borders, 'insideV')),
-  };
-}
-
 function readCellStyle(
   tcNode: Element,
   defaultMargins: Pick<
@@ -734,7 +852,7 @@ function readTableRowHeightMultiplier(rowNode: Element) {
 function readTableRowHeight(
   rowNode: Element,
   applyGridHeight: boolean,
-): Pick<DocxTableRow, 'height' | 'heightRule'> {
+): Pick<DocxTableRow, 'cantSplit' | 'height' | 'heightRule'> {
   const trPr = childByLocalName(rowNode, 'trPr');
   const trHeight = childByLocalName(trPr, 'trHeight');
   const height = positiveTwipToPx(
@@ -748,6 +866,7 @@ function readTableRowHeight(
   const lineGridMultiplier =
     applyGridHeight && heightRule === 'atLeast' ? 1.4 : 1;
   return {
+    cantSplit: readOnOff(childByLocalName(trPr, 'cantSplit')) || undefined,
     // WPS 的 atLeast 行高仍会叠加正文行网格，直接作为 CSS 最小高度会让表格明显偏扁。
     height:
       height === undefined
@@ -762,9 +881,15 @@ function readTableRowHeight(
   };
 }
 
-function readCellBlocks(cellNode: Element, id: string, context: ParseContext) {
+function readCellBlocks(
+  cellNode: Element,
+  id: string,
+  context: ParseContext,
+  paragraphContextStyle?: DocxTextStyle,
+) {
   const blocks = readDocxBlockChildren(cellNode, id, context, {
     insideTable: true,
+    paragraphContextStyle,
   });
   const defaultLineHeight = context.defaultLineHeight;
   const visibleParagraphs = blocks.filter(
@@ -882,15 +1007,6 @@ function normalizeTableForBlockContext(
   };
 }
 
-/** 为顶层正文流表格补回 Word 文档网格在表格边界前保留的留白。 */
-function offsetTopLevelFlowTable(table: DocxTableBlock) {
-  if (table.position) return table;
-  return {
-    ...table,
-    marginTop: (table.marginTop ?? 0) + DOCX_FLOW_TABLE_TOP_OFFSET,
-  };
-}
-
 function readTablePosition(
   tblPr: Element | null | undefined,
 ): DocxPosition | undefined {
@@ -928,6 +1044,10 @@ function parseTable(
 ): DocxTableBlock {
   const tblPr = childByLocalName(tblNode, 'tblPr');
   const tblW = childByLocalName(tblPr, 'tblW');
+  const tableStyleId =
+    readVal(childByLocalName(tblPr, 'tblStyle')) ??
+    context.styles.defaults.tableStyleId;
+  const tableParagraphStyle = resolveDocxStyle(tableStyleId, context.styles);
   const align = mapAlignment(readVal(childByLocalName(tblPr, 'jc')));
   const columns = childrenByLocalName(
     childByLocalName(tblNode, 'tblGrid'),
@@ -935,8 +1055,22 @@ function parseTable(
   )
     .map((col) => positiveTwipToPx(attr(col, 'w:w') ?? attr(col, 'w')))
     .filter((width): width is number => width !== undefined);
-  const tableMargins = readCellMargins(tblPr);
-  const tableBorders = readTableBorders(tblPr);
+  const tableMargins = mergeCellMargins(
+    resolveDocxTableCellMargins(tableStyleId, context.styles) ?? {},
+    readCellMargins(tblPr),
+  );
+  const styleBorders = resolveDocxTableBorders(tableStyleId, context.styles);
+  const directBorders = readDocxTableBorders(tblPr);
+  const tableBorders = {
+    top: directBorders.top ?? styleBorders?.top,
+    right: directBorders.right ?? styleBorders?.right,
+    bottom: directBorders.bottom ?? styleBorders?.bottom,
+    left: directBorders.left ?? styleBorders?.left,
+    insideHorizontal:
+      directBorders.insideHorizontal ?? styleBorders?.insideHorizontal,
+    insideVertical:
+      directBorders.insideVertical ?? styleBorders?.insideVertical,
+  };
   const result: DocxTableBlock = {
     id,
     type: 'table',
@@ -978,7 +1112,12 @@ function parseTable(
         activeVerticalMerges.delete(columnIndex);
       }
 
-      const blocks = readCellBlocks(cellNode, cellId, context);
+      const blocks = readCellBlocks(
+        cellNode,
+        cellId,
+        context,
+        tableParagraphStyle,
+      );
       const gridControlsVerticalSpacing = usesDocumentGridCellPadding(blocks);
       const cell: DocxTableCell = {
         id: cellId,
@@ -1071,17 +1210,8 @@ export function readDocxBlockChildren(
         parseTable(child, `${id}-table-${tableIndex}`, context),
         options,
       );
-      const flowTable =
-        !options?.insideShape &&
-        !options?.insideTable &&
-        !options?.insidePageRegion
-          ? offsetTopLevelFlowTable(table)
-          : table;
       blocks.push(
-        offsetTableAfterPositionedParagraph(
-          flowTable,
-          blocks[blocks.length - 1],
-        ),
+        offsetTableAfterPositionedParagraph(table, blocks[blocks.length - 1]),
       );
     }
   });
@@ -1237,7 +1367,7 @@ export function applyDocxCoverTitleSpacing(blocks: DocxBlock[]) {
     firstParagraph.spacingBefore === undefined
   ) {
     // Word 的大字号空段行框高于浏览器默认行框，用字号比例补足封面标题前的差值。
-    firstParagraph.spacingBefore = Math.round(fontSize * 0.8);
+    firstParagraph.spacingBefore = Math.round(fontSize * 0.5);
   }
 }
 
@@ -1381,11 +1511,6 @@ function normalizeDocxPages(pages: DocxPageContent[]) {
     }));
 }
 
-/** 判断节点是否包含 Word/WPS 保存的上次渲染分页位置。 */
-function hasRenderedPageBreak(node: Element) {
-  return descendantsByLocalName(node, 'lastRenderedPageBreak').length > 0;
-}
-
 /** 判断节点是否包含显式分页符。 */
 function hasExplicitPageBreak(node: Element) {
   return descendantsByLocalName(node, 'br').some(
@@ -1407,18 +1532,14 @@ function isPageBreakOnlyParagraph(node: Element) {
 /** 读取表格内分页标记所在的行索引，分页从该行之前开始。 */
 function readTablePageBreakRows(tableNode: Element) {
   return childrenByLocalName(tableNode, 'tr')
-    .map((rowNode, rowIndex) =>
-      hasRenderedPageBreak(rowNode) || hasExplicitPageBreak(rowNode)
-        ? rowIndex
-        : -1,
-    )
+    .map((rowNode, rowIndex) => (hasExplicitPageBreak(rowNode) ? rowIndex : -1))
     .filter((rowIndex) => rowIndex >= 0);
 }
 
 /** 为物化与流式路径提供同一组 DOCX 块解析规则。 */
 export const docxBlockParseOperations: DocxBlockParseOperations<DocxParseContext> =
   {
-    hasRenderedPageBreak,
+    // lastRenderedPageBreak 只是上次排版缓存，字体或页面环境改变后可能失效，不能作为硬分页边界。
     hasExplicitPageBreak,
     readTablePageBreakRows,
     isPageBreakOnlyParagraph,
@@ -1426,8 +1547,7 @@ export const docxBlockParseOperations: DocxBlockParseOperations<DocxParseContext
     isTable: (node) => matchesLocalName(node, 'tbl'),
     readParagraphBlocks,
     // 流式大文件解析绕过 readBlockChildren，这里保持与完整物化路径一致。
-    parseTable: (node, id, context) =>
-      offsetTopLevelFlowTable(parseTable(node, id, context)),
+    parseTable,
     offsetTable: offsetTableAfterPositionedParagraph,
     readParagraphSection: (node) =>
       matchesLocalName(node, 'p')

@@ -31,6 +31,7 @@ import type {
   DocxImage,
   DocxPage,
   DocxTabStop,
+  DocxTableCell,
   DocxTextStyle,
 } from './types';
 
@@ -92,6 +93,8 @@ export type ReadBlockChildrenOptions = {
   insideShape?: boolean;
   /** 是否位于表格单元格内部。 */
   insideTable?: boolean;
+  /** 表格样式向单元格段落提供的上下文格式。 */
+  paragraphContextStyle?: DocxTextStyle;
   /** 是否位于页眉或页脚区域；这些段落不属于正文大纲。 */
   insidePageRegion?: boolean;
 };
@@ -106,14 +109,49 @@ export type DocxStyleDefinition = {
   basedOn?: string;
   /** 样式直接声明的大纲级别，使用从 0 开始的内部表示。 */
   outlineLevel?: number;
-  /** 样式直接声明的自动编号引用。 */
-  numbering?: DocxNumberingReference;
+  /** 样式直接声明的自动编号引用；null 表示明确取消父样式编号。 */
+  numbering?: DocxNumberingReference | null;
   /** 样式直接声明的制表位。 */
   tabStops?: DocxTabStop[];
   /** 样式是否要求文字吸附文档网格。 */
   snapToGrid?: boolean;
+  /** 样式是否要求当前段落与下一段同页。 */
+  keepNext?: boolean;
+  /** 样式是否要求段落全部行保持同页。 */
+  keepLines?: boolean;
+  /** 样式是否启用段落跨页孤行控制。 */
+  widowControl?: boolean;
+  /** 相邻同样式段落之间是否忽略段前和段后间距。 */
+  contextualSpacing?: boolean;
+  /** 是否在东亚文字与西文之间自动留出间距。 */
+  autoSpaceLatin?: boolean;
+  /** 是否在东亚文字与数字之间自动留出间距。 */
+  autoSpaceNumber?: boolean;
+  /** 表格样式为单元格声明的默认内边距。 */
+  tableCellMargins?: Pick<
+    DocxTableCell,
+    'paddingTop' | 'paddingRight' | 'paddingBottom' | 'paddingLeft'
+  >;
+  /** 表格样式声明的外框和内部网格线。 */
+  tableBorders?: DocxTableBorders;
   /** 当前内容使用的渲染样式。 */
   style: DocxTextStyle;
+};
+
+/** 表格外框和内部网格线的渲染样式。 */
+export type DocxTableBorders = {
+  /** 上边框。 */
+  top?: string;
+  /** 右边框。 */
+  right?: string;
+  /** 下边框。 */
+  bottom?: string;
+  /** 左边框。 */
+  left?: string;
+  /** 内部横向网格线。 */
+  insideHorizontal?: string;
+  /** 内部纵向网格线。 */
+  insideVertical?: string;
 };
 
 /** 按样式标识索引的 DOCX 样式目录。 */
@@ -532,6 +570,12 @@ function readParagraphPropertyStyle(
   if (!pPr) return undefined;
   const spacing = childByLocalName(pPr, 'spacing');
   const ind = childByLocalName(pPr, 'ind');
+  const firstLineIndent = twipToPx(
+    attr(ind, 'w:firstLine') ?? attr(ind, 'firstLine'),
+  );
+  const hangingIndent = twipToPx(
+    attr(ind, 'w:hanging') ?? attr(ind, 'hanging'),
+  );
   const style: DocxTextStyle = {
     align: mapAlignment(readVal(childByLocalName(pPr, 'jc'))),
     spacingBefore: positiveTwipToPx(
@@ -542,9 +586,10 @@ function readParagraphPropertyStyle(
     ),
     indentLeft: twipToPx(attr(ind, 'w:left') ?? attr(ind, 'left')),
     indentRight: twipToPx(attr(ind, 'w:right') ?? attr(ind, 'right')),
-    firstLineIndent: twipToPx(
-      attr(ind, 'w:firstLine') ?? attr(ind, 'firstLine'),
-    ),
+    // OOXML 的 hanging 与 firstLine 互斥；统一为负首行缩进后才能参与样式层级合并。
+    firstLineIndent:
+      firstLineIndent ??
+      (hangingIndent !== undefined ? -hangingIndent : undefined),
     lineHeight: readDocxLineHeight(spacing),
     lineHeightRule: readDocxLineHeightRule(spacing),
     backgroundColor: readShading(childByLocalName(pPr, 'shd'), theme),
@@ -597,6 +642,36 @@ export function readOnOff(node: Element | null | undefined) {
   const value = attr(node, 'w:val') ?? attr(node, 'val');
   if (value === undefined) return true;
   return value !== '0' && value !== 'false' && value !== 'off';
+}
+
+/** 读取表格属性中的默认单元格边距。 */
+function readDocxTableCellMargins(tblPr: Element | null | undefined) {
+  const cellMargins = childByLocalName(tblPr, 'tblCellMar');
+  const readMargin = (name: string) => {
+    const node = childByLocalName(cellMargins, name);
+    return positiveTwipToPx(attr(node, 'w:w') ?? attr(node, 'w'));
+  };
+  return {
+    paddingTop: readMargin('top'),
+    paddingRight: readMargin('right'),
+    paddingBottom: readMargin('bottom'),
+    paddingLeft: readMargin('left'),
+  };
+}
+
+/** 读取表格样式或表格实例声明的网格线。 */
+export function readDocxTableBorders(
+  tblPr: Element | null | undefined,
+): DocxTableBorders {
+  const borders = childByLocalName(tblPr, 'tblBorders');
+  return {
+    top: readBorder(childByLocalName(borders, 'top')),
+    right: readBorder(childByLocalName(borders, 'right')),
+    bottom: readBorder(childByLocalName(borders, 'bottom')),
+    left: readBorder(childByLocalName(borders, 'left')),
+    insideHorizontal: readBorder(childByLocalName(borders, 'insideH')),
+    insideVertical: readBorder(childByLocalName(borders, 'insideV')),
+  };
 }
 
 function firstDefined<T>(...values: Array<T | undefined>) {
@@ -662,11 +737,21 @@ function readFontFamily(
   const rFonts = childByLocalName(rPr, 'rFonts');
   const ascii = attr(rFonts, 'w:ascii') ?? attr(rFonts, 'ascii');
   const eastAsia = attr(rFonts, 'w:eastAsia') ?? attr(rFonts, 'eastAsia');
+  const eastAsiaTheme =
+    attr(rFonts, 'w:eastAsiaTheme') ?? attr(rFonts, 'eastAsiaTheme');
   const hAnsi = attr(rFonts, 'w:hAnsi') ?? attr(rFonts, 'hAnsi');
   const cs = attr(rFonts, 'w:cs') ?? attr(rFonts, 'cs');
   const themeFonts = theme.fontScheme ?? {};
   const themeFont = readThemeFont(rPr, rFonts, theme);
   const scriptHint = attr(rFonts, 'w:hint') ?? attr(rFonts, 'hint');
+  // run 只覆盖西文字体主题时，东亚文字继续继承段落样式，不能回退到主题宋体。
+  if (
+    scriptHint === 'eastAsia' &&
+    !eastAsia &&
+    !eastAsiaTheme &&
+    !allowFallback
+  )
+    return undefined;
   // 字体脚本提示决定 CSS 字体链优先级，避免系统字体链接为中文粗体选择错误的替代字体。
   const fontCandidates =
     scriptHint === 'eastAsia'
@@ -745,8 +830,8 @@ function readDocxStyles(
         readTextStyle(rPr, theme),
       );
     } else if (kindAttr === 'table') {
-      const tblPr = childByLocalName(styleNode, 'tblPr');
-      style = readParagraphPropertyStyle(childByLocalName(tblPr, 'pPr'), theme);
+      // 表格样式的段落格式是 style 的直接子节点，不位于 tblPr 内部。
+      style = readParagraphPropertyStyle(pPr, theme);
     } else {
       style = readTextStyle(rPr, theme);
     }
@@ -764,6 +849,16 @@ function readDocxStyles(
       numbering: readDocxNumberingReference(pPr),
       tabStops: readParagraphTabStops(pPr),
       snapToGrid: readOnOff(childByLocalName(pPr, 'snapToGrid')),
+      keepNext: readOnOff(childByLocalName(pPr, 'keepNext')),
+      keepLines: readOnOff(childByLocalName(pPr, 'keepLines')),
+      widowControl: readOnOff(childByLocalName(pPr, 'widowControl')),
+      contextualSpacing: readOnOff(childByLocalName(pPr, 'contextualSpacing')),
+      autoSpaceLatin: readOnOff(childByLocalName(pPr, 'autoSpaceDE')),
+      autoSpaceNumber: readOnOff(childByLocalName(pPr, 'autoSpaceDN')),
+      tableCellMargins: readDocxTableCellMargins(
+        childByLocalName(styleNode, 'tblPr'),
+      ),
+      tableBorders: readDocxTableBorders(childByLocalName(styleNode, 'tblPr')),
       style: style ?? {},
     };
   });
@@ -799,12 +894,12 @@ function readTextStyle(
       : undefined;
   const usesComplexScript =
     fontHint === 'cs' || Boolean(childByLocalName(rPr, 'cs'));
+  const colorNode = childByLocalName(rPr, 'color');
+  const colorValue = attr(colorNode, 'w:val') ?? attr(colorNode, 'val');
   const color =
     readDrawingColor(childByLocalName(rPr, 'textFill'), theme) ??
-    parseHexColor(
-      attr(childByLocalName(rPr, 'color'), 'w:val') ??
-        attr(childByLocalName(rPr, 'color'), 'val'),
-    );
+    // 自动色是显式覆盖而非属性缺失；白色文档页面上按 Word 的默认前景色渲染。
+    (colorValue === 'auto' ? '#000000' : parseHexColor(colorValue));
   const fontSize = halfPointToPx(
     attr(childByLocalName(rPr, 'sz'), 'w:val') ??
       attr(childByLocalName(rPr, 'sz'), 'val'),
@@ -814,9 +909,9 @@ function readTextStyle(
       attr(childByLocalName(rPr, 'szCs'), 'val'),
   );
   const fontFamily = readFontFamily(rPr, theme, allowFontFallback);
-  // szCs 只有与复杂脚本或显式字体声明成对出现时才参与行盒，单独的兼容字号不能撑高普通东亚文字。
+  // szCs 只约束复杂脚本文字；普通东亚文字仍按 sz 计算，避免兼容字号把整段吸附到下一条网格。
   const lineBoxFontSize =
-    complexScriptFontSize !== undefined && (usesComplexScript || fontFamily)
+    complexScriptFontSize !== undefined && usesComplexScript
       ? Math.max(fontSize ?? 0, complexScriptFontSize)
       : fontSize;
   const style: DocxTextStyle = {
@@ -870,7 +965,9 @@ function mergeTwoTextStyles(
     lineHeight: next?.lineHeight ?? base?.lineHeight,
     lineHeightRule: next?.lineHeightRule ?? base?.lineHeightRule,
     spacingBefore: next?.spacingBefore ?? base?.spacingBefore,
+
     spacingAfter: next?.spacingAfter ?? base?.spacingAfter,
+
     indentLeft: next?.indentLeft ?? base?.indentLeft,
     indentRight: next?.indentRight ?? base?.indentRight,
     firstLineIndent: next?.firstLineIndent ?? base?.firstLineIndent,
@@ -910,6 +1007,50 @@ export function resolveDocxStyle(
   seen.add(styleId);
   const base = resolveDocxStyle(entry.basedOn, catalog, seen);
   return mergeTextStyle(base, entry.style);
+}
+
+/** 沿表格样式继承链合并默认单元格边距。 */
+export function resolveDocxTableCellMargins(
+  styleId: string | undefined,
+  catalog: DocxStyleCatalog,
+  seen: Set<string> = new Set(),
+): DocxStyleDefinition['tableCellMargins'] | undefined {
+  if (!styleId || seen.has(styleId)) return undefined;
+  const entry = catalog.styles[styleId];
+  if (!entry) return undefined;
+  seen.add(styleId);
+  const base = resolveDocxTableCellMargins(entry.basedOn, catalog, seen);
+  const own = entry.tableCellMargins;
+  if (!base && !own) return undefined;
+  return {
+    paddingTop: own?.paddingTop ?? base?.paddingTop,
+    paddingRight: own?.paddingRight ?? base?.paddingRight,
+    paddingBottom: own?.paddingBottom ?? base?.paddingBottom,
+    paddingLeft: own?.paddingLeft ?? base?.paddingLeft,
+  };
+}
+
+/** 沿表格样式继承链合并外框和内部网格线。 */
+export function resolveDocxTableBorders(
+  styleId: string | undefined,
+  catalog: DocxStyleCatalog,
+  seen: Set<string> = new Set(),
+): DocxTableBorders | undefined {
+  if (!styleId || seen.has(styleId)) return undefined;
+  const entry = catalog.styles[styleId];
+  if (!entry) return undefined;
+  seen.add(styleId);
+  const base = resolveDocxTableBorders(entry.basedOn, catalog, seen);
+  const own = entry.tableBorders;
+  if (!base && !own) return undefined;
+  return {
+    top: own?.top ?? base?.top,
+    right: own?.right ?? base?.right,
+    bottom: own?.bottom ?? base?.bottom,
+    left: own?.left ?? base?.left,
+    insideHorizontal: own?.insideHorizontal ?? base?.insideHorizontal,
+    insideVertical: own?.insideVertical ?? base?.insideVertical,
+  };
 }
 
 /** 读取段落属性直接声明的 OOXML 大纲级别。 */
@@ -981,7 +1122,16 @@ function isDocxTocStyle(
 
 /** 沿 basedOn 继承链读取段落样式中的非文字属性。 */
 function resolveDocxParagraphStyleProperty<
-  K extends 'numbering' | 'tabStops' | 'snapToGrid',
+  K extends
+    | 'numbering'
+    | 'tabStops'
+    | 'snapToGrid'
+    | 'keepNext'
+    | 'keepLines'
+    | 'widowControl'
+    | 'contextualSpacing'
+    | 'autoSpaceLatin'
+    | 'autoSpaceNumber',
 >(
   styleId: string | undefined,
   catalog: DocxStyleCatalog,
@@ -992,10 +1142,10 @@ function resolveDocxParagraphStyleProperty<
   const entry = catalog.styles[styleId];
   if (!entry || entry.kind !== 'paragraph') return undefined;
   seen.add(styleId);
-  return (
-    entry[property] ??
-    resolveDocxParagraphStyleProperty(entry.basedOn, catalog, property, seen)
-  );
+  const directValue = entry[property];
+  return directValue !== undefined
+    ? directValue
+    : resolveDocxParagraphStyleProperty(entry.basedOn, catalog, property, seen);
 }
 
 /** 解析并确定 `resolveParagraphStyle` 对应的引用或配置。 */
@@ -1003,8 +1153,9 @@ export function resolveParagraphStyle(
   pPr: Element | null | undefined,
   catalog: DocxStyleCatalog,
   theme: OfficeTheme,
+  contextStyle?: DocxTextStyle,
 ) {
-  // 段落正文继承命名样式；pPr/rPr 只描述段落标记，不能覆盖可见 run 的文字格式。
+  // 段落行盒先继承文档默认运行格式；pPr/rPr 只描述段落标记，不能覆盖可见 run 的文字格式。
   const styleId =
     attr(childByLocalName(pPr, 'pStyle'), 'w:val') ??
     attr(childByLocalName(pPr, 'pStyle'), 'val');
@@ -1015,15 +1166,23 @@ export function resolveParagraphStyle(
   );
   const namedStyle = resolveDocxStyle(styleId, catalog);
   const style = mergeTextStyle(
+    catalog.defaults.run,
     catalog.defaults.paragraph,
     baseStyle,
     namedStyle,
+    contextStyle,
   );
   const directStyle = readParagraphPropertyStyle(pPr, theme);
   const contentStyle = mergeTextStyle(style, directStyle);
   const paragraphMarkStyle = mergeTextStyle(
     contentStyle,
     readTextStyle(childByLocalName(pPr, 'rPr'), theme),
+  );
+  const directNumbering = readDocxNumberingReference(pPr);
+  const inheritedNumbering = resolveDocxParagraphStyleProperty(
+    effectiveStyleId,
+    catalog,
+    'numbering',
   );
   return {
     align: directStyle?.align ?? style?.align,
@@ -1033,8 +1192,7 @@ export function resolveParagraphStyle(
     indentRight: directStyle?.indentRight ?? style?.indentRight,
     firstLineIndent: directStyle?.firstLineIndent ?? style?.firstLineIndent,
     lineHeight: directStyle?.lineHeight ?? style?.lineHeight,
-    lineHeightRule:
-      directStyle?.lineHeightRule ?? style?.lineHeightRule,
+    lineHeightRule: directStyle?.lineHeightRule ?? style?.lineHeightRule,
     backgroundColor: directStyle?.backgroundColor ?? style?.backgroundColor,
     borderTop: directStyle?.borderTop ?? style?.borderTop,
     borderRight: directStyle?.borderRight ?? style?.borderRight,
@@ -1046,8 +1204,9 @@ export function resolveParagraphStyle(
     paddingLeft: directStyle?.paddingLeft ?? style?.paddingLeft,
     styleId: effectiveStyleId,
     numbering:
-      readDocxNumberingReference(pPr) ??
-      resolveDocxParagraphStyleProperty(effectiveStyleId, catalog, 'numbering'),
+      directNumbering !== undefined
+        ? directNumbering ?? undefined
+        : inheritedNumbering ?? undefined,
     tabStops:
       readParagraphTabStops(pPr) ??
       resolveDocxParagraphStyleProperty(effectiveStyleId, catalog, 'tabStops'),
@@ -1058,6 +1217,40 @@ export function resolveParagraphStyle(
         catalog,
         'snapToGrid',
       ),
+    keepNext:
+      readOnOff(childByLocalName(pPr, 'keepNext')) ??
+      resolveDocxParagraphStyleProperty(effectiveStyleId, catalog, 'keepNext'),
+    keepLines:
+      readOnOff(childByLocalName(pPr, 'keepLines')) ??
+      resolveDocxParagraphStyleProperty(effectiveStyleId, catalog, 'keepLines'),
+    widowControl:
+      readOnOff(childByLocalName(pPr, 'widowControl')) ??
+      resolveDocxParagraphStyleProperty(
+        effectiveStyleId,
+        catalog,
+        'widowControl',
+      ),
+    contextualSpacing:
+      readOnOff(childByLocalName(pPr, 'contextualSpacing')) ??
+      resolveDocxParagraphStyleProperty(
+        effectiveStyleId,
+        catalog,
+        'contextualSpacing',
+      ),
+    autoSpaceLatin:
+      readOnOff(childByLocalName(pPr, 'autoSpaceDE')) ??
+      resolveDocxParagraphStyleProperty(
+        effectiveStyleId,
+        catalog,
+        'autoSpaceLatin',
+      ),
+    autoSpaceNumber:
+      readOnOff(childByLocalName(pPr, 'autoSpaceDN')) ??
+      resolveDocxParagraphStyleProperty(
+        effectiveStyleId,
+        catalog,
+        'autoSpaceNumber',
+      ),
     outlineLevel:
       readDocxOutlineLevel(pPr) ??
       resolveDocxOutlineLevel(effectiveStyleId, catalog),
@@ -1067,17 +1260,19 @@ export function resolveParagraphStyle(
   };
 }
 
-/** 解析并确定 `resolveRunStyle` 对应的引用或配置。 */
+/** 按 Word 优先级合并文档默认、段落继承、字符样式与 run 直接格式。 */
 export function resolveRunStyle(
   rPr: Element | null | undefined,
   catalog: DocxStyleCatalog,
   theme: OfficeTheme,
+  inheritedStyle?: DocxTextStyle,
 ) {
   const styleId =
     attr(childByLocalName(rPr, 'rStyle'), 'w:val') ??
     attr(childByLocalName(rPr, 'rStyle'), 'val');
   return mergeTextStyle(
     catalog.defaults.run,
+    inlineInheritedStyle(inheritedStyle),
     resolveDocxStyle(styleId, catalog),
     readTextStyle(rPr, theme),
   );
@@ -1134,6 +1329,7 @@ function readDocumentGridLineHeight(
     'docGrid',
   );
   const gridType = attr(docGrid, 'w:type') ?? attr(docGrid, 'type');
+  // WPS 仅写入 linePitch 时仍会启用行网格；只有明确声明其他模式才停止行高吸附。
   if (gridType && gridType !== 'lines' && gridType !== 'linesAndChars')
     return undefined;
   return positiveTwipToPx(
@@ -1156,6 +1352,7 @@ function readDefaultGridLineHeight(
     defaultStyle?.lineHeight !== undefined && defaultStyle.lineHeight <= 4
       ? defaultStyle.lineHeight
       : undefined;
+  // 较宽的行网格需按当前 run 字体逐段向上吸附，不能先把全篇固定为双网格。
   if (explicitLineMultiplier === undefined && linePitch > 16.1)
     return undefined;
   const lineMultiplier = explicitLineMultiplier ?? 2;

@@ -41,8 +41,13 @@ import { useWordSearchNavigation } from '../word-search/useWordSearchNavigation'
 import { DocxBlockRenderer } from './DocxBlockRenderer';
 import { DocxCharacterSpacingContext } from './DocxInlineContent';
 import { DocxPageFrame } from './DocxPageFrame';
+import {
+  resolveDocxSpacingBefore,
+  shouldSuppressDocxContextualSpacing,
+} from './docxParagraphSpacing';
 import './index.less';
 import { measureDocxParagraphLines } from './measureDocxParagraphLines';
+import { measureDocxTableRows } from './measureDocxTableRows';
 
 const LazyDocxMeasureHost = lazy(() =>
   import('./DocxMeasureHost').then((module) => ({
@@ -126,19 +131,16 @@ function useMeasuredDocxPages(
               Number.parseFloat(
                 window.getComputedStyle(element).marginBottom || '0',
               );
-          const rowHeights =
-            block.type === 'table'
-              ? Array.from(
-                  element.querySelectorAll<HTMLElement>('tbody > tr'),
-                ).map((row) => row.getBoundingClientRect().height)
-              : undefined;
           return {
             block,
             height: blockHeight,
-            rowHeights,
+            leadingSpacing: Number.parseFloat(
+              window.getComputedStyle(element).marginTop || '0',
+            ),
             originalTableRowCount:
               block.type === 'table' ? block.rows.length : undefined,
             ...measureDocxParagraphLines(element, block, blockHeight),
+            ...measureDocxTableRows(element, block),
           };
         },
       );
@@ -300,20 +302,40 @@ function DocxViewerComponent({
     [documentSessionId, materializedPages, source, zoom],
   );
 
-  const renderPageBlocks = useCallback((pageItem: DocxPageContent) => {
-    const contentWidth =
-      pageItem.page.width -
-      pageItem.page.marginLeft -
-      pageItem.page.marginRight;
-    return pageItem.blocks.map((block) => (
-      <DocxBlockRenderer
-        key={block.id}
-        block={block}
-        availableWidth={contentWidth}
-        maximumWidth={pageItem.page.width}
-      />
-    ));
-  }, []);
+  const renderPageBlocks = useCallback(
+    (pageItem: DocxPageContent, suppressFirstBlockSpacing = false) => {
+      const contentWidth =
+        pageItem.page.width -
+        pageItem.page.marginLeft -
+        pageItem.page.marginRight;
+      return pageItem.blocks.map((block, blockIndex, blocks) => {
+        const previousBlock = blocks[blockIndex - 1];
+        const nextBlock = blocks[blockIndex + 1];
+        const suppressSpacingBefore =
+          (suppressFirstBlockSpacing && blockIndex === 0) ||
+          shouldSuppressDocxContextualSpacing(block, previousBlock);
+        return (
+          <DocxBlockRenderer
+            key={block.id}
+            block={block}
+            availableWidth={contentWidth}
+            maximumWidth={pageItem.page.width}
+            suppressSpacingBefore={suppressSpacingBefore}
+            spacingBefore={resolveDocxSpacingBefore(
+              block,
+              previousBlock,
+              suppressSpacingBefore,
+            )}
+            suppressSpacingAfter={shouldSuppressDocxContextualSpacing(
+              block,
+              nextBlock,
+            )}
+          />
+        );
+      });
+    },
+    [],
+  );
   const renderPage = useCallback(
     (pageItem: DocxPageContent, pageIndex: number) => {
       const differentEvenOdd = Boolean(
@@ -341,7 +363,7 @@ function DocxViewerComponent({
           zoom={zoom}
           header={
             headerBlocks?.length
-              ? renderPageBlocks({ ...pageItem, blocks: headerBlocks })
+              ? renderPageBlocks({ ...pageItem, blocks: headerBlocks }, true)
               : undefined
           }
           footer={
@@ -352,7 +374,7 @@ function DocxViewerComponent({
             ) : undefined
           }
         >
-          {renderPageBlocks(pageItem)}
+          {renderPageBlocks(pageItem, pageIndex > 0)}
         </DocxPageFrame>
       );
     },
@@ -360,7 +382,12 @@ function DocxViewerComponent({
   );
   const measurementBatch = source?.getMeasurementBatch();
   const renderMeasurementBlock = useCallback(
-    (block: DocxPageContent['blocks'][number]) => {
+    (
+      block: DocxPageContent['blocks'][number],
+      suppressSpacingBefore: boolean,
+      suppressSpacingAfter: boolean,
+      spacingBefore: number,
+    ) => {
       const page = source?.getMeasurementBatch()?.sourcePage;
       const availableWidth = page
         ? page.page.width - page.page.marginLeft - page.page.marginRight
@@ -371,6 +398,9 @@ function DocxViewerComponent({
           block={block}
           availableWidth={availableWidth}
           maximumWidth={page?.page.width}
+          suppressSpacingBefore={suppressSpacingBefore}
+          suppressSpacingAfter={suppressSpacingAfter}
+          spacingBefore={spacingBefore}
         />
       );
     },

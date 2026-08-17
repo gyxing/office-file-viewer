@@ -9,6 +9,8 @@ import type {
 export const DOCX_MEASURE_BLOCK_LIMIT = 100;
 /** 单个 DOCX 测量批次允许包含的表格行上限。 */
 export const DOCX_MEASURE_TABLE_ROW_LIMIT = 200;
+/** 仅忽略浏览器布局取整造成的亚像素误差，避免真实溢出内容被纸张裁切。 */
+const DOCX_PAGE_OVERFLOW_TOLERANCE = 1;
 
 /** DOCX 分页测量过程需要保留的上下文。 */
 export type DocxMeasurementContext = {
@@ -51,8 +53,14 @@ export type DocxMeasuredBlock = {
   block: DocxBlock;
   /** 高度，单位为标准化渲染像素。 */
   height: number;
+  /** 内容块成为页首时需要额外占用的上边距。 */
+  leadingSpacing: number;
+  /** 内容块位于页尾时最后一个可见字形占用的高度。 */
+  pageEndHeight?: number;
   /** 各表格行的测量高度。 */
   rowHeights?: readonly number[];
+  /** 各表格行可在不裁切可见内容时使用的纵向拆分位置。 */
+  rowBreakOffsets?: readonly (readonly number[])[];
   /** 当前表格行相对表格顶部的偏移。 */
   rowOffset?: number;
   /** 当前表格在拆分前包含的总行数。 */
@@ -123,6 +131,7 @@ function sliceMeasuredParagraph(
     inlines,
     text: inlines.map((inline) => inline.text).join(''),
     outlineLevel: isFirstFragment ? block.outlineLevel : undefined,
+    keepNext: isLastFragment ? block.keepNext : undefined,
     spacingBefore: isFirstFragment ? block.spacingBefore : 0,
     spacingAfter: isLastFragment ? block.spacingAfter : 0,
     firstLineIndent: isFirstFragment ? block.firstLineIndent : 0,
@@ -218,16 +227,19 @@ export function paginateMeasuredDocxPage(
     sourcePage.page.minHeight -
     sourcePage.page.marginTop -
     sourcePage.page.marginBottom;
-  if (
-    measuredBlocks.reduce((sum, item) => sum + item.height, 0) <=
-    contentHeight + 120
-  ) {
+  // 源页面首段保留自身段前距；仅自动续页会抑制新页首块的普通段前距。
+  const firstPageLeadingSpacing = measuredBlocks[0]?.leadingSpacing ?? 0;
+  const measuredContentHeight = measuredBlocks.reduce(
+    (sum, item) => sum + item.height,
+    firstPageLeadingSpacing,
+  );
+  if (measuredContentHeight <= contentHeight + DOCX_PAGE_OVERFLOW_TOLERANCE) {
     return [sourcePage];
   }
 
   const pages: DocxPageContent[] = [];
   let currentBlocks: DocxBlock[] = [];
-  let currentHeight = 0;
+  let currentHeight = firstPageLeadingSpacing;
   const pushPage = () => {
     if (!currentBlocks.length) return;
     pages.push({
@@ -238,22 +250,80 @@ export function paginateMeasuredDocxPage(
     currentBlocks = [];
     currentHeight = 0;
   };
-  const appendBlock = (block: DocxBlock, height: number) => {
-    if (currentBlocks.length && currentHeight + height > contentHeight + 1) {
+  const appendBlock = (
+    block: DocxBlock,
+    height: number,
+    _leadingSpacing = 0,
+    pageEndHeight = height,
+  ) => {
+    if (
+      currentBlocks.length &&
+      currentHeight + pageEndHeight >
+        contentHeight + DOCX_PAGE_OVERFLOW_TOLERANCE
+    ) {
       pushPage();
     }
     currentBlocks.push(block);
+    // Word 会在自动分页后的页首抑制普通段前距，页内间距已包含在相邻块测量高度中。
     currentHeight += height;
   };
 
-  measuredBlocks.forEach((measurement) => {
+  const getKeepWithNextTerminalHeight = (item: DocxMeasuredBlock) => {
+    if (item.block.type === 'paragraph') {
+      if (
+        item.block.widowControl !== false &&
+        !item.block.keepLines &&
+        item.paragraphLineHeights?.length
+      ) {
+        // 默认孤行控制只要求标题后的正文至少保留两行。
+        return item.paragraphLineHeights
+          .slice(0, Math.min(2, item.paragraphLineHeights.length))
+          .reduce((height, lineHeight) => height + lineHeight, 0);
+      }
+      // 关闭孤行控制时，WPS 会把可完整放入新页的下一段与标题整段成组。
+      return item.height;
+    }
+    if (item.block.type === 'table' && item.rowHeights?.length) {
+      return item.rowHeights[0];
+    }
+    return item.pageEndHeight ?? item.height;
+  };
+
+  const getKeepWithNextHeight = (startIndex: number) => {
+    let height = 0;
+    for (let index = startIndex; index < measuredBlocks.length; index += 1) {
+      const item = measuredBlocks[index];
+      if (item.block.type !== 'paragraph' || !item.block.keepNext) {
+        // 按终端正文的孤行设置或表格首行计算 keepNext 成组高度。
+        height += getKeepWithNextTerminalHeight(item);
+        break;
+      }
+      height += item.height;
+    }
+    return height;
+  };
+
+  measuredBlocks.forEach((measurement, measurementIndex) => {
     const { block } = measurement;
+
+    if (block.type === 'paragraph' && block.keepNext && currentBlocks.length) {
+      const groupedHeight = getKeepWithNextHeight(measurementIndex);
+      if (
+        groupedHeight <= contentHeight + DOCX_PAGE_OVERFLOW_TOLERANCE &&
+        currentHeight + groupedHeight >
+          contentHeight + DOCX_PAGE_OVERFLOW_TOLERANCE
+      ) {
+        pushPage();
+      }
+    }
     const lineEndOffsets = measurement.paragraphLineEndOffsets;
     const lineHeights = measurement.paragraphLineHeights;
     if (
       block.type === 'paragraph' &&
-      currentHeight + measurement.height > contentHeight + 1 &&
+      currentHeight + (measurement.pageEndHeight ?? measurement.height) >
+        contentHeight + DOCX_PAGE_OVERFLOW_TOLERANCE &&
       canSplitMeasuredParagraph(block) &&
+      (!block.keepLines || measurement.height > contentHeight) &&
       lineEndOffsets &&
       lineHeights &&
       lineEndOffsets.length > 1 &&
@@ -267,9 +337,12 @@ export function paginateMeasuredDocxPage(
     ) {
       let lineStart = 0;
       while (lineStart < lineEndOffsets.length) {
+        const fragmentLeadingSpacing =
+          lineStart === 0 ? measurement.leadingSpacing : 0;
         if (
           currentBlocks.length &&
-          currentHeight + lineHeights[lineStart] > contentHeight + 1
+          currentHeight + lineHeights[lineStart] >
+            contentHeight + DOCX_PAGE_OVERFLOW_TOLERANCE
         ) {
           pushPage();
         }
@@ -284,62 +357,161 @@ export function paginateMeasuredDocxPage(
           fragmentHeight += lineHeights[lineEnd];
           lineEnd += 1;
         }
+        if (block.widowControl !== false && lineEnd < lineEndOffsets.length) {
+          const fragmentLineCount = lineEnd - lineStart;
+          const remainingLineCount = lineEndOffsets.length - lineEnd;
+          if (
+            lineStart === 0 &&
+            currentBlocks.length > 0 &&
+            (fragmentLineCount < 2 ||
+              (remainingLineCount === 1 && fragmentLineCount <= 2))
+          ) {
+            pushPage();
+            continue;
+          }
+          if (remainingLineCount === 1 && fragmentLineCount > 2) {
+            lineEnd -= 1;
+            fragmentHeight -= lineHeights[lineEnd];
+          }
+        }
         const startOffset = lineStart === 0 ? 0 : lineEndOffsets[lineStart - 1];
         const endOffset = lineEndOffsets[lineEnd - 1];
         appendBlock(
           sliceMeasuredParagraph(block, startOffset, endOffset),
           fragmentHeight,
+          fragmentLeadingSpacing,
         );
         lineStart = lineEnd;
         if (lineStart < lineEndOffsets.length) pushPage();
       }
       return;
     }
+    const availableHeight = contentHeight - currentHeight;
     if (
       block.type !== 'table' ||
-      (measurement.height <= contentHeight * 0.6 &&
-        (measurement.originalTableRowCount ?? block.rows.length) <=
-          block.rows.length)
+      measurement.height <= availableHeight + DOCX_PAGE_OVERFLOW_TOLERANCE
     ) {
-      appendBlock(block, measurement.height);
+      appendBlock(
+        block,
+        measurement.height,
+        measurement.leadingSpacing,
+        measurement.pageEndHeight,
+      );
       return;
     }
     const rowHeights = measurement.rowHeights;
     if (!rowHeights?.length || rowHeights.length !== block.rows.length) {
-      appendBlock(block, measurement.height);
+      appendBlock(block, measurement.height, measurement.leadingSpacing);
       return;
     }
-    let rowStart = 0;
-    let rowHeight = 0;
-    const appendRows = (rowEnd: number) => {
-      if (rowEnd <= rowStart) return;
-      const absoluteStart = (measurement.rowOffset ?? 0) + rowStart;
-      const absoluteEnd = (measurement.rowOffset ?? 0) + rowEnd;
+    const rowBreakOffsets = measurement.rowBreakOffsets;
+    const trailingSpacing = Math.max(
+      0,
+      measurement.height - rowHeights.reduce((sum, height) => sum + height, 0),
+    );
+    let pendingRows: DocxTableBlock['rows'] = [];
+    let pendingHeight = 0;
+    let partIndex = 0;
+    let hasPreviousRows = (measurement.rowOffset ?? 0) > 0;
+    const appendRows = (isFinalPart = false) => {
+      if (!pendingRows.length) return;
+      partIndex += 1;
       appendBlock(
         {
           ...block,
-          id: `${block.sourceBlockId ?? block.id}-rows-${
-            absoluteStart + 1
-          }-${absoluteEnd}`,
+          id: `${block.sourceBlockId ?? block.id}-part-${
+            (measurement.rowOffset ?? 0) + 1
+          }-${partIndex}`,
           sourceBlockId: block.sourceBlockId ?? block.id,
-          rows: block.rows.slice(rowStart, rowEnd),
+          rows: pendingRows,
         },
-        rowHeight,
+        pendingHeight,
+        hasPreviousRows ? 0 : measurement.leadingSpacing,
       );
-      rowStart = rowEnd;
-      rowHeight = 0;
-    };
-    rowHeights.forEach((height, rowIndex) => {
-      if (
-        rowIndex > rowStart &&
-        currentHeight + rowHeight + height > contentHeight + 1
-      ) {
-        appendRows(rowIndex);
-        pushPage();
+      pendingRows = [];
+      pendingHeight = 0;
+      hasPreviousRows = true;
+      if (isFinalPart) {
+        // 表格拆分时行高之和不包含表格外框及与下一块折叠后的间距，末段需补回分页记账。
+        currentHeight += trailingSpacing;
       }
-      rowHeight += height;
+    };
+    block.rows.forEach((row, rowIndex) => {
+      const sourceHeight = rowHeights[rowIndex];
+      const safeBreaks = rowBreakOffsets?.[rowIndex] ?? [];
+      const canSplitRow =
+        !row.cantSplit &&
+        safeBreaks.length > 0 &&
+        row.cells.every((cell) => !cell.rowSpan || cell.rowSpan === 1);
+      let fragmentOffset = 0;
+      while (fragmentOffset < sourceHeight - 0.5) {
+        const remainingHeight = sourceHeight - fragmentOffset;
+        const availableHeight = contentHeight - currentHeight - pendingHeight;
+        if (remainingHeight <= availableHeight + DOCX_PAGE_OVERFLOW_TOLERANCE) {
+          pendingRows.push(
+            fragmentOffset > 0
+              ? {
+                  ...row,
+                  id: `${row.id}-fragment-${Math.round(fragmentOffset)}`,
+                  fragment: {
+                    height: remainingHeight,
+                    offset: fragmentOffset,
+                    sourceHeight,
+                  },
+                }
+              : row,
+          );
+          pendingHeight += remainingHeight;
+          break;
+        }
+
+        // 固化本轮分片边界，避免同步查找闭包读取随后会更新的偏移量。
+        const minimumBreakOffset = fragmentOffset + 4;
+        const maximumBreakOffset =
+          fragmentOffset + availableHeight + DOCX_PAGE_OVERFLOW_TOLERANCE;
+        const breakOffset = canSplitRow
+          ? [...safeBreaks]
+              .reverse()
+              .find(
+                (offset) =>
+                  offset > minimumBreakOffset &&
+                  offset < sourceHeight - 4 &&
+                  offset <= maximumBreakOffset,
+              )
+          : undefined;
+        if (breakOffset !== undefined) {
+          const fragmentHeight = breakOffset - fragmentOffset;
+          pendingRows.push({
+            ...row,
+            id: `${row.id}-fragment-${Math.round(fragmentOffset)}-${Math.round(
+              breakOffset,
+            )}`,
+            fragment: {
+              height: fragmentHeight,
+              offset: fragmentOffset,
+              sourceHeight,
+            },
+          });
+          pendingHeight += fragmentHeight;
+          appendRows();
+          pushPage();
+          fragmentOffset = breakOffset;
+          continue;
+        }
+
+        if (pendingRows.length) appendRows();
+        if (currentBlocks.length) {
+          pushPage();
+          continue;
+        }
+
+        // 空白页仍无法找到安全拆点时保留整行，避免裁切图片或复杂单元格内容。
+        pendingRows.push(row);
+        pendingHeight += sourceHeight;
+        break;
+      }
     });
-    appendRows(block.rows.length);
+    appendRows(true);
   });
   pushPage();
   return pages.length ? pages : [sourcePage];

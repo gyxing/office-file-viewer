@@ -6,13 +6,24 @@ import type {
 } from '../../services/docx/docxPagination';
 import type { DocxBlock } from '../../services/docx/types';
 import { DocxPageFrame } from './DocxPageFrame';
+import {
+  resolveDocxSpacingBefore,
+  shouldSuppressDocxContextualSpacing,
+} from './docxParagraphSpacing';
+import { measureDocxParagraphLines } from './measureDocxParagraphLines';
+import { measureDocxTableRows } from './measureDocxTableRows';
 
 /** DOCX 隐藏测量容器组件属性。 */
 type DocxMeasureHostProps = {
   /** 当前提交测量或解析的内容批次。 */
   batch?: DocxMeasurementBatch;
   /** 渲染待测量的单个 DOCX 内容块。 */
-  renderBlock(block: DocxBlock): ReactNode;
+  renderBlock(
+    block: DocxBlock,
+    suppressSpacingBefore: boolean,
+    suppressSpacingAfter: boolean,
+    spacingBefore: number,
+  ): ReactNode;
   /** 接收完成排版测量的内容块结果。 */
   onMeasured(
     batch: DocxMeasurementBatch,
@@ -57,18 +68,16 @@ export function DocxMeasureHost({
             Number.parseFloat(
               window.getComputedStyle(element).marginBottom || '0',
             );
-        const rowHeights =
-          block.type === 'table'
-            ? Array.from(
-                element.querySelectorAll<HTMLElement>('tbody > tr'),
-              ).map((row) => row.getBoundingClientRect().height)
-            : undefined;
         return {
           block,
           height,
-          rowHeights,
+          leadingSpacing: Number.parseFloat(
+            window.getComputedStyle(element).marginTop || '0',
+          ),
           rowOffset: batch.rowOffsets[block.id],
           originalTableRowCount: batch.originalTableRowCounts[block.id],
+          ...measureDocxParagraphLines(element, block, height),
+          ...measureDocxTableRows(element, block),
         };
       });
       onMeasured(
@@ -92,7 +101,23 @@ export function DocxMeasureHost({
       aria-hidden="true"
     >
       <DocxPageFrame page={batch.sourcePage.page} zoom={100}>
-        {blocks.map(renderBlock)}
+        {blocks.map((block, blockIndex) => {
+          const previousBlock = blocks[blockIndex - 1];
+          const suppressSpacingBefore = shouldSuppressDocxContextualSpacing(
+            block,
+            previousBlock,
+          );
+          return renderBlock(
+            block,
+            suppressSpacingBefore,
+            shouldSuppressDocxContextualSpacing(block, blocks[blockIndex + 1]),
+            resolveDocxSpacingBefore(
+              block,
+              previousBlock,
+              suppressSpacingBefore,
+            ),
+          );
+        })}
       </DocxPageFrame>
     </div>
   );
