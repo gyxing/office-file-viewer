@@ -9,7 +9,7 @@ export default defineConfig({
     { id: 'en-US', name: 'English' },
     { id: 'zh-CN', name: '简体中文', base: '/zh-CN' },
   ],
-  // 公开页面全部通过路由白名单注册，避免本地 smoke-test 和样例文件进入 Pages 构建产物。
+  // 公开页面全部通过路由白名单注册，避免本地开发页面和样例资源进入 Pages 构建产物。
   routes: [
     {
       path: '/',

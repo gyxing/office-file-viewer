@@ -9,3 +9,10 @@ node_modules
 /docs/files/
 /docs/dev/smoke-test.md
 /docs/dev/smoke-test.less
+/docs/dev/smoke-test.samples.ts
+/tests/visual/
+
+# 本地 IDE、Codex 与测试运行产物不进入项目提交。
+/.idea/
+/.codex-artifacts/
+/test-results/
