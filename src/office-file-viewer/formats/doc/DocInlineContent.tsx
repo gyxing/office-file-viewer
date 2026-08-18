@@ -65,7 +65,7 @@ function DocTextRunContent({
       {...hyperlinkProps}
       style={inlineStyleToCss(
         inline.style,
-        { preserveBlockTypography },
+        { preserveBlockTypography, text: inline.text },
         resolveFontFamily,
       )}
     >

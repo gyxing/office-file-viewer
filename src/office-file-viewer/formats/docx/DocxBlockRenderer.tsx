@@ -15,6 +15,12 @@ type DocxBlockRendererProps = {
   maximumWidth?: number;
   /** 查找结果对应的顶层正文块标识。 */
   searchBlockId?: string;
+  /** 是否忽略相邻同样式段落之间的段前距。 */
+  suppressSpacingBefore?: boolean;
+  /** 覆盖浏览器实际应用的段前距。 */
+  spacingBefore?: number;
+  /** 是否忽略相邻同样式段落之间的段后距。 */
+  suppressSpacingAfter?: boolean;
 };
 
 /** 渲染DOCX内容块渲染器。 */
@@ -23,6 +29,9 @@ function DocxBlockRendererComponent({
   availableWidth,
   maximumWidth,
   searchBlockId = block.sourceBlockId ?? block.id,
+  suppressSpacingBefore = false,
+  suppressSpacingAfter = false,
+  spacingBefore,
 }: DocxBlockRendererProps) {
   if (block.type === 'table')
     return (
@@ -35,7 +44,15 @@ function DocxBlockRendererComponent({
     );
   if (block.type === 'chart')
     return <DocxChartBlock block={block} zoom={100} />;
-  return <DocxParagraph block={block} searchBlockId={searchBlockId} />;
+  return (
+    <DocxParagraph
+      block={block}
+      searchBlockId={searchBlockId}
+      suppressSpacingBefore={suppressSpacingBefore}
+      suppressSpacingAfter={suppressSpacingAfter}
+      spacingBefore={spacingBefore}
+    />
+  );
 }
 
 export const DocxBlockRenderer = memo(DocxBlockRendererComponent);

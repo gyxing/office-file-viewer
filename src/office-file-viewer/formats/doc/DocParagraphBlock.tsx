@@ -52,7 +52,11 @@ function DocParagraphBlockComponent({ block }: DocParagraphBlockProps) {
   const isTitle = block.role === 'title';
   const isHeading = block.role === 'heading';
   const paragraphStyle = useMemo<CSSProperties>(() => {
-    const sourceStyle = docTextStyleToCss(block.style, resolveFontFamily);
+    const sourceStyle = docTextStyleToCss(
+      block.style,
+      resolveFontFamily,
+      block.text,
+    );
     if (block.style?.borderStyle || block.style?.borderWidth) {
       // Word 段落边框贴正文版心，左右缩进只影响边框内文字，不能再次收窄边框外框。
       sourceStyle.marginLeft = 0;

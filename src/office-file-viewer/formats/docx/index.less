@@ -132,6 +132,15 @@
   font-family: SimSun, '宋体', serif;
 }
 
+// 使用可折叠空格还原 Word 的四分之一字宽，换行时不会在行首留下额外缩进。
+.office-file-docx-auto-spacing {
+  font-family: 'Times New Roman', serif;
+  line-height: 0;
+  letter-spacing: 0;
+  white-space: normal;
+  word-spacing: 0;
+}
+
 .office-file-docx-inline-tab {
   display: inline-block;
   width: 2em;
@@ -200,6 +209,21 @@
   color: #000;
   font-family: 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', Arial,
     sans-serif;
+}
+
+.office-file-docx-table-block__fragment-clip {
+  position: relative;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.office-file-docx-table-block__fragment-content {
+  position: absolute;
+  right: 0;
+  left: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
 }
 
 .office-file-docx-chart-block,

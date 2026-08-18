@@ -1,29 +1,61 @@
 import type { DocxMeasuredBlock } from '../../services/docx/docxPagination';
 import { canSplitMeasuredParagraph } from '../../services/docx/docxPagination';
 
+/** 读取纯文本段落最后一个可见行内盒相对段落顶部的底边。 */
+function measureVisibleInlineBottom(element: HTMLElement) {
+  const elementTop = element.getBoundingClientRect().top;
+  let bottom: number | undefined;
+  element
+    .querySelectorAll<HTMLElement>('span:not(.office-file-docx-auto-spacing)')
+    .forEach((inline) => {
+      Array.from(inline.getClientRects()).forEach((rect) => {
+        if (rect.width <= 0 && rect.height <= 0) return;
+        bottom = Math.max(bottom ?? rect.bottom, rect.bottom);
+      });
+    });
+  return bottom === undefined ? undefined : Math.max(0, bottom - elementTop);
+}
+
 /** 读取纯文本段落的浏览器换行位置，供小文件物化分页精确拆行。 */
 export function measureDocxParagraphLines(
   element: HTMLElement,
   block: DocxMeasuredBlock['block'],
   blockHeight: number,
-): Pick<DocxMeasuredBlock, 'paragraphLineEndOffsets' | 'paragraphLineHeights'> {
+): Pick<
+  DocxMeasuredBlock,
+  'pageEndHeight' | 'paragraphLineEndOffsets' | 'paragraphLineHeights'
+> {
   if (block.type !== 'paragraph' || !canSplitMeasuredParagraph(block)) {
     return {};
   }
   const expectedText = block.inlines
     .map((inline) => (inline.type === 'text' ? inline.text : ''))
     .join('');
-  if (!expectedText || element.textContent !== expectedText) return {};
+  if (!expectedText) return {};
 
-  const range = window.document.createRange();
   const walker = window.document.createTreeWalker(
     element,
     window.NodeFilter.SHOW_TEXT,
+    {
+      acceptNode(node) {
+        return node.parentElement?.closest('.office-file-docx-auto-spacing')
+          ? window.NodeFilter.FILTER_REJECT
+          : window.NodeFilter.FILTER_ACCEPT;
+      },
+    },
   );
+  const textNodes: Text[] = [];
+  let currentTextNode = walker.nextNode() as Text | null;
+  while (currentTextNode) {
+    textNodes.push(currentTextNode);
+    currentTextNode = walker.nextNode() as Text | null;
+  }
+  if (textNodes.map((node) => node.data).join('') !== expectedText) return {};
+
+  const range = window.document.createRange();
   const lines: Array<{ top: number; bottom: number; endOffset: number }> = [];
   let textOffset = 0;
-  let textNode = walker.nextNode() as Text | null;
-  while (textNode) {
+  for (const textNode of textNodes) {
     const textLength = textNode.data.length;
     for (
       let characterOffset = 1;
@@ -57,10 +89,16 @@ export function measureDocxParagraphLines(
       }
     }
     textOffset += textLength;
-    textNode = walker.nextNode() as Text | null;
   }
   range.detach();
-  if (textOffset !== expectedText.length || lines.length < 2) return {};
+  if (textOffset !== expectedText.length) return {};
+  const elementTop = element.getBoundingClientRect().top;
+  const pageEndHeight =
+    measureVisibleInlineBottom(element) ??
+    (lines.length
+      ? Math.max(0, lines[lines.length - 1].bottom - elementTop)
+      : undefined);
+  if (lines.length < 2) return { pageEndHeight };
   lines[lines.length - 1].endOffset = textOffset;
   const lineEndOffsets = lines
     .map((line) => line.endOffset)
@@ -72,21 +110,16 @@ export function measureDocxParagraphLines(
     return {};
   }
 
-  const elementRect = element.getBoundingClientRect();
-  const lineBoundaries = [
-    elementRect.top,
-    ...lines
-      .slice(0, -1)
-      .map((line, index) => (line.top + lines[index + 1].top) / 2),
-    elementRect.bottom,
-  ];
-  const lineHeights = lines.map((_, index) =>
-    Math.max(0, lineBoundaries[index + 1] - lineBoundaries[index]),
+  // 拆页后的单行段落仍占完整行盒；按相邻行顶部距离计量，避免中点算法把首行压成半行。
+  const lineHeights = lines.map((line, index) =>
+    index < lines.length - 1 ? Math.max(0, lines[index + 1].top - line.top) : 0,
   );
-  lineHeights[lineHeights.length - 1] +=
-    blockHeight - lineHeights.reduce((sum, height) => sum + height, 0);
+  lineHeights[lineHeights.length - 1] =
+    blockHeight -
+    lineHeights.slice(0, -1).reduce((sum, height) => sum + height, 0);
   if (lineHeights.some((height) => height <= 0)) return {};
   return {
+    pageEndHeight,
     paragraphLineEndOffsets: lineEndOffsets,
     paragraphLineHeights: lineHeights,
   };

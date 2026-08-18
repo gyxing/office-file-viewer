@@ -144,6 +144,20 @@ export type DocxParagraphBlock = {
   outlineLevel?: number;
   /** 是否属于自动目录段落，用于还原目录制表位与打印样式。 */
   isTableOfContents?: boolean;
+  /** 是否要求当前段落与下一段保持在同一页。 */
+  keepNext?: boolean;
+  /** 是否禁止把当前段落的多行文字拆到不同页面。 */
+  keepLines?: boolean;
+  /** 跨页时是否避免在页首或页尾只留下单行文字。 */
+  widowControl?: boolean;
+  /** 源文档使用的段落样式标识，供相邻段落间距规则判断。 */
+  paragraphStyleId?: string;
+  /** 相邻同样式段落之间是否忽略段前和段后间距。 */
+  contextualSpacing?: boolean;
+  /** 是否启用东亚文字与西文之间的自动间距。 */
+  autoSpaceLatin?: boolean;
+  /** 是否启用东亚文字与数字之间的自动间距。 */
+  autoSpaceNumber?: boolean;
   /** 段落声明的制表位，位置单位为标准化渲染像素。 */
   tabStops?: DocxTabStop[];
   /** 水平对齐方式。 */
@@ -250,6 +264,17 @@ export type DocxTableRow = {
   height?: number;
   /** 表格行高采用自动、最小值或固定值的规则。 */
   heightRule?: 'auto' | 'atLeast' | 'exact';
+  /** 是否禁止当前行跨页拆分。 */
+  cantSplit?: boolean;
+  /** 跨页后仅渲染源表格行指定纵向区间的参数。 */
+  fragment?: {
+    /** 当前片段在源表格行中的纵向起点。 */
+    offset: number;
+    /** 当前片段显示的高度。 */
+    height: number;
+    /** 拆分前源表格行的完整高度。 */
+    sourceHeight: number;
+  };
 };
 
 /** DOCX 表格单元格的内容与样式。 */
@@ -558,8 +583,10 @@ export type DocxTextStyle = {
   lineHeightRule?: 'auto' | 'exact' | 'atLeast';
   /** 段前间距，单位为标准化渲染像素。 */
   spacingBefore?: number;
+
   /** 段后间距，单位为标准化渲染像素。 */
   spacingAfter?: number;
+
   /** 左缩进，单位为标准化渲染像素。 */
   indentLeft?: number;
   /** 右缩进，单位为标准化渲染像素。 */

@@ -23,6 +23,8 @@ type DocxNumberingLevel = {
   start: number;
   /** 编号值使用的格式名称。 */
   format: string;
+  /** 是否强制把多级编号中的所有层级显示为阿拉伯数字。 */
+  isLegal: boolean;
   /** 文本内容。 */
   text: string;
   /** 列表编号与正文之间使用的后缀类型。 */
@@ -61,10 +63,13 @@ const readVal = (node: Element | null | undefined) =>
 /** 从段落属性读取自动编号引用。 */
 export function readDocxNumberingReference(
   pPr: Element | null | undefined,
-): DocxNumberingReference | undefined {
+): DocxNumberingReference | null | undefined {
   const numPr = childByLocalName(pPr, 'numPr');
+  if (!numPr) return undefined;
   const numId = readVal(childByLocalName(numPr, 'numId'));
-  if (!numId || numId === '0') return undefined;
+  if (!numId) return undefined;
+  // OOXML 用 numId=0 明确取消样式链继承的编号，必须保留这个覆盖语义。
+  if (numId === '0') return null;
   const rawLevel = readVal(childByLocalName(numPr, 'ilvl'));
   const level = rawLevel === undefined ? undefined : Number(rawLevel);
   return {
@@ -94,6 +99,7 @@ function readNumberingLevel(node: Element): DocxNumberingLevel | undefined {
     level,
     start: Number.isFinite(start) ? start : 1,
     format: readVal(childByLocalName(node, 'numFmt')) ?? 'decimal',
+    isLegal: Boolean(childByLocalName(node, 'isLgl')),
     text: readVal(childByLocalName(node, 'lvlText')) ?? `%${level + 1}`,
     suffix:
       suffix === 'tab' || suffix === 'nothing' || suffix === 'space'
@@ -241,7 +247,25 @@ function toChineseCounting(value: number): string {
   return String(integer);
 }
 
+/** 将 Word 的带圈十进制编号映射为等宽 Unicode 字符。 */
+function toDecimalEnclosedCircle(value: number) {
+  if (value === 0) return '⓪';
+  if (value >= 1 && value <= 20) {
+    return String.fromCodePoint(0x2460 + value - 1);
+  }
+  if (value >= 21 && value <= 35) {
+    return String.fromCodePoint(0x3251 + value - 21);
+  }
+  if (value >= 36 && value <= 50) {
+    return String.fromCodePoint(0x32b1 + value - 36);
+  }
+  return String(value);
+}
+
 function formatCounter(value: number, format: string) {
+  if (format === 'decimalEnclosedCircle') {
+    return toDecimalEnclosedCircle(value);
+  }
   if (format === 'chineseCounting' || format === 'chineseCountingThousand') {
     return toChineseCounting(value);
   }
@@ -283,6 +307,15 @@ export function nextDocxNumberPrefix(
   if (!level) return undefined;
 
   const counters = (catalog.counters[reference.numId] ??= []);
+  // 多级编号首次从较深层级开始时，Word 会同步建立被占位符引用的祖先计数。
+  // 若不初始化祖先层级，后续回到上级标题会被错误当成首次出现并从 1 重新开始。
+  for (let index = 0; index < levelIndex; index += 1) {
+    if (counters[index] !== undefined) continue;
+    const ancestorLevel =
+      instance.levelOverrides[index] ?? levels?.[index] ?? level;
+    counters[index] =
+      instance.startOverrides[index] ?? ancestorLevel.start ?? 1;
+  }
   const start = instance.startOverrides[levelIndex] ?? level.start ?? 1;
   counters[levelIndex] =
     counters[levelIndex] === undefined ? start : counters[levelIndex] + 1;
@@ -297,7 +330,10 @@ export function nextDocxNumberPrefix(
       instance.startOverrides[index] ??
       referencedLevel.start ??
       1;
-    return formatCounter(value, referencedLevel.format);
+    return formatCounter(
+      value,
+      level.isLegal ? 'decimal' : referencedLevel.format,
+    );
   });
   return {
     text,

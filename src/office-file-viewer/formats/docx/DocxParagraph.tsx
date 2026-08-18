@@ -21,25 +21,66 @@ type DocxParagraphProps = {
   compact?: boolean;
   /** 是否使用 div 元素承载当前段落。 */
   asDiv?: boolean; // 强制使用 div 而不是 p,用于避免嵌套问题
+  /** 是否忽略单元格末段不会参与行高的段后距。 */
+  suppressSpacingAfter?: boolean;
+  /** 是否忽略相邻同样式段落之间的段前距。 */
+  suppressSpacingBefore?: boolean;
+  /** 覆盖浏览器实际应用的段前距。 */
+  spacingBefore?: number;
   /** 是否使用 Office 形状文本的字体场景基线。 */
   insideShape?: boolean;
   /** 查找结果对应的顶层正文块标识。 */
   searchBlockId?: string;
 };
 
+/** 查找跨文字运行边界紧邻的可见字符，书签和空运行不打断脚本间距。 */
+function findAdjacentDocxTextCharacter(
+  inlines: DocxParagraphBlock['inlines'],
+  currentIndex: number,
+  direction: -1 | 1,
+) {
+  for (
+    let index = currentIndex + direction;
+    index >= 0 && index < inlines.length;
+    index += direction
+  ) {
+    const inline = inlines[index];
+    if (inline.type === 'bookmark') continue;
+    if (inline.type === 'text') {
+      // 自动编号的悬挂宽度已经包含标签与正文间距，不能再按普通文字运行追加脚本间距。
+      if (inline.advanceWidth !== undefined) return undefined;
+      const characters = Array.from(inline.text);
+      if (!characters.length) continue;
+      return direction < 0 ? characters[characters.length - 1] : characters[0];
+    }
+    return undefined;
+  }
+  return undefined;
+}
+
 /** 渲染DOCX段落。 */
 function DocxParagraphComponent({
   block,
   compact = false,
   asDiv = false,
+  suppressSpacingAfter = false,
+  suppressSpacingBefore = false,
+  spacingBefore,
   insideShape = false,
   searchBlockId = block.sourceBlockId ?? block.id,
 }: DocxParagraphProps) {
   const resolveFontFamily = useOfficeFontResolver();
   // 浏览器段落 strut 需采用首个实际文字运行的字体指标，否则不同字体基线会额外撑高每一行。
-  const lineMetricInline = block.inlines.find(
-    (inline) => inline.type === 'text' && Boolean(inline.text),
-  );
+  const lineMetricInline =
+    block.inlines.find(
+      (inline) =>
+        inline.type === 'text' &&
+        Boolean(inline.text) &&
+        inline.advanceWidth === undefined,
+    ) ??
+    block.inlines.find(
+      (inline) => inline.type === 'text' && Boolean(inline.text),
+    );
   const lineMetricStyle =
     lineMetricInline?.type === 'text' ? lineMetricInline.style : block.style;
   const shapeBaselineOffset = insideShape
@@ -75,11 +116,7 @@ function DocxParagraphComponent({
 
   const paragraphStyle = useMemo<CSSProperties>(() => {
     // Word 会保留浮动对象所在的锚点行；若压成 0 高度，后续按段落定位的对象会发生累计偏移。
-    const lineMetricCss = buildDocxTextStyle(
-      lineMetricStyle,
-      undefined,
-      resolveFontFamily,
-    );
+
     const baseMinHeight = hasFlowContent
       ? undefined
       : getDocxEmptyParagraphHeight(block);
@@ -98,11 +135,15 @@ function DocxParagraphComponent({
       margin: block.position ? 0 : undefined,
       marginTop: block.position
         ? undefined
-        : compact
+        : compact || suppressSpacingBefore
         ? 0
-        : block.spacingBefore ?? 0,
+        : spacingBefore ?? block.spacingBefore ?? 0,
       marginRight: block.position ? undefined : block.indentRight,
-      marginBottom: block.position ? undefined : block.spacingAfter ?? 0,
+      marginBottom: block.position
+        ? undefined
+        : suppressSpacingAfter
+        ? 0
+        : block.spacingAfter ?? 0,
       marginLeft: block.position ? undefined : block.indentLeft,
       paddingLeft: block.paddingLeft,
       paddingRight: block.paddingRight,
@@ -128,8 +169,6 @@ function DocxParagraphComponent({
       fontFamily:
         resolveDocxTextFontFamily(lineMetricStyle, resolveFontFamily) ??
         resolveDocxTextFontFamily(block.style, resolveFontFamily),
-      fontWeight: lineMetricCss.fontWeight,
-      WebkitTextStroke: lineMetricCss.WebkitTextStroke,
     };
   }, [
     block,
@@ -141,6 +180,9 @@ function DocxParagraphComponent({
     lineMetricStyle,
     positionStyle,
     resolveFontFamily,
+    spacingBefore,
+    suppressSpacingAfter,
+    suppressSpacingBefore,
   ]);
 
   // 图表和形状内部会渲染块级节点，使用 div 容器避免嵌套到 p 里触发浏览器修正。
@@ -164,6 +206,22 @@ function DocxParagraphComponent({
       searchBlockId={searchBlockId}
       resolveFontFamily={resolveFontFamily}
       isParagraphEnd={index === paragraphEndInlineIndex}
+      autoSpaceLatin={
+        inline.type === 'text' &&
+        inline.advanceWidth === undefined &&
+        block.autoSpaceLatin !== false
+      }
+      autoSpaceNumber={
+        inline.type === 'text' &&
+        inline.advanceWidth === undefined &&
+        block.autoSpaceNumber !== false
+      }
+      previousTextCharacter={findAdjacentDocxTextCharacter(
+        block.inlines,
+        index,
+        -1,
+      )}
+      nextTextCharacter={findAdjacentDocxTextCharacter(block.inlines, index, 1)}
     />
   );
 

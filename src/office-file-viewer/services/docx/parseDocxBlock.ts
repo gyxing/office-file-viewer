@@ -35,8 +35,6 @@ export type DocxBlockParseResult = {
 
 /** DOCX 流式块解析器依赖的格式解析操作。 */
 export type DocxBlockParseOperations<TContext> = {
-  /** 判断段落内容是否包含可渲染分页符。 */
-  hasRenderedPageBreak(node: Element): boolean;
   /** 判断段落是否声明了显式分页。 */
   hasExplicitPageBreak(node: Element): boolean;
   /** 找出表格中声明分页前置的行索引。 */
@@ -99,22 +97,14 @@ export function parseDocxBlock<TContext>({
   context,
   defaultPage,
   previousBlock,
-  previousBoundaryWasExplicit,
+  previousBoundaryWasExplicit: _previousBoundaryWasExplicit,
   operations,
 }: ParseDocxBlockOptions<TContext>): DocxBlockParseResult {
   const events: DocxBlockParseEvent[] = [];
-  const renderedPageBreak = operations.hasRenderedPageBreak(node);
   const explicitPageBreak = operations.hasExplicitPageBreak(node);
   const tableBreakRows = operations.isTable(node)
     ? operations.readTablePageBreakRows(node)
     : [];
-  if (
-    renderedPageBreak &&
-    !tableBreakRows.length &&
-    !previousBoundaryWasExplicit
-  ) {
-    events.push({ type: 'page-boundary', page: defaultPage });
-  }
   if (operations.isPageBreakOnlyParagraph(node)) {
     events.push({ type: 'page-boundary', page: defaultPage });
     return { events, previousBoundaryWasExplicit: true };
