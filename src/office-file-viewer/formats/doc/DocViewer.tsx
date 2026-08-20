@@ -7,17 +7,23 @@ import React, {
   useState,
 } from 'react';
 import {
+  createMemoryOfficeAnnotationSource,
+  type WordRevisionMode,
+} from '../../services/annotations';
+import {
   pageDrawingImagesFromBlock,
   paginateDocBlocks,
   type PaginatedDocPage,
 } from '../../services/doc/docPagination';
+import { projectDocBlocksRevisionMode } from '../../services/doc/projectDocRevisionMode';
 import { docBookmarkMarkerIdsFromBlock } from '../../services/doc/readDocBookmarks';
-import type { DocDocument } from '../../services/doc/types';
+import type { DocDocument, DocNote } from '../../services/doc/types';
 import type { OfficeFileViewerPreviewState } from '../../services/parsing/internalTypes';
 import { collectWordPerformanceStats } from '../../services/word/collectWordPerformanceStats';
 import { createMaterializedWordPageSource } from '../../services/word/createMaterializedWordPageSource';
 import { createMemoryWordOutlineProvider } from '../../services/word/createMemoryWordOutlineProvider';
 import { collectDocSearchBlocks } from '../../services/word/WordSearchProvider';
+import { useOfficeAnnotationSourceRegistration } from '../../shared/annotations';
 import { useExternalStoreSnapshot } from '../../shared/react/useExternalStoreSnapshot';
 import { OfficePreviewEmpty } from '../common/OfficePreviewEmpty';
 import { useOfficeSearchProviderRegistration } from '../search/OfficeSearchContext';
@@ -28,9 +34,15 @@ import type { WordPageNavigationController } from '../word-pages/types';
 import { VirtualWordPageList } from '../word-pages/VirtualWordPageList';
 import { WordBlockPageIndex } from '../word-pages/WordBlockPageIndex';
 import { useWordPerformanceProfile } from '../word-performance/useWordPerformanceProfile';
+import '../word-review/index.less';
+import { useWordAnnotationNavigation } from '../word-review/useWordAnnotationNavigation';
+import { WORD_MARKUP_BASE_RAIL_WIDTH } from '../word-review/wordMarkupCalloutLayout';
+import { WordReviewOverlay } from '../word-review/WordReviewOverlay';
+import { WordRevisionModeContext } from '../word-review/WordRevisionText';
 import { useWordSearchNavigation } from '../word-search/useWordSearchNavigation';
 import { DocContentRenderer } from './DocContentRenderer';
 import { DocImageGallery } from './DocImageGallery';
+import { collectDocNoteReferences, DocNoteBlock } from './DocNoteBlock';
 import { DocPageFrame } from './DocPageFrame';
 import './index.less';
 
@@ -45,6 +57,8 @@ type DocViewerProps = {
   zoom: number;
   /** 文档大纲当前是否展开。 */
   showOutline: boolean;
+  /** 当前采用的 Word 修订内容投影模式。 */
+  wordRevisionMode: WordRevisionMode;
   /** 关闭文档大纲。 */
   onCloseOutline: () => void;
   /** 搜索能力启用时切换到查找侧栏。 */
@@ -106,11 +120,25 @@ function DocViewerComponent({
   preview,
   zoom,
   showOutline,
+  wordRevisionMode,
   onCloseOutline,
   onOpenSearch,
 }: DocViewerProps) {
-  const document =
+  const rawDocument =
     preview.mode === 'materialized' ? preview.model.document : undefined;
+  const document = useMemo(
+    () =>
+      rawDocument
+        ? {
+            ...rawDocument,
+            blocks: projectDocBlocksRevisionMode(
+              rawDocument.blocks,
+              wordRevisionMode,
+            ),
+          }
+        : undefined,
+    [rawDocument, wordRevisionMode],
+  );
   const source = preview.mode === 'source' ? preview.source : undefined;
   const summary = preview.mode === 'source' ? preview.summary : undefined;
   const documentSessionId = preview.sessionId;
@@ -129,6 +157,31 @@ function DocViewerComponent({
       ? layoutCalibration.blockHeights
       : undefined;
   const documentMetadata = summary ?? document;
+  const notes = documentMetadata?.notes;
+  const review = documentMetadata?.review;
+  const annotationSource = useMemo(
+    () =>
+      review
+        ? createMemoryOfficeAnnotationSource({
+            annotations: review.annotations,
+            revisions: review.revisions,
+            revisionCount: review.revisionCount,
+            noteCount: review.noteCount,
+            supportsRevisionModes: review.supportsRevisionModes,
+          })
+        : undefined,
+    [review],
+  );
+  useOfficeAnnotationSourceRegistration(annotationSource);
+  const noteByKey = useMemo<Map<string, DocNote>>(
+    () =>
+      new Map(
+        [...(notes?.footnotes ?? []), ...(notes?.endnotes ?? [])].map(
+          (note) => [`${note.noteKind}:${note.noteId}`, note] as const,
+        ),
+      ),
+    [notes],
+  );
   const page = documentMetadata?.page;
   const contentWidth = page
     ? page.width - page.marginLeft - page.marginRight
@@ -280,6 +333,14 @@ function DocViewerComponent({
     pageNavigationControllerRef,
     documentSessionId,
   });
+  useWordAnnotationNavigation({
+    scrollContainerRef,
+    pageMode: profile.pageMode,
+    pageSource,
+    blockPageIndex,
+    pageNavigationControllerRef,
+    documentSessionId,
+  });
   useEffect(() => {
     if (!source) reportPaginationDuration(pagination.durationMs);
   }, [pagination.durationMs, reportPaginationDuration, source]);
@@ -297,79 +358,119 @@ function DocViewerComponent({
   );
   const layoutKey = useMemo(
     () =>
-      `${zoom}:${pageSnapshot.revision}:${pageSnapshot.pages
+      `${zoom}:${wordRevisionMode}:${pageSnapshot.revision}:${pageSnapshot.pages
         .map((item) => item.id)
         .join('|')}`,
-    [pageSnapshot, zoom],
+    [pageSnapshot, wordRevisionMode, zoom],
   );
 
   if (!page || !documentMetadata || !pageSnapshot.pages.length) {
     return <OfficePreviewEmpty kind="doc" />;
   }
 
-  const renderPage = (docPage: PaginatedDocPage, pageIndex: number) => (
-    <DocPageFrame
-      key={docPage.id}
-      page={page}
-      zoom={zoom}
-      headerImage={documentMetadata.headerImage}
-      pageDrawings={docPage.blocks.flatMap(pageDrawingImagesFromBlock)}
-      footerText={
-        documentMetadata.footerPageNumbers &&
-        pageIndex >= footerPageNumberStartIndex
-          ? `${pageIndex - footerPageNumberStartIndex + 1}`
-          : undefined
-      }
-    >
-      <DocContentRenderer blocks={docPage.blocks} contentWidth={contentWidth} />
-      {pageIndex ===
-      (pageSnapshot.pageCount ?? pageSnapshot.pages.length) - 1 ? (
-        <DocImageGallery images={unanchoredImages} />
-      ) : null}
-    </DocPageFrame>
-  );
-
-  return (
-    <div
-      className="office-file-doc-viewer"
-      data-word-source-mode={source ? 'progressive' : 'materialized'}
-    >
-      <div className="office-file-doc-viewer__body">
-        <WordOutlineSidebar
-          visible={showOutline}
-          activated={shouldRenderOutline}
-          items={outlineItems}
-          provider={outlineProvider}
-          outlineMode={profile.outlineMode}
-          pageMode={profile.pageMode}
-          pageSource={pageSource}
-          blockPageIndex={blockPageIndex}
-          pageNavigationControllerRef={pageNavigationControllerRef}
-          scrollContainerRef={scrollContainerRef}
-          documentSessionId={documentSessionId}
-          layoutKey={layoutKey}
-          onClose={onCloseOutline}
-          onOpenSearch={onOpenSearch}
+  const renderPage = (docPage: PaginatedDocPage, pageIndex: number) => {
+    const visiblePage = source
+      ? {
+          ...docPage,
+          blocks: projectDocBlocksRevisionMode(
+            docPage.blocks,
+            wordRevisionMode,
+          ),
+        }
+      : docPage;
+    const seenFootnotes = new Set<string>();
+    const footnotes = collectDocNoteReferences(visiblePage.blocks).flatMap(
+      (reference) => {
+        if (reference.noteKind !== 'footnote') return [];
+        const key = `footnote:${reference.noteId}`;
+        if (seenFootnotes.has(key)) return [];
+        seenFootnotes.add(key);
+        const note = noteByKey.get(key);
+        return note ? [note] : [];
+      },
+    );
+    const lastPageIndex =
+      (pageSnapshot.pageCount ?? pageSnapshot.pages.length) - 1;
+    const endnotes = pageIndex === lastPageIndex ? notes?.endnotes ?? [] : [];
+    const showReviewOverlay = Boolean(
+      review?.annotations.length ||
+        (wordRevisionMode === 'markup' && review?.revisionCount),
+    );
+    return (
+      <DocPageFrame
+        key={visiblePage.id}
+        page={page}
+        zoom={zoom}
+        markupRailWidth={
+          showReviewOverlay && wordRevisionMode === 'markup'
+            ? WORD_MARKUP_BASE_RAIL_WIDTH
+            : 0
+        }
+        headerImage={documentMetadata.headerImage}
+        pageDrawings={visiblePage.blocks.flatMap(pageDrawingImagesFromBlock)}
+        footerText={
+          documentMetadata.footerPageNumbers &&
+          pageIndex >= footerPageNumberStartIndex
+            ? `${pageIndex - footerPageNumberStartIndex + 1}`
+            : undefined
+        }
+      >
+        <DocContentRenderer
+          blocks={visiblePage.blocks}
+          contentWidth={contentWidth}
         />
-        <div
-          ref={scrollContainerRef}
-          className="office-file-doc-viewer__scroller"
-        >
-          {profile.pageMode === 'windowed' ? (
-            <VirtualWordPageList
-              source={pageSource}
-              scrollerRef={scrollContainerRef}
-              layoutRevision={layoutKey}
-              zoom={zoom}
-              navigationControllerRef={pageNavigationControllerRef}
-              renderPage={renderPage}
-            />
-          ) : (
-            materializedPages.map(renderPage)
-          )}
+        {showReviewOverlay ? <WordReviewOverlay /> : null}
+        <DocNoteBlock notes={footnotes} page={page} />
+        <DocNoteBlock notes={endnotes} page={page} endnotes />
+        {pageIndex === lastPageIndex ? (
+          <DocImageGallery images={unanchoredImages} />
+        ) : null}
+      </DocPageFrame>
+    );
+  };
+  return (
+    <WordRevisionModeContext.Provider value={wordRevisionMode}>
+      <div
+        className="office-file-doc-viewer"
+        data-word-source-mode={source ? 'progressive' : 'materialized'}
+      >
+        <div className="office-file-doc-viewer__body">
+          <WordOutlineSidebar
+            visible={showOutline}
+            activated={shouldRenderOutline}
+            items={outlineItems}
+            provider={outlineProvider}
+            outlineMode={profile.outlineMode}
+            pageMode={profile.pageMode}
+            pageSource={pageSource}
+            blockPageIndex={blockPageIndex}
+            pageNavigationControllerRef={pageNavigationControllerRef}
+            scrollContainerRef={scrollContainerRef}
+            documentSessionId={documentSessionId}
+            layoutKey={layoutKey}
+            onClose={onCloseOutline}
+            onOpenSearch={onOpenSearch}
+          />
+          <div
+            ref={scrollContainerRef}
+            className="office-file-doc-viewer__scroller"
+          >
+            {profile.pageMode === 'windowed' ? (
+              <VirtualWordPageList
+                source={pageSource}
+                scrollerRef={scrollContainerRef}
+                layoutRevision={layoutKey}
+                zoom={zoom}
+                navigationControllerRef={pageNavigationControllerRef}
+                renderPage={renderPage}
+              />
+            ) : (
+              materializedPages.map(renderPage)
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </WordRevisionModeContext.Provider>
   );
 }
 

@@ -17,9 +17,19 @@ import {
 import { BIFF8_RECORD, BIFF8_SUBSTREAM, BIFF8_VERSION } from './constants';
 import { decodeBiff8Formula } from './formulas';
 import {
+  parseBiff8ConditionalRanges,
+  parseBiff8ConditionalRule,
+} from './parseConditionalFormatting';
+import {
   parseBiff8Hyperlink,
   parseBiff8HyperlinkTooltip,
 } from './parseHyperlinks';
+import { parseBiff8SheetAnnotations } from './parseSheetAnnotations';
+import {
+  buildBiff8AutoFilter,
+  parseBiff8FeatureTable,
+  readBiff8FilteredColumn,
+} from './parseTablesAndFilters';
 import { readBiff8UnicodeString } from './strings';
 
 /** Excel 错误值编号到可读错误文本的映射。 */
@@ -35,6 +45,18 @@ const ERROR_VALUES: Record<number, string> = {
 
 function cellKey(row: number, column: number) {
   return `${row}:${column}`;
+}
+
+/** 将零基 BIFF 列索引转换为 A1 列标签。 */
+function paneColumnLabel(index: number) {
+  let value = Math.max(0, Math.trunc(index)) + 1;
+  let label = '';
+  while (value > 0) {
+    value -= 1;
+    label = String.fromCharCode(65 + (value % 26)) + label;
+    value = Math.floor(value / 26);
+  }
+  return label;
 }
 
 function readCellHeader(reader: Biff8Reader) {
@@ -250,6 +272,23 @@ export async function parseBiff8WorksheetFromCursor(
   let hasDrawingRecords = false;
   let hasChartRecords = false;
   let pendingStringFormula: Biff8Cell | undefined;
+  let paneRecord:
+    | {
+        splitX: number;
+        splitY: number;
+        topRow: number;
+        leftColumn: number;
+        activePane: number;
+      }
+    | undefined;
+  let window2Flags = 0;
+  let conditionalRanges: ReturnType<typeof parseBiff8ConditionalRanges> = [];
+  const conditionalFormatting: NonNullable<
+    Biff8Worksheet['conditionalFormatting']
+  > = [];
+  let autoFilterEntryCount: number | undefined;
+  const filteredColumns: number[] = [];
+  const tables: Biff8Worksheet['tables'] = [];
   let reachedEof = false;
   let substreamDepth = 1;
 
@@ -554,6 +593,50 @@ export async function parseBiff8WorksheetFromCursor(
           });
         }
         break;
+      case BIFF8_RECORD.CONDFMT:
+        conditionalRanges = parseBiff8ConditionalRanges(
+          record.data,
+          descriptor,
+          warnings,
+        );
+        break;
+      case BIFF8_RECORD.AUTOFILTERINFO:
+        autoFilterEntryCount =
+          record.size >= 2
+            ? new DataView(
+                record.data.buffer,
+                record.data.byteOffset,
+                record.data.byteLength,
+              ).getUint16(0, true)
+            : undefined;
+        break;
+      case BIFF8_RECORD.AUTOFILTER: {
+        const filteredColumn = readBiff8FilteredColumn(record.data);
+        if (filteredColumn !== undefined) filteredColumns.push(filteredColumn);
+        break;
+      }
+      case BIFF8_RECORD.FEATURE11:
+      case BIFF8_RECORD.FEATURE12: {
+        const table = parseBiff8FeatureTable(
+          record.data,
+          descriptor,
+          tables.length + 1,
+          warnings,
+        );
+        if (table) tables.push(table);
+        break;
+      }
+      case BIFF8_RECORD.CF: {
+        const rule = parseBiff8ConditionalRule(
+          record.data,
+          conditionalRanges,
+          conditionalFormatting.length + 1,
+          descriptor,
+          warnings,
+        );
+        if (rule) conditionalFormatting.push(rule);
+        break;
+      }
       case BIFF8_RECORD.MSODRAWING:
       case BIFF8_RECORD.TXO:
       case BIFF8_RECORD.IMDATA:
@@ -572,6 +655,26 @@ export async function parseBiff8WorksheetFromCursor(
           });
         }
         break;
+      case BIFF8_RECORD.PANE: {
+        if (record.size < 9) {
+          warnings.push({
+            code: 'INVALID_PANE',
+            message: 'PANE 记录长度无效，已忽略窗格语义',
+            sheetName: descriptor.name,
+            offset: record.offset,
+          });
+          break;
+        }
+        const paneReader = new Biff8Reader(record.data);
+        paneRecord = {
+          splitX: paneReader.readUint16(),
+          splitY: paneReader.readUint16(),
+          topRow: paneReader.readUint16(),
+          leftColumn: paneReader.readUint16(),
+          activePane: paneReader.readUint8(),
+        };
+        break;
+      }
       case BIFF8_RECORD.WINDOW2:
         if (record.size < 10) {
           throw new XlsParseError(
@@ -580,6 +683,11 @@ export async function parseBiff8WorksheetFromCursor(
             { offset: record.offset, recordId: record.id },
           );
         }
+        window2Flags = new DataView(
+          record.data.buffer,
+          record.data.byteOffset,
+          record.data.byteLength,
+        ).getUint16(0, true);
         break;
       default:
         break;
@@ -603,6 +711,70 @@ export async function parseBiff8WorksheetFromCursor(
     });
   }
 
+  const annotations = parseBiff8SheetAnnotations(
+    descriptor,
+    drawingRecords,
+    warnings,
+  );
+  const autoFilter = buildBiff8AutoFilter({
+    descriptor,
+    globals,
+    entryCount: autoFilterEntryCount,
+    filteredColumns,
+    fallbackRange: dimensions
+      ? {
+          startRow: dimensions.firstRow + 1,
+          endRow: Math.max(
+            dimensions.firstRow + 1,
+            dimensions.lastRowExclusive,
+          ),
+          startColumn: dimensions.firstColumn + 1,
+          endColumn: Math.max(
+            dimensions.firstColumn + 1,
+            dimensions.lastColumnExclusive,
+          ),
+        }
+      : undefined,
+    warnings,
+  });
+  if (autoFilter?.range) {
+    tables.forEach((table) => {
+      const filter = autoFilter.range!;
+      const intersects =
+        filter.endRow >= table.range.startRow &&
+        filter.startRow <= table.range.endRow &&
+        filter.endColumn >= table.range.startColumn &&
+        filter.startColumn <= table.range.endColumn;
+      if (intersects) table.autoFilterRef = autoFilter.ref;
+    });
+  }
+  const frozen = Boolean(window2Flags & 0x0008);
+  const pane = paneRecord
+    ? {
+        frozenRows: frozen ? paneRecord.splitY : 0,
+        frozenColumns: frozen ? paneRecord.splitX : 0,
+        topLeftCell: `${paneColumnLabel(paneRecord.leftColumn)}${
+          paneRecord.topRow + 1
+        }`,
+        activePane: ['bottomRight', 'topRight', 'bottomLeft', 'topLeft'][
+          paneRecord.activePane
+        ],
+        state: frozen
+          ? window2Flags & 0x0100
+            ? ('frozen' as const)
+            : ('frozenSplit' as const)
+          : ('split' as const),
+        splitX: paneRecord.splitX || undefined,
+        splitY: paneRecord.splitY || undefined,
+      }
+    : undefined;
+  if (pane?.state === 'split') {
+    warnings.push({
+      code: 'XLS_SPLIT_PANE_UNSUPPORTED',
+      message: '普通拆分窗格已保留元数据，当前预览不复制独立滚动视图。',
+      sheetName: descriptor.name,
+    });
+  }
   return {
     descriptor,
     cells: Array.from(cells.values()).sort(
@@ -623,6 +795,11 @@ export async function parseBiff8WorksheetFromCursor(
     chartSubstreams,
     drawingRecords,
     hyperlinks,
+    autoFilter,
+    tables,
+    pane,
+    annotations,
+    conditionalFormatting,
     warnings,
   };
 }

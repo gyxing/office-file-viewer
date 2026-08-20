@@ -11,10 +11,18 @@ import React, {
 } from 'react';
 import { useOfficeFileViewerMessages } from '../../locale';
 import {
+  createMemoryOfficeAnnotationSource,
+  type WordRevisionMode,
+} from '../../services/annotations';
+import {
   paginateMeasuredDocxPage,
   type DocxMeasuredBlock,
   type DocxMeasurementBatch,
 } from '../../services/docx/docxPagination';
+import {
+  projectDocxBlock,
+  projectDocxPageContent,
+} from '../../services/docx/projectDocxRevisionMode';
 import type {
   DocxPageContent,
   DocxPageRegionVariants,
@@ -24,6 +32,7 @@ import { collectWordPerformanceStats } from '../../services/word/collectWordPerf
 import { createMaterializedWordPageSource } from '../../services/word/createMaterializedWordPageSource';
 import { createMemoryWordOutlineProvider } from '../../services/word/createMemoryWordOutlineProvider';
 import { collectDocxSearchBlocks } from '../../services/word/WordSearchProvider';
+import { useOfficeAnnotationSourceRegistration } from '../../shared/annotations';
 import { useOfficeEmbeddedFontsReady } from '../../shared/fonts/OfficeFontProvider';
 import { OfficeImagePreviewContext } from '../../shared/image-preview/OfficeImagePreviewContext';
 import { useExternalStoreSnapshot } from '../../shared/react/useExternalStoreSnapshot';
@@ -37,6 +46,15 @@ import type { WordPageNavigationController } from '../word-pages/types';
 import { VirtualWordPageList } from '../word-pages/VirtualWordPageList';
 import { WordBlockPageIndex } from '../word-pages/WordBlockPageIndex';
 import { useWordPerformanceProfile } from '../word-performance/useWordPerformanceProfile';
+import '../word-review/index.less';
+import { useWordAnnotationNavigation } from '../word-review/useWordAnnotationNavigation';
+import { WORD_MARKUP_BASE_RAIL_WIDTH } from '../word-review/wordMarkupCalloutLayout';
+import {
+  collectDocxNoteReferences,
+  WordNoteBlock,
+} from '../word-review/WordNoteBlock';
+import { WordReviewOverlay } from '../word-review/WordReviewOverlay';
+import { WordRevisionModeContext } from '../word-review/WordRevisionText';
 import { useWordSearchNavigation } from '../word-search/useWordSearchNavigation';
 import { DocxBlockRenderer } from './DocxBlockRenderer';
 import { DocxCharacterSpacingContext } from './DocxInlineContent';
@@ -45,7 +63,9 @@ import {
   resolveDocxSpacingBefore,
   shouldSuppressDocxContextualSpacing,
 } from './docxParagraphSpacing';
+import { measureVisibleDocxBlockHeight } from './docxRenderUtils';
 import './index.less';
+import { measureDocxFootnotes } from './measureDocxFootnotes';
 import { measureDocxParagraphLines } from './measureDocxParagraphLines';
 import { measureDocxTableRows } from './measureDocxTableRows';
 
@@ -69,6 +89,8 @@ type DocxViewerProps = {
   zoom: number;
   /** 文档大纲当前是否展开。 */
   showOutline: boolean;
+  /** 当前采用的 Word 修订内容投影模式。 */
+  wordRevisionMode: WordRevisionMode;
   /** 关闭文档大纲。 */
   onCloseOutline: () => void;
   /** 搜索能力启用时切换到查找侧栏。 */
@@ -117,20 +139,38 @@ function useMeasuredDocxPages(
 
     const measured: DocxPageContent[] = [];
     sourcePages.forEach((sourcePage, sourcePageIndex) => {
-      const elements = Array.from(
-        articles[sourcePageIndex].children,
+      const elements = Array.from(articles[sourcePageIndex].children).filter(
+        (element) =>
+          !(element as HTMLElement).classList.contains(
+            'office-file-word-notes',
+          ),
       ) as HTMLElement[];
       if (elements.length !== sourcePage.blocks.length) return;
+      const measuredFootnotes = measureDocxFootnotes(
+        sourcePage.footnotes ?? [],
+        articles[sourcePageIndex],
+        sourcePage.page,
+      );
+      const claimedNoteIds = new Set<string>();
       const measurements: DocxMeasuredBlock[] = sourcePage.blocks.map(
         (block, blockIndex) => {
           const element = elements[blockIndex];
-          const nextElement = elements[blockIndex + 1];
-          const blockHeight = nextElement
-            ? nextElement.offsetTop - element.offsetTop
-            : element.offsetHeight +
-              Number.parseFloat(
-                window.getComputedStyle(element).marginBottom || '0',
-              );
+          const blockHeight = measureVisibleDocxBlockHeight(
+            elements,
+            blockIndex,
+          );
+          const blockFootnotes = Array.from(
+            new Set(
+              collectDocxNoteReferences([block])
+                .filter((reference) => reference.noteKind === 'footnote')
+                .map((reference) => reference.noteId),
+            ),
+          ).flatMap((noteId) => {
+            if (claimedNoteIds.has(noteId)) return [];
+            claimedNoteIds.add(noteId);
+            const measured = measuredFootnotes.get(noteId);
+            return measured ? [measured] : [];
+          });
           return {
             block,
             height: blockHeight,
@@ -139,6 +179,11 @@ function useMeasuredDocxPages(
             ),
             originalTableRowCount:
               block.type === 'table' ? block.rows.length : undefined,
+            footnoteReserveHeight: blockFootnotes.reduce(
+              (height, note) => height + (note.fragments[0]?.height ?? 0),
+              0,
+            ),
+            measuredFootnotes: blockFootnotes,
             ...measureDocxParagraphLines(element, block, blockHeight),
             ...measureDocxTableRows(element, block),
           };
@@ -162,6 +207,7 @@ function DocxViewerComponent({
   preview,
   zoom,
   showOutline,
+  wordRevisionMode,
   onCloseOutline,
   onOpenSearch,
 }: DocxViewerProps) {
@@ -172,26 +218,49 @@ function DocxViewerComponent({
   const source = preview.mode === 'source' ? preview.source : undefined;
   const summary = preview.mode === 'source' ? preview.summary : undefined;
   const documentSessionId = preview.sessionId;
+  const review = source ? summary?.review : document?.review;
+  const notes = source ? summary?.notes : document?.notes;
+  const noteByKey = useMemo(
+    () =>
+      new Map(
+        [...(notes?.footnotes ?? []), ...(notes?.endnotes ?? [])].map(
+          (note) => [`${note.kind}:${note.id}`, note] as const,
+        ),
+      ),
+    [notes],
+  );
+  const annotationSource = useMemo(
+    () =>
+      review
+        ? createMemoryOfficeAnnotationSource({
+            annotations: review.annotations,
+            revisions: review.revisions,
+            revisionCount: review.revisionCount,
+            noteCount: review.noteCount,
+            supportsRevisionModes: review.supportsRevisionModes,
+          })
+        : undefined,
+    [review],
+  );
+  useOfficeAnnotationSourceRegistration(annotationSource);
   const shouldRenderOutline = useWordOutlinePresence(
     showOutline,
     documentSessionId,
   );
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const materializedSourcePages = useMemo<DocxPageContent[]>(
-    () =>
-      document && !source
-        ? document.pages?.length
-          ? document.pages
-          : [
-              {
-                id: 'docx-page-1',
-                page: document.page,
-                blocks: document.blocks,
-              },
-            ]
-        : [],
-    [document, source],
-  );
+  const materializedSourcePages = useMemo<DocxPageContent[]>(() => {
+    if (!document || source) return [];
+    const pages = document.pages?.length
+      ? document.pages
+      : [
+          {
+            id: 'docx-page-1',
+            page: document.page,
+            blocks: document.blocks,
+          },
+        ];
+    return pages.map((page) => projectDocxPageContent(page, wordRevisionMode));
+  }, [document, source, wordRevisionMode]);
   const characterSpacingControl = source
     ? summary?.characterSpacingControl
     : document?.characterSpacingControl;
@@ -243,7 +312,9 @@ function DocxViewerComponent({
             ...(block.sourceBlockId ? [block.sourceBlockId] : []),
           ]),
         searchBlocks: document
-          ? collectDocxSearchBlocks(document.blocks)
+          ? collectDocxSearchBlocks(
+              materializedPages.flatMap((page) => page.blocks),
+            )
           : undefined,
       }),
     [document, materializedPages],
@@ -294,12 +365,22 @@ function DocxViewerComponent({
     pageNavigationControllerRef,
     documentSessionId,
   });
+  useWordAnnotationNavigation({
+    scrollContainerRef,
+    pageMode: profile.pageMode,
+    pageSource,
+    blockPageIndex,
+    pageNavigationControllerRef,
+    documentSessionId,
+  });
   const layoutKey = useMemo(
     () =>
       source
-        ? `${documentSessionId}:${zoom}:source`
-        : `${zoom}:${materializedPages.map((item) => item.id).join('|')}`,
-    [documentSessionId, materializedPages, source, zoom],
+        ? `${documentSessionId}:${zoom}:${wordRevisionMode}:source`
+        : `${zoom}:${wordRevisionMode}:${materializedPages
+            .map((item) => item.id)
+            .join('|')}`,
+    [documentSessionId, materializedPages, source, wordRevisionMode, zoom],
   );
 
   const renderPageBlocks = useCallback(
@@ -338,32 +419,71 @@ function DocxViewerComponent({
   );
   const renderPage = useCallback(
     (pageItem: DocxPageContent, pageIndex: number) => {
+      const visiblePage = source
+        ? projectDocxPageContent(pageItem, wordRevisionMode)
+        : pageItem;
       const differentEvenOdd = Boolean(
-        pageItem.headers?.even !== undefined ||
-          pageItem.footerPageNumbers?.even !== undefined,
+        visiblePage.headers?.even !== undefined ||
+          visiblePage.footerPageNumbers?.even !== undefined,
       );
       const headerBlocks = selectPageRegion<DocxPageContent['blocks']>(
-        pageItem.headers,
+        visiblePage.headers,
         pageIndex,
-        pageItem.differentFirstPage,
+        visiblePage.differentFirstPage,
         differentEvenOdd,
       );
       const footerPageNumber = selectPageRegion<boolean>(
-        pageItem.footerPageNumbers,
+        visiblePage.footerPageNumbers,
         pageIndex,
-        pageItem.differentFirstPage,
+        visiblePage.differentFirstPage,
         differentEvenOdd,
       );
       const displayedPageNumber =
-        pageIndex + (pageItem.differentFirstPage ? 0 : 1);
+        pageIndex + (visiblePage.differentFirstPage ? 0 : 1);
+      const pageFootnotes =
+        visiblePage.footnotes ??
+        Array.from(
+          new Set(
+            collectDocxNoteReferences(visiblePage.blocks)
+              .filter((reference) => reference.noteKind === 'footnote')
+              .map((reference) => reference.noteId),
+          ),
+        ).flatMap((noteId) => {
+          const note = noteByKey.get(`footnote:${noteId}`);
+          return note ? [note] : [];
+        });
+      const footnotes = pageFootnotes.map((note) => ({
+        ...note,
+        blocks: note.blocks.map((block) =>
+          projectDocxBlock(block, wordRevisionMode),
+        ),
+      }));
+      const endnotes =
+        pageIndex === pageSnapshot.pages.length - 1
+          ? (notes?.endnotes ?? []).map((note) => ({
+              ...note,
+              blocks: note.blocks.map((block) =>
+                projectDocxBlock(block, wordRevisionMode),
+              ),
+            }))
+          : [];
+      const showReviewOverlay = Boolean(
+        review?.annotations.length ||
+          (wordRevisionMode === 'markup' && review?.revisionCount),
+      );
       return (
         <DocxPageFrame
-          key={pageItem.id}
-          page={pageItem.page}
+          key={visiblePage.id}
+          page={visiblePage.page}
           zoom={zoom}
+          markupRailWidth={
+            showReviewOverlay && wordRevisionMode === 'markup'
+              ? WORD_MARKUP_BASE_RAIL_WIDTH
+              : 0
+          }
           header={
             headerBlocks?.length
-              ? renderPageBlocks({ ...pageItem, blocks: headerBlocks }, true)
+              ? renderPageBlocks({ ...visiblePage, blocks: headerBlocks }, true)
               : undefined
           }
           footer={
@@ -374,11 +494,23 @@ function DocxViewerComponent({
             ) : undefined
           }
         >
-          {renderPageBlocks(pageItem, pageIndex > 0)}
+          {renderPageBlocks(visiblePage, pageIndex > 0)}
+          {showReviewOverlay ? <WordReviewOverlay /> : null}
+          <WordNoteBlock notes={footnotes} page={visiblePage.page} />
+          <WordNoteBlock notes={endnotes} page={visiblePage.page} endnotes />
         </DocxPageFrame>
       );
     },
-    [renderPageBlocks, zoom],
+    [
+      noteByKey,
+      notes?.endnotes,
+      pageSnapshot.pages.length,
+      renderPageBlocks,
+      review,
+      source,
+      wordRevisionMode,
+      zoom,
+    ],
   );
   const measurementBatch = source?.getMeasurementBatch();
   const renderMeasurementBlock = useCallback(
@@ -392,10 +524,11 @@ function DocxViewerComponent({
       const availableWidth = page
         ? page.page.width - page.page.marginLeft - page.page.marginRight
         : 0;
+      const visibleBlock = projectDocxBlock(block, wordRevisionMode);
       return (
         <DocxBlockRenderer
-          key={block.id}
-          block={block}
+          key={visibleBlock.id}
+          block={visibleBlock}
           availableWidth={availableWidth}
           maximumWidth={page?.page.width}
           suppressSpacingBefore={suppressSpacingBefore}
@@ -404,7 +537,7 @@ function DocxViewerComponent({
         />
       );
     },
-    [source],
+    [source, wordRevisionMode],
   );
   const handleMeasured = useCallback(
     (
@@ -440,78 +573,84 @@ function DocxViewerComponent({
   }
 
   return (
-    <DocxCharacterSpacingContext.Provider value={compressPunctuation}>
-      <div
-        className="office-file-docx-viewer"
-        data-word-source-mode={source ? 'progressive' : 'materialized'}
-        data-character-spacing-control={characterSpacingControl}
-      >
-        <OfficeImagePreviewContext.Provider value={null}>
-          {/* 隐藏测量副本不应注册图片交互，避免重复资源与焦点节点。 */}
-          {source ? (
-            <Suspense fallback={null}>
-              <LazyDocxMeasureHost
-                batch={measurementBatch}
-                renderBlock={renderMeasurementBlock}
-                onMeasured={handleMeasured}
-                onError={handleMeasurementError}
-              />
-            </Suspense>
-          ) : (
-            <div
-              ref={measureRef}
-              className="office-file-docx-viewer__measure"
-              aria-hidden="true"
-            >
-              {materializedSourcePages.map((pageItem) => (
-                <DocxPageFrame
-                  key={pageItem.id}
-                  page={pageItem.page}
-                  zoom={100}
-                >
-                  {renderPageBlocks(pageItem)}
-                </DocxPageFrame>
-              ))}
-            </div>
-          )}
-        </OfficeImagePreviewContext.Provider>
-        <div className="office-file-docx-viewer__body">
-          <WordOutlineSidebar
-            visible={showOutline}
-            activated={shouldRenderOutline}
-            items={outlineItems}
-            provider={outlineProvider}
-            outlineMode={profile.outlineMode}
-            pageMode={profile.pageMode}
-            pageSource={pageSource}
-            blockPageIndex={blockPageIndex}
-            pageNavigationControllerRef={pageNavigationControllerRef}
-            scrollContainerRef={scrollContainerRef}
-            documentSessionId={documentSessionId}
-            layoutKey={layoutKey}
-            onClose={onCloseOutline}
-            onOpenSearch={onOpenSearch}
-          />
-          <div
-            ref={scrollContainerRef}
-            className="office-file-docx-viewer__scroller"
-          >
-            {profile.pageMode === 'windowed' ? (
-              <VirtualWordPageList
-                source={pageSource}
-                scrollerRef={scrollContainerRef}
-                layoutRevision={layoutKey}
-                zoom={zoom}
-                navigationControllerRef={pageNavigationControllerRef}
-                renderPage={renderPage}
-              />
+    <WordRevisionModeContext.Provider value={wordRevisionMode}>
+      <DocxCharacterSpacingContext.Provider value={compressPunctuation}>
+        <div
+          className="office-file-docx-viewer"
+          data-word-source-mode={source ? 'progressive' : 'materialized'}
+          data-character-spacing-control={characterSpacingControl}
+        >
+          <OfficeImagePreviewContext.Provider value={null}>
+            {/* 隐藏测量副本不应注册图片交互，避免重复资源与焦点节点。 */}
+            {source ? (
+              <Suspense fallback={null}>
+                <LazyDocxMeasureHost
+                  batch={measurementBatch}
+                  renderBlock={renderMeasurementBlock}
+                  onMeasured={handleMeasured}
+                  onError={handleMeasurementError}
+                />
+              </Suspense>
             ) : (
-              materializedPages.map(renderPage)
+              <div
+                ref={measureRef}
+                className="office-file-docx-viewer__measure"
+                aria-hidden="true"
+              >
+                {materializedSourcePages.map((pageItem) => (
+                  <DocxPageFrame
+                    key={pageItem.id}
+                    page={pageItem.page}
+                    zoom={100}
+                  >
+                    {renderPageBlocks(pageItem)}
+                    <WordNoteBlock
+                      notes={pageItem.footnotes ?? []}
+                      page={pageItem.page}
+                    />
+                  </DocxPageFrame>
+                ))}
+              </div>
             )}
+          </OfficeImagePreviewContext.Provider>
+          <div className="office-file-docx-viewer__body">
+            <WordOutlineSidebar
+              visible={showOutline}
+              activated={shouldRenderOutline}
+              items={outlineItems}
+              provider={outlineProvider}
+              outlineMode={profile.outlineMode}
+              pageMode={profile.pageMode}
+              pageSource={pageSource}
+              blockPageIndex={blockPageIndex}
+              pageNavigationControllerRef={pageNavigationControllerRef}
+              scrollContainerRef={scrollContainerRef}
+              documentSessionId={documentSessionId}
+              layoutKey={layoutKey}
+              onClose={onCloseOutline}
+              onOpenSearch={onOpenSearch}
+            />
+            <div
+              ref={scrollContainerRef}
+              className="office-file-docx-viewer__scroller"
+            >
+              {profile.pageMode === 'windowed' ? (
+                <VirtualWordPageList
+                  source={pageSource}
+                  scrollerRef={scrollContainerRef}
+                  layoutRevision={layoutKey}
+                  zoom={zoom}
+                  navigationControllerRef={pageNavigationControllerRef}
+                  renderPage={renderPage}
+                />
+              ) : (
+                materializedPages.map(renderPage)
+              )}
+            </div>
           </div>
         </div>
-      </div>
-    </DocxCharacterSpacingContext.Provider>
+      </DocxCharacterSpacingContext.Provider>
+    </WordRevisionModeContext.Provider>
   );
 }
 

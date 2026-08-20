@@ -1,13 +1,21 @@
 // PptxViewer 负责 PPTX 预览整体布局，组合左侧缩略图栏和右侧幻灯片视口。
-import React, { memo, useMemo, useRef } from 'react';
+import React, { memo, useEffect, useMemo, useRef } from 'react';
 import type { OfficeFileViewerPreviewState } from '../../services/parsing/internalTypes';
+import type { OfficeFileViewerPresentationMediaOptions } from '../../services/presentation/mediaTypes';
+import { PresentationAnnotationSource } from '../../services/presentation/PresentationAnnotationSource';
 import { getPresentationSource } from '../../services/presentation/presentationSourceRegistry';
+import type {
+  OfficeFileViewerPresentationTransitions,
+  PresentationNavigationIntent,
+} from '../../services/presentation/transitionTypes';
+import { useOfficeAnnotationSourceRegistration } from '../../shared/annotations';
 import { OfficePreviewEmpty } from '../common/OfficePreviewEmpty';
 import { useOfficeSearchProviderRegistration } from '../search/OfficeSearchContext';
 import './index.less';
 import { PptxSlideViewport } from './PptxSlideViewport';
 import { PptxSpeakerNotes } from './PptxSpeakerNotes';
 import { PptxThumbnailPane } from './PptxThumbnailPane';
+import { usePresentationAnnotationNavigation } from './usePresentationAnnotationNavigation';
 import { usePresentationHyperlinkNavigation } from './usePresentationHyperlinkNavigation';
 import { usePresentationSearchNavigation } from './usePresentationSearchNavigation';
 import { usePresentationSource } from './usePresentationSource';
@@ -30,6 +38,12 @@ type PptxViewerProps = {
   showSpeakerNotes: boolean;
   /** 在 SelectSlide 事件发生时调用的回调函数。 */
   onSelectSlide: (index: number) => void;
+  /** 演示文稿媒体读取配置。 */
+  mediaOptions?: false | OfficeFileViewerPresentationMediaOptions;
+  /** 是否按源文件播放页级切换。 */
+  transitions: OfficeFileViewerPresentationTransitions;
+  /** 最近一次工具栏翻页产生的切换意图。 */
+  transitionIntent?: PresentationNavigationIntent;
 };
 
 /** 渲染PPTX预览器。 */
@@ -39,6 +53,9 @@ function PptxViewerComponent({
   zoom,
   showSpeakerNotes,
   onSelectSlide,
+  mediaOptions,
+  transitions,
+  transitionIntent,
 }: PptxViewerProps) {
   const resolvedSource = useMemo(
     () =>
@@ -57,6 +74,16 @@ function PptxViewerComponent({
     error,
     retry,
   } = usePresentationSource(resolvedSource, activeIndex, showSpeakerNotes);
+  const annotationSource = useMemo(
+    () =>
+      resolvedSource
+        ? new PresentationAnnotationSource(resolvedSource)
+        : undefined,
+    [resolvedSource],
+  );
+  useEffect(() => () => annotationSource?.dispose(), [annotationSource]);
+  useOfficeAnnotationSourceRegistration(annotationSource);
+  usePresentationAnnotationNavigation({ viewerRef, onSelectSlide });
   usePresentationHyperlinkNavigation({ snapshot, activeIndex, onSelectSlide });
   usePresentationSearchNavigation({
     snapshot,
@@ -86,6 +113,9 @@ function PptxViewerComponent({
           loading={loading}
           error={error}
           onRetry={retry}
+          mediaOptions={mediaOptions}
+          transitions={transitions}
+          transitionIntent={transitionIntent}
         />
         {showSpeakerNotes ? (
           <PptxSpeakerNotes

@@ -11,6 +11,8 @@ type DocxPageFrameProps = {
   zoom: number;
   /** 当前组件包含的子节点。 */
   children: ReactNode;
+  /** 显示标记时在物理页右侧预留的基础标记区宽度。 */
+  markupRailWidth?: number;
   /** 当前页面的页眉内容。 */
   header?: ReactNode;
   /** 当前页面的页脚内容。 */
@@ -22,18 +24,27 @@ function DocxPageFrameComponent({
   page,
   zoom,
   children,
+  markupRailWidth = 0,
   header,
   footer,
 }: DocxPageFrameProps) {
   const scale = zoom / 100;
-  // DOCX 的边框和页边距来自文档本身，放在 article 上才能随页面坐标系一起缩放。
+  // 外层把页面与基础标记区一起居中，内层仍按物理页尺寸裁切正文和图形。
   const shellStyle = useMemo<CSSProperties>(
+    () => ({
+      width: page.width * scale + markupRailWidth,
+      height: page.minHeight * scale,
+    }),
+    [markupRailWidth, page.minHeight, page.width, scale],
+  );
+  const pageClipStyle = useMemo<CSSProperties>(
     () => ({
       width: page.width * scale,
       height: page.minHeight * scale,
     }),
     [page.minHeight, page.width, scale],
   );
+  // DOCX 的边框和页边距来自文档本身，放在 article 上才能随页面坐标系一起缩放。
   const articleStyle = useMemo<CSSProperties>(
     () =>
       ({
@@ -77,34 +88,39 @@ function DocxPageFrameComponent({
 
   return (
     <div className="office-file-docx-page-frame" style={shellStyle}>
-      <article
-        className="office-file-docx-page-frame__article"
-        style={articleStyle}
+      <div
+        className="office-file-docx-page-frame__page-clip"
+        style={pageClipStyle}
       >
-        {header ? (
-          <div
-            className="office-file-docx-page-frame__header"
-            style={{
-              ...regionStyle,
-              top: page.headerDistance ?? page.marginTop / 2,
-            }}
-          >
-            {header}
-          </div>
-        ) : null}
-        {children}
-        {footer ? (
-          <div
-            className="office-file-docx-page-frame__footer"
-            style={{
-              ...regionStyle,
-              bottom: page.footerDistance ?? page.marginBottom / 2,
-            }}
-          >
-            {footer}
-          </div>
-        ) : null}
-      </article>
+        <article
+          className="office-file-docx-page-frame__article"
+          style={articleStyle}
+        >
+          {header ? (
+            <div
+              className="office-file-docx-page-frame__header"
+              style={{
+                ...regionStyle,
+                top: page.headerDistance ?? page.marginTop / 2,
+              }}
+            >
+              {header}
+            </div>
+          ) : null}
+          {children}
+          {footer ? (
+            <div
+              className="office-file-docx-page-frame__footer"
+              style={{
+                ...regionStyle,
+                bottom: page.footerDistance ?? page.marginBottom / 2,
+              }}
+            >
+              {footer}
+            </div>
+          ) : null}
+        </article>
+      </div>
     </div>
   );
 }

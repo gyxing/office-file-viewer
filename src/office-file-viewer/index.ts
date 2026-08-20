@@ -5,11 +5,22 @@ export type { OfficeFileViewerLocale } from './locale';
 export { OfficeFileViewer } from './OfficeFileViewer';
 export type {
   OfficeFileViewerFontOptions,
+  OfficeFileViewerPresentationMediaOptions,
+  OfficeFileViewerPresentationTransitions,
   OfficeFileViewerProps,
   OfficeFileViewerSearchOptions,
   OfficeFileViewerUri,
   OfficeFileViewerUriLoader,
 } from './OfficeFileViewer';
+export type {
+  OfficeAnnotation,
+  OfficeAnnotationTarget,
+  OfficeFileViewerReviewOptions,
+  OfficePresentationAnnotationTarget,
+  OfficeSpreadsheetAnnotationTarget,
+  OfficeWordAnnotationTarget,
+  WordRevisionMode,
+} from './services/annotations';
 export { disposeDocDocument } from './services/doc/types';
 export type { DocDocument, DocResources } from './services/doc/types';
 export {
@@ -44,7 +55,19 @@ export async function parsePpt(file: File): Promise<PresentationDocument> {
 }
 
 export { disposePresentationDocument } from './services/presentation/dispose';
-export type { PresentationDocument } from './services/presentation/types';
+export type {
+  PresentationMediaKind,
+  PresentationMediaSource,
+} from './services/presentation/mediaTypes';
+export type {
+  PresentationTransition,
+  PresentationTransitionDirection,
+  PresentationTransitionType,
+} from './services/presentation/transitionTypes';
+export type {
+  PresentationAnnotation,
+  PresentationDocument,
+} from './services/presentation/types';
 export { disposeParsedOfficeFile } from './services/preview';
 export type { ParsedOfficeFile, PreviewKind } from './services/preview';
 export type {

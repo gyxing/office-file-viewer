@@ -18,6 +18,7 @@ export function createMaterializedPresentationSource(
       index: slide.index,
       hidden: Boolean(slide.hidden),
       hasSpeakerNotes: Boolean(slide.speakerNotes),
+      annotationCount: slide.annotations?.length ?? 0,
       estimatedElementCount: slide.elements.length,
       revision: 1,
       status: 'ready',
@@ -65,6 +66,11 @@ export function createMaterializedPresentationSource(
       throwIfPresentationAborted(signal);
       ensureAvailable(index);
       return document.slides[index].speakerNotes;
+    },
+    async getAnnotations(index, signal) {
+      throwIfPresentationAborted(signal);
+      ensureAvailable(index);
+      return document.slides[index].annotations ?? [];
     },
     async ensureRange(start, end, signal) {
       throwIfPresentationAborted(signal);

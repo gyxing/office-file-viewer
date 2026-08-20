@@ -1,4 +1,8 @@
 import type { OfficeHyperlink } from '../../shared/hyperlink';
+import type {
+  WordInlineReview,
+  WordReviewDocument,
+} from '../word/review/types';
 import type { WordBookmarkTarget, WordOutlineItem } from '../word/types';
 
 /** 包含页面、正文、资源和大纲的标准化 DOC 文档。 */
@@ -23,6 +27,10 @@ export type DocDocument = {
   footerPageNumbers?: boolean;
   /** 解析时产生但不阻止继续预览的警告。 */
   warnings: string[];
+  /** 源文档中可恢复的批注、修订、脚注和尾注。 */
+  review?: WordReviewDocument;
+  /** 可按正文引用呈现的脚注和尾注正文。 */
+  notes?: DocNotes;
   /** DOC/WPS 文档持有且需要在销毁时释放的浏览器资源。 */
   resources?: DocResources;
 };
@@ -196,7 +204,8 @@ export type DocListItem = {
 export type DocTextInline =
   | DocTextRunInline
   | DocImageInline
-  | DocBookmarkInline;
+  | DocBookmarkInline
+  | DocNoteReferenceInline;
 
 /** 具有统一样式的 DOC 连续文本片段。 */
 export type DocTextRunInline = {
@@ -208,6 +217,26 @@ export type DocTextRunInline = {
   style?: DocTextStyle;
   /** 源文档为该段文字声明的超链接。 */
   hyperlink?: OfficeHyperlink;
+  /** 当前文字关联的批注范围和可恢复修订。 */
+  review?: WordInlineReview;
+};
+
+/** DOC/WPS 脚注或尾注引用的稳定信息。 */
+export type DocNoteReference = {
+  /** 源注释集合中的稳定标识。 */
+  noteId: string;
+  /** 脚注显示在引用页，尾注显示在文档末尾。 */
+  noteKind: 'footnote' | 'endnote';
+  /** 页面中显示的连续引用编号。 */
+  label: string;
+};
+
+/** DOC/WPS 正文中的脚注或尾注行内引用。 */
+export type DocNoteReferenceInline = DocNoteReference & {
+  /** 用于区分注释引用和普通文本。 */
+  type: 'note-reference';
+  /** 引用标记沿用的文字样式。 */
+  style?: DocTextStyle;
 };
 
 /** 嵌入 DOC 段落中的图片节点。 */
@@ -226,6 +255,20 @@ export type DocBookmarkInline = {
   name: string;
   /** 渲染定位标记时使用的稳定标识。 */
   markerId: string;
+};
+
+/** 单条 DOC/WPS 脚注或尾注正文。 */
+export type DocNote = DocNoteReference & {
+  /** 注释正文复用标准 DOC 块模型。 */
+  blocks: DocBlock[];
+};
+
+/** DOC/WPS 文档包含的脚注和尾注集合。 */
+export type DocNotes = {
+  /** 按源文档顺序排列的脚注。 */
+  footnotes: DocNote[];
+  /** 按源文档顺序排列的尾注。 */
+  endnotes: DocNote[];
 };
 
 /** DOC 文本、段落和边框的标准化样式。 */

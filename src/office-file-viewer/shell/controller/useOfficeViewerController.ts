@@ -1,6 +1,7 @@
 import type { MutableRefObject, RefObject } from 'react';
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import type { OfficeFileViewerMessages } from '../../locale';
+import type { WordRevisionMode } from '../../services/annotations/types';
 import {
   ensureSupportedOfficeFile,
   normalizeOfficeFileUri,
@@ -85,6 +86,12 @@ export type UseOfficeViewerControllerOptions = {
   searchEnabled: boolean;
   /** 非受控搜索侧栏的默认状态。 */
   defaultSearchVisible: boolean;
+  /** 当前实例是否启用文档审阅能力。 */
+  reviewEnabled: boolean;
+  /** 非受控审阅侧栏的默认状态。 */
+  defaultReviewPanelVisible: boolean;
+  /** 非受控 Word 修订内容的默认投影模式。 */
+  defaultWordRevisionMode: WordRevisionMode;
   /** 非受控模式下各视图字段的统一初始值。 */
   defaultViewState?: Partial<OfficeFileViewerViewState>;
   /** 由宿主按字段控制的视图状态。 */
@@ -150,6 +157,14 @@ export type OfficeViewerActions = {
   openSearch(): void;
   /** 关闭文档查找侧栏。 */
   closeSearch(): void;
+  /** 切换文档审阅侧栏。 */
+  toggleReviewPanel(): void;
+  /** 打开文档审阅侧栏。 */
+  openReviewPanel(): void;
+  /** 关闭文档审阅侧栏。 */
+  closeReviewPanel(): void;
+  /** 设置 Word 修订内容的投影模式。 */
+  changeWordRevisionMode(mode: WordRevisionMode): void;
   /** 进入或退出浏览器全屏。 */
   toggleFullscreen(): Promise<void>;
 };
@@ -249,6 +264,13 @@ function normalizeSpreadsheetViewMode(
     : DEFAULT_SPREADSHEET_VIEW_MODE;
 }
 
+/** 忽略 JavaScript 调用方传入的无效 Word 修订模式。 */
+function normalizeWordRevisionMode(
+  value: WordRevisionMode | undefined,
+): WordRevisionMode {
+  return value === 'markup' || value === 'original' ? value : 'final';
+}
+
 /** 合并旧版默认属性和统一默认视图状态，保持已有调用方式兼容。 */
 function createDefaultViewState(
   options: UseOfficeViewerControllerOptions,
@@ -265,6 +287,12 @@ function createDefaultViewState(
     searchVisible:
       options.searchEnabled &&
       (defaults?.searchVisible ?? options.defaultSearchVisible),
+    reviewPanelVisible:
+      options.reviewEnabled &&
+      (defaults?.reviewPanelVisible ?? options.defaultReviewPanelVisible),
+    wordRevisionMode: normalizeWordRevisionMode(
+      defaults?.wordRevisionMode ?? options.defaultWordRevisionMode,
+    ),
     speakerNotesVisible:
       defaults?.speakerNotesVisible ?? options.defaultShowSpeakerNotes,
     spreadsheetViewMode: normalizeSpreadsheetViewMode(
@@ -283,6 +311,8 @@ function createPublicViewState(
     activeSheetId: view.activeSheetId,
     wordOutlineVisible: view.showWordOutline,
     searchVisible: view.showSearch,
+    reviewPanelVisible: view.showReviewPanel,
+    wordRevisionMode: view.wordRevisionMode,
     speakerNotesVisible: view.internalShowSpeakerNotes,
     spreadsheetViewMode: view.spreadsheetViewMode,
   };
@@ -304,6 +334,10 @@ function applyPublicViewStateChange(
       return { ...state, wordOutlineVisible: change.value };
     case 'searchVisible':
       return { ...state, searchVisible: change.value };
+    case 'reviewPanelVisible':
+      return { ...state, reviewPanelVisible: change.value };
+    case 'wordRevisionMode':
+      return { ...state, wordRevisionMode: change.value };
     case 'speakerNotesVisible':
       return { ...state, speakerNotesVisible: change.value };
     case 'spreadsheetViewMode':
@@ -545,6 +579,12 @@ export function useOfficeViewerController(
     showSearch:
       options.searchEnabled &&
       (controlledViewState?.searchVisible ?? state.view.showSearch),
+    showReviewPanel:
+      options.reviewEnabled &&
+      (controlledViewState?.reviewPanelVisible ?? state.view.showReviewPanel),
+    wordRevisionMode: normalizeWordRevisionMode(
+      controlledViewState?.wordRevisionMode ?? state.view.wordRevisionMode,
+    ),
     showWordOutline:
       hasWordOutline &&
       (controlledViewState?.wordOutlineVisible ?? state.view.showWordOutline) &&
@@ -1107,6 +1147,43 @@ export function useOfficeViewerController(
   const closeWordOutline = useCallback(() => {
     commitWordOutlineVisibility(false);
   }, [commitWordOutlineVisibility]);
+
+  const commitReviewPanelVisibility = useCallback(
+    (visible: boolean) => {
+      const nextVisible = visible && optionsRef.current.reviewEnabled;
+      if (effectiveViewStateRef.current.showReviewPanel === nextVisible) return;
+      if (optionsRef.current.viewState?.reviewPanelVisible === undefined) {
+        dispatch({ type: 'review-panel-changed', visible: nextVisible });
+      }
+      notifyViewStateChange({ key: 'reviewPanelVisible', value: nextVisible });
+    },
+    [effectiveViewStateRef, notifyViewStateChange, optionsRef],
+  );
+
+  const toggleReviewPanel = useCallback(() => {
+    commitReviewPanelVisibility(!effectiveViewStateRef.current.showReviewPanel);
+  }, [commitReviewPanelVisibility, effectiveViewStateRef]);
+
+  const openReviewPanel = useCallback(() => {
+    commitReviewPanelVisibility(true);
+  }, [commitReviewPanelVisibility]);
+
+  const closeReviewPanel = useCallback(() => {
+    commitReviewPanelVisibility(false);
+  }, [commitReviewPanelVisibility]);
+
+  const changeWordRevisionMode = useCallback(
+    (mode: WordRevisionMode) => {
+      const nextMode = normalizeWordRevisionMode(mode);
+      if (effectiveViewStateRef.current.wordRevisionMode === nextMode) return;
+      if (optionsRef.current.viewState?.wordRevisionMode === undefined) {
+        dispatch({ type: 'word-revision-mode-changed', mode: nextMode });
+      }
+      notifyViewStateChange({ key: 'wordRevisionMode', value: nextMode });
+    },
+    [effectiveViewStateRef, notifyViewStateChange, optionsRef],
+  );
+
   const toggleFullscreen = useCallback(async () => {
     const viewer = viewerRef.current;
     if (
@@ -1192,21 +1269,29 @@ export function useOfficeViewerController(
       toggleSearch,
       openSearch,
       closeSearch,
+      toggleReviewPanel,
+      openReviewPanel,
+      closeReviewPanel,
+      changeWordRevisionMode,
       toggleFullscreen,
     }),
     [
       changeZoom,
       changeSpreadsheetViewMode,
+      changeWordRevisionMode,
+      closeReviewPanel,
       closeSearch,
       closeWordOutline,
       nextSlide,
       previousSlide,
+      openReviewPanel,
       openSearch,
       retry,
       selectFile,
       selectSheet,
       selectSlide,
       toggleFullscreen,
+      toggleReviewPanel,
       toggleSpeakerNotes,
       toggleSearch,
       toggleWordOutline,

@@ -45,6 +45,10 @@ import {
   type SpreadsheetCellContentBounds,
 } from './spreadsheetCellOverflow';
 import { SpreadsheetCellRenderer } from './SpreadsheetCellRenderer';
+import {
+  SpreadsheetFrozenPanes,
+  type SpreadsheetFrozenCellRenderArgs,
+} from './SpreadsheetFrozenPanes';
 import { SpreadsheetGridPlaceholder } from './SpreadsheetGridPlaceholder';
 import type { SpreadsheetNavigationController } from './spreadsheetNavigation';
 import {
@@ -57,6 +61,8 @@ import { useSpreadsheetGridWindow } from './useSpreadsheetGridWindow';
 /** SSR 环境延后布局副作用，浏览器中则在绘制前提交阅读行高。 */
 const useIsomorphicLayoutEffect =
   typeof window === 'undefined' ? useEffect : useLayoutEffect;
+/** 网格样式保留的未缩放内边距；滚动后标题层需抵消该区域。 */
+const XLSX_GRID_VIEWPORT_INSET = 16;
 
 /** 电子表格虚拟网格组件属性。 */
 type VirtualSpreadsheetGridProps = {
@@ -218,6 +224,7 @@ function VirtualSpreadsheetCell({
   contentBounds,
   viewMode,
   resolveFontFamily,
+  frozen = false,
 }: {
   sheetId: string;
   cell: SpreadsheetCell;
@@ -230,6 +237,8 @@ function VirtualSpreadsheetCell({
   viewMode: SpreadsheetViewMode;
   /** 当前文档会话统一的字体链解析函数。 */
   resolveFontFamily: OfficeFontFamilyResolver;
+  /** 是否属于冻结窗格的重复投影。 */
+  frozen?: boolean;
 }) {
   const style = cell.style ?? {};
   const shrinkToFit = isSpreadsheetShrinkToFitCell(cell);
@@ -250,11 +259,20 @@ function VirtualSpreadsheetCell({
     borderBottom: style.borderBottom ?? fallbackBorder,
     borderLeft: style.borderLeft ?? fallbackBorder,
     // 有内容的单元格置于空单元格之上，文本才能按 Excel 规则穿过连续空白格。
-    zIndex: cell.value ? 2 : 1,
+    zIndex: frozen ? 10 : cell.value ? 2 : 1,
+    // 非冻结单元格也必须保留源填充；未填充时继续透明，才能维持 Excel 文本溢出规则。
+    background: frozen
+      ? style.backgroundColor ?? '#fff'
+      : style.backgroundColor,
+    boxShadow: frozen ? '1px 1px 0 #91a0b3' : undefined,
   };
   return (
     <div
-      className="office-file-xlsx-virtual-grid__cell"
+      className={
+        frozen
+          ? 'office-file-xlsx-virtual-grid__cell office-file-xlsx-virtual-grid__cell--frozen'
+          : 'office-file-xlsx-virtual-grid__cell'
+      }
       data-office-spreadsheet-cell={cell.ref}
       tabIndex={-1}
       title={cell.value}
@@ -533,6 +551,29 @@ function VirtualSpreadsheetGridComponent({
   ]);
   const logicalScrollLeft = viewport.scrollLeft / scale;
   const logicalScrollTop = viewport.scrollTop / scale;
+  const headerScrollLeft = Math.max(
+    0,
+    logicalScrollLeft - XLSX_GRID_VIEWPORT_INSET / scale,
+  );
+  const headerScrollTop = Math.max(
+    0,
+    logicalScrollTop - XLSX_GRID_VIEWPORT_INSET / scale,
+  );
+  const renderFrozenCell = (args: SpreadsheetFrozenCellRenderArgs) => (
+    <VirtualSpreadsheetCell
+      key={args.key}
+      sheetId={sheetId}
+      cell={args.cell}
+      merge={args.merge}
+      left={args.left}
+      top={args.top}
+      width={args.width}
+      height={args.height}
+      viewMode={viewMode}
+      resolveFontFamily={resolveFontFamily}
+      frozen
+    />
+  );
 
   return (
     <div
@@ -589,6 +630,25 @@ function VirtualSpreadsheetGridComponent({
             )
           : null}
 
+        {layout.pane && layout.pane.state !== 'split' ? (
+          <SpreadsheetFrozenPanes
+            source={source}
+            sheetId={sheetId}
+            bodyRange={range}
+            rowCount={layout.rowCount}
+            columnCount={layout.columnCount}
+            frozenRows={layout.pane.frozenRows}
+            frozenColumns={layout.pane.frozenColumns}
+            logicalScrollLeft={logicalScrollLeft}
+            logicalScrollTop={logicalScrollTop}
+            logicalViewportWidth={viewport.width / scale}
+            logicalViewportHeight={viewport.height / scale}
+            rowAxis={rowAxis}
+            columnAxis={columnAxis}
+            renderCell={renderFrozenCell}
+          />
+        ) : null}
+
         {data?.images.map((image) => (
           <VirtualSpreadsheetImage
             key={image.id}
@@ -613,7 +673,7 @@ function VirtualSpreadsheetGridComponent({
             className="office-file-xlsx-virtual-grid__column-header"
             style={{
               left: XLSX_ROW_HEADER_WIDTH + columnAxis.offsetAt(column.index),
-              top: logicalScrollTop,
+              top: headerScrollTop,
               width: columnAxis.sizeAt(column.index),
               height: XLSX_COLUMN_HEADER_HEIGHT,
             }}
@@ -626,7 +686,7 @@ function VirtualSpreadsheetGridComponent({
             key={row.index}
             className="office-file-xlsx-virtual-grid__row-header"
             style={{
-              left: logicalScrollLeft,
+              left: headerScrollLeft,
               top: XLSX_COLUMN_HEADER_HEIGHT + rowAxis.offsetAt(row.index),
               width: XLSX_ROW_HEADER_WIDTH,
               height: rowAxis.sizeAt(row.index),
@@ -638,8 +698,8 @@ function VirtualSpreadsheetGridComponent({
         <div
           className="office-file-xlsx-virtual-grid__corner"
           style={{
-            left: logicalScrollLeft,
-            top: logicalScrollTop,
+            left: headerScrollLeft,
+            top: headerScrollTop,
             width: XLSX_ROW_HEADER_WIDTH,
             height: XLSX_COLUMN_HEADER_HEIGHT,
           }}

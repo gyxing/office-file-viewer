@@ -2,13 +2,16 @@
 import type { CSSProperties } from 'react';
 import React, { memo, useMemo } from 'react';
 import type { SlideElement, SlideModel } from '../../services/pptx/types';
+import type { OfficeFileViewerPresentationMediaOptions } from '../../services/presentation/mediaTypes';
 import {
   useOfficeResourceUrl,
   type OfficeResourceSource,
 } from '../../services/resource-store';
 import { OfficeChartView } from '../../shared/chart/OfficeChartView';
 import { useOfficeHyperlink } from '../../shared/hyperlink';
+import { PresentationAnnotationMarker } from './PresentationAnnotationMarker';
 import { ImageRenderer } from './renderers/ImageRenderer';
+import { MediaRenderer } from './renderers/MediaRenderer';
 import { colorWithOpacity } from './renderers/paint';
 import { ShapeRenderer } from './renderers/ShapeRenderer';
 import { TableRenderer } from './renderers/TableRenderer';
@@ -27,6 +30,8 @@ type PptxSlideProps = {
   interactive?: boolean;
   /** 主视口中的零基幻灯片索引；缩略图不传入以避免重复高亮。 */
   searchSlideIndex?: number;
+  /** 演示文稿媒体读取配置。 */
+  mediaOptions?: false | OfficeFileViewerPresentationMediaOptions;
 };
 
 const ChartFrame = memo(function ChartFrame({
@@ -71,6 +76,7 @@ const ChartFrame = memo(function ChartFrame({
     <div
       {...hyperlinkProps}
       className="office-file-pptx-chart-frame"
+      data-office-presentation-element-id={element.id}
       style={frameStyle}
     >
       <OfficeChartView
@@ -89,6 +95,7 @@ function PptxSlideComponent({
   renderKey,
   interactive = true,
   searchSlideIndex,
+  mediaOptions,
 }: PptxSlideProps) {
   const scale = zoom / 100;
   const backgroundSource = useMemo<OfficeResourceSource | undefined>(
@@ -130,7 +137,11 @@ function PptxSlideComponent({
   );
 
   return (
-    <div className="office-file-pptx-slide" style={slideStyle}>
+    <div
+      className="office-file-pptx-slide"
+      style={slideStyle}
+      data-office-presentation-slide-id={slide.id}
+    >
       <div
         className="office-file-pptx-slide__background"
         style={backgroundStyle}
@@ -165,6 +176,15 @@ function PptxSlideComponent({
                   interactive={interactive}
                 />
               );
+            case 'media':
+              return (
+                <MediaRenderer
+                  key={element.id}
+                  element={element}
+                  interactive={interactive}
+                  options={mediaOptions}
+                />
+              );
             case 'table':
               return (
                 <TableRenderer
@@ -188,6 +208,16 @@ function PptxSlideComponent({
               return null;
           }
         })}
+      </div>
+      <div className="office-file-pptx-slide__annotations">
+        {(slide.annotations ?? []).map((annotation, index) => (
+          <PresentationAnnotationMarker
+            key={annotation.id}
+            annotation={annotation}
+            ordinal={index}
+            interactive={interactive}
+          />
+        ))}
       </div>
     </div>
   );

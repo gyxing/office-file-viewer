@@ -3,14 +3,20 @@ import React, { memo } from 'react';
 import type {
   DocBookmarkInline,
   DocImageInline,
+  DocNoteReferenceInline,
   DocTextInline,
   DocTextRunInline,
 } from '../../services/doc/types';
 import type { OfficeFontFamilyResolver } from '../../services/fonts/types';
+import { OfficeAnnotationMarker } from '../../shared/annotations';
 import { useOfficeFontResolver } from '../../shared/fonts/OfficeFontProvider';
 import { useOfficeHyperlink } from '../../shared/hyperlink';
 import { OfficePreviewableImage } from '../../shared/image-preview';
 import { OfficeSearchHighlightedText } from '../search/OfficeSearchContext';
+import {
+  useWordRevisionMode,
+  WordRevisionText,
+} from '../word-review/WordRevisionText';
 import { inlineStyleToCss } from './docRenderUtils';
 
 /** DOC 行内内容组件属性。 */
@@ -56,11 +62,12 @@ function DocTextRunContent({
   /** 当前文档会话统一的字体链解析函数。 */
   resolveFontFamily: OfficeFontFamilyResolver;
 }) {
+  const revisionMode = useWordRevisionMode();
   const hyperlinkProps = useOfficeHyperlink<HTMLSpanElement>({
     hyperlink: inline.hyperlink,
     source: { type: 'text', id: sourceId },
   });
-  return (
+  let content = (
     <span
       {...hyperlinkProps}
       style={inlineStyleToCss(
@@ -76,6 +83,21 @@ function DocTextRunContent({
       />
     </span>
   );
+  content = (
+    <WordRevisionText review={inline.review}>{content}</WordRevisionText>
+  );
+  const annotationIds = inline.review?.annotationIds ?? [];
+  for (let index = annotationIds.length - 1; index >= 0; index -= 1) {
+    content = (
+      <OfficeAnnotationMarker
+        annotationId={annotationIds[index]}
+        visible={revisionMode === 'markup'}
+      >
+        {content}
+      </OfficeAnnotationMarker>
+    );
+  }
+  return content;
 }
 
 /** 渲染一个可选链接且仍可双击预览的 DOC 图片片段。 */
@@ -135,6 +157,41 @@ function DocBookmarkInlineContent({ inline }: { inline: DocBookmarkInline }) {
   );
 }
 
+/** 渲染 DOC/WPS 脚注或尾注的可交互上标引用。 */
+function DocNoteReferenceInlineContent({
+  inline,
+}: {
+  /** 当前注释引用。 */
+  inline: DocNoteReferenceInline;
+}) {
+  const targetId = `${inline.noteKind}:${inline.noteId}`;
+  return (
+    <sup className="office-file-doc-note-reference">
+      <button
+        type="button"
+        data-office-word-note-reference={targetId}
+        onClick={(event) => {
+          const viewer = event.currentTarget.closest('.office-file-doc-viewer');
+          const target = Array.from(
+            viewer?.querySelectorAll<HTMLElement>(
+              '[data-office-word-note-id]',
+            ) ?? [],
+          ).find((element) => element.dataset.officeWordNoteId === targetId);
+          target?.scrollIntoView({
+            block: 'center',
+            behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)')
+              .matches
+              ? 'auto'
+              : 'smooth',
+          });
+        }}
+      >
+        {inline.label}
+      </button>
+    </sup>
+  );
+}
+
 /** 渲染 DOC 段落中的行内文字和图片。 */
 function DocInlineContentComponent({
   inlines,
@@ -167,6 +224,11 @@ function DocInlineContentComponent({
         ) : inline.type === 'bookmark' ? (
           <DocBookmarkInlineContent
             key={`${inline.markerId}-${index}`}
+            inline={inline}
+          />
+        ) : inline.type === 'note-reference' ? (
+          <DocNoteReferenceInlineContent
+            key={`${inline.noteKind}-${inline.noteId}-${index}`}
             inline={inline}
           />
         ) : (

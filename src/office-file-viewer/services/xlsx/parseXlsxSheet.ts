@@ -17,17 +17,25 @@ import {
   textContent,
 } from '../../shared/ooxml/xml';
 import {
+  applyConditionalFormatting,
+  applySpreadsheetTableSemantics,
+} from '../spreadsheet/semantics';
+import {
   parseWpsCellImageDefinitions,
   readWpsCellImageId,
   type WpsCellImagePlacement,
 } from '../spreadsheet/wpsCellImages';
 import { mergeXlsxPreviewImages } from './loadXlsxOlePreviewImages';
+import { parseMaterializedXlsxComments } from './parseXlsxComments';
+import { parseMaterializedXlsxConditionalFormatting } from './parseXlsxConditionalFormatting';
 import {
   applyStaticXlsxFormulaHyperlink,
   applyXlsxHyperlinkRanges,
   parseXlsxDrawingHyperlink,
   parseXlsxHyperlink,
 } from './parseXlsxHyperlinks';
+import { parseMaterializedXlsxPane } from './parseXlsxPane';
+import { parseMaterializedXlsxTables } from './parseXlsxTables';
 import type {
   XlsxCell,
   XlsxChart,
@@ -774,6 +782,46 @@ export function parseMaterializedXlsxSheet(
     },
   );
   applyXlsxHyperlinkRanges(cells, hyperlinks);
+  const annotations = parseMaterializedXlsxComments({
+    sheetId: sheetInfo.id,
+    relationships: sheetRelationships,
+    entries: packageState.entries,
+  });
+  annotations.forEach((annotation) => {
+    let cell = cells.get(annotation.ref);
+    if (!cell) {
+      cell = {
+        ref: annotation.ref,
+        rowIndex: annotation.row,
+        columnIndex: annotation.column,
+        value: '',
+      };
+      cells.set(annotation.ref, cell);
+    }
+    cell.annotation ??= annotation;
+    maxRow = Math.max(maxRow, annotation.row);
+    maxColumn = Math.max(maxColumn, annotation.column);
+  });
+  const tableSemantics = parseMaterializedXlsxTables({
+    sheetNode,
+    relationships: sheetRelationships,
+    entries: packageState.entries,
+  });
+  tableSemantics.tables.forEach((table) => {
+    maxRow = Math.max(maxRow, table.range.endRow);
+    maxColumn = Math.max(maxColumn, table.range.endColumn);
+  });
+  const conditionalFormatting = parseMaterializedXlsxConditionalFormatting(
+    sheetNode,
+    styleBook,
+    packageState.theme,
+  );
+  conditionalFormatting.forEach((rule) => {
+    rule.ranges.forEach((ruleRange) => {
+      maxRow = Math.max(maxRow, ruleRange.endRow);
+      maxColumn = Math.max(maxColumn, ruleRange.endColumn);
+    });
+  });
 
   const merges = readMerges(sheetNode);
   merges.forEach((merge) => {
@@ -801,6 +849,20 @@ export function parseMaterializedXlsxSheet(
   maxRow = Math.min(Math.max(maxRow, 1), MAX_RENDERED_EMPTY_ROWS);
   maxColumn = Math.min(Math.max(maxColumn, 1), MAX_RENDERED_EMPTY_COLUMNS);
 
+  const semanticCells = [...cells.values()];
+  applySpreadsheetTableSemantics(
+    semanticCells,
+    {
+      startRow: 1,
+      endRow: maxRow,
+      startColumn: 1,
+      endColumn: maxColumn,
+    },
+    tableSemantics.tables,
+    tableSemantics.autoFilter,
+  );
+  applyConditionalFormatting(semanticCells, conditionalFormatting);
+  semanticCells.forEach((cell) => cells.set(cell.ref, cell));
   applyMerges(cells, merges);
 
   const rowHeights = new Map<number, number>();
@@ -893,5 +955,12 @@ export function parseMaterializedXlsxSheet(
       metrics,
     ),
     hyperlinks,
+    pane: parseMaterializedXlsxPane(sheetNode),
+    tables: tableSemantics.tables.length ? tableSemantics.tables : undefined,
+    autoFilter: tableSemantics.autoFilter,
+    annotations: annotations.length ? annotations : undefined,
+    conditionalFormatting: conditionalFormatting.length
+      ? conditionalFormatting
+      : undefined,
   };
 }

@@ -139,7 +139,33 @@ export async function parseXlsx(
   }
 
   throwIfXlsxParseAborted(signal);
-  return { sheets, definedNames };
+  const warnings = sheets.flatMap((sheet) => {
+    const items = [];
+    if (sheet.pane?.state === 'split') {
+      items.push({
+        code: 'XLSX_SPLIT_PANE_UNSUPPORTED',
+        message: '普通拆分窗格已保留元数据，当前预览不复制独立滚动视图。',
+        sheetName: sheet.name,
+      });
+    }
+    if (
+      sheet.conditionalFormatting?.some(
+        (rule) => rule.type === 'unsupported' || rule.type === 'expression',
+      )
+    ) {
+      items.push({
+        code: 'XLSX_CONDITIONAL_FORMAT_FORMULA_UNSUPPORTED',
+        message: '部分条件格式已保留规则摘要，当前不执行完整 Excel 公式重算。',
+        sheetName: sheet.name,
+      });
+    }
+    return items;
+  });
+  return {
+    sheets,
+    definedNames,
+    warnings: warnings.length ? warnings : undefined,
+  };
 }
 
 /** 通过统一运行时合同解析 XLSX，并输出完整工作簿模型。 */

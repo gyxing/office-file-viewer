@@ -9,6 +9,11 @@ import {
   type SpreadsheetSheetLayout,
 } from '../spreadsheet/SpreadsheetSource';
 import type {
+  SpreadsheetAnnotation,
+  SpreadsheetAutoFilter,
+  SpreadsheetTable,
+} from '../spreadsheet/semantics/types';
+import type {
   SpreadsheetCell,
   SpreadsheetColumnMetric,
   SpreadsheetHyperlinkRange,
@@ -23,15 +28,27 @@ import type {
   XlsxPackageContext,
   XlsxSheetDescriptor,
 } from './XlsxPackageContext';
+import { parseSourceXlsxComments } from './parseXlsxComments';
+import {
+  createXlsxConditionalRule,
+  parseConditionalRanges,
+  type MutableXlsxConditionalRule,
+} from './parseXlsxConditionalFormatting';
 import {
   applyStaticXlsxFormulaHyperlink,
   parseXlsxHyperlink,
 } from './parseXlsxHyperlinks';
+import { parseXlsxPaneAttributes } from './parseXlsxPane';
+import {
+  parseSourceXlsxTables,
+  parseXlsxAutoFilterAttributes,
+} from './parseXlsxTables';
 import {
   columnIndexToLabel,
   excelWidthToPx,
   parseCellRef,
   parseRange,
+  parseXlsxColorAttributes,
   pointToPx,
   resolveStyle,
   resolveXlsxMaxDigitWidth,
@@ -57,6 +74,14 @@ export type ParsedXlsxSheetStream = {
   drawingRelationshipId?: string;
   /** 当前工作表声明的稀疏超链接范围。 */
   hyperlinks: readonly SpreadsheetHyperlinkRange[];
+  /** 当前工作表声明的 Excel Table。 */
+  tables: readonly SpreadsheetTable[];
+  /** 工作表级静态筛选范围。 */
+  autoFilter?: SpreadsheetAutoFilter;
+  /** 按单元格定位的批注。 */
+  annotations: readonly SpreadsheetAnnotation[];
+  /** 当前工作表声明的条件格式规则。 */
+  conditionalFormatting: readonly import('../spreadsheet/semantics/types').SpreadsheetConditionalFormattingRule[];
 };
 
 /** 控制 Sheet 解析期间的 tile 输出，避免大 Sheet 聚合全部单元格。 */
@@ -153,6 +178,14 @@ export async function parseXlsxSheetStream(
   let pendingCell: PendingCell | undefined;
   let capture: 'value' | 'formula' | 'inline' | undefined;
   let drawingRelationshipId: string | undefined;
+  let pane: SpreadsheetSheetLayout['pane'];
+  let autoFilter: SpreadsheetAutoFilter | undefined;
+  let conditionalRanges: ReturnType<typeof parseConditionalRanges> = [];
+  let pendingConditionalRule: MutableXlsxConditionalRule | undefined;
+  let conditionalFormula = '';
+  let captureConditionalFormula = false;
+  let conditionalVisual: 'colorScale' | 'dataBar' | 'iconSet' | undefined;
+  const conditionalFormatting: MutableXlsxConditionalRule[] = [];
   let activeRowTile = 0;
 
   const flushTiles = async () => {
@@ -177,7 +210,51 @@ export async function parseXlsxSheetStream(
   for await (const event of readOfficeXmlEvents(stream, signal)) {
     throwIfSpreadsheetAborted(signal);
     if (event.type === 'open') {
-      if (event.localName === 'dimension') {
+      if (event.localName === 'conditionalFormatting') {
+        conditionalRanges = parseConditionalRanges(
+          event.attributes.get('sqref'),
+        );
+      } else if (event.localName === 'cfRule') {
+        pendingConditionalRule = createXlsxConditionalRule(
+          event.attributes,
+          conditionalRanges,
+          context.styles,
+          `xlsx-cf-${conditionalFormatting.length + 1}`,
+        );
+      } else if (event.localName === 'formula' && pendingConditionalRule) {
+        conditionalFormula = '';
+        captureConditionalFormula = true;
+      } else if (event.localName === 'cfvo' && pendingConditionalRule) {
+        pendingConditionalRule.values.push({
+          type: event.attributes.get('type') ?? 'num',
+          value: event.attributes.get('val'),
+        });
+      } else if (
+        (event.localName === 'colorScale' ||
+          event.localName === 'dataBar' ||
+          event.localName === 'iconSet') &&
+        pendingConditionalRule
+      ) {
+        conditionalVisual = event.localName;
+        if (event.localName === 'iconSet') {
+          pendingConditionalRule.iconSet = event.attributes.get('iconSet');
+        }
+      } else if (
+        event.localName === 'color' &&
+        pendingConditionalRule &&
+        conditionalVisual
+      ) {
+        const color = parseXlsxColorAttributes(event.attributes, context.theme);
+        if (color && conditionalVisual === 'colorScale') {
+          pendingConditionalRule.colors.push(color);
+        } else if (color && conditionalVisual === 'dataBar') {
+          pendingConditionalRule.dataBarColor = color;
+        }
+      } else if (event.localName === 'pane') {
+        pane = parseXlsxPaneAttributes(event.attributes);
+      } else if (event.localName === 'autoFilter') {
+        autoFilter = parseXlsxAutoFilterAttributes(event.attributes);
+      } else if (event.localName === 'dimension') {
         const range = parseRange(event.attributes.get('ref'));
         if (range) {
           declaredRowCount = Math.max(declaredRowCount, range.endRow);
@@ -273,6 +350,14 @@ export async function parseXlsxSheetStream(
       continue;
     }
 
+    if (
+      event.type === 'text' &&
+      pendingConditionalRule &&
+      captureConditionalFormula
+    ) {
+      conditionalFormula += event.text;
+      continue;
+    }
     if (event.type === 'text' && pendingCell && capture) {
       if (capture === 'value') pendingCell.value += event.text;
       else if (capture === 'formula') pendingCell.formula += event.text;
@@ -281,6 +366,32 @@ export async function parseXlsxSheetStream(
     }
 
     if (event.type !== 'close') continue;
+    if (event.localName === 'formula' && pendingConditionalRule) {
+      pendingConditionalRule.values.push({
+        type: 'formula',
+        value: conditionalFormula,
+      });
+      conditionalFormula = '';
+      captureConditionalFormula = false;
+      continue;
+    }
+    if (
+      event.localName === 'colorScale' ||
+      event.localName === 'dataBar' ||
+      event.localName === 'iconSet'
+    ) {
+      conditionalVisual = undefined;
+      continue;
+    }
+    if (event.localName === 'cfRule' && pendingConditionalRule) {
+      conditionalFormatting.push(pendingConditionalRule);
+      pendingConditionalRule = undefined;
+      continue;
+    }
+    if (event.localName === 'conditionalFormatting') {
+      conditionalRanges = [];
+      continue;
+    }
     if (
       event.localName === 'v' ||
       event.localName === 'f' ||
@@ -337,6 +448,17 @@ export async function parseXlsxSheetStream(
   }
 
   await flushTiles();
+  const [tables, annotations] = await Promise.all([
+    parseSourceXlsxTables(context, descriptor, signal),
+    parseSourceXlsxComments(context, descriptor, signal),
+  ]);
+  if (collectCells && annotations.length) {
+    const cellByRef = new Map(cells.map((cell) => [cell.ref, cell]));
+    annotations.forEach((annotation) => {
+      const cell = cellByRef.get(annotation.ref);
+      if (cell) cell.annotation ??= annotation;
+    });
+  }
 
   // 列格式可能延伸到 XFD；内容边界确定后再截取，避免把样式范围当成已用列。
   pendingColumns.forEach(({ start, end, width, hidden }) => {
@@ -402,6 +524,7 @@ export async function parseXlsxSheetStream(
       defaultColumnWidth,
       rows: [...rows.values()],
       columns: [...columns.values()],
+      pane,
     },
     declaredRowCount,
     declaredColumnCount,
@@ -420,5 +543,11 @@ export async function parseXlsxSheetStream(
     }),
     drawingRelationshipId,
     hyperlinks,
+    tables,
+    autoFilter,
+    annotations,
+    conditionalFormatting: conditionalFormatting.sort(
+      (left, right) => left.priority - right.priority,
+    ),
   };
 }

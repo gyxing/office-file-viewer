@@ -2,7 +2,13 @@
 import type { ReactElement } from 'react';
 import React, { lazy, memo, Suspense } from 'react';
 import { OfficePreviewEmpty } from '../formats/common/OfficePreviewEmpty';
+import type { WordRevisionMode } from '../services/annotations/types';
 import type { OfficeFileViewerPreviewState } from '../services/parsing/internalTypes';
+import type { OfficeFileViewerPresentationMediaOptions } from '../services/presentation/mediaTypes';
+import type {
+  OfficeFileViewerPresentationTransitions,
+  PresentationNavigationIntent,
+} from '../services/presentation/transitionTypes';
 import type { SpreadsheetViewMode } from '../services/spreadsheet/viewMode';
 import { OfficeError } from './Error';
 import { OfficeLoading } from './Loading';
@@ -74,6 +80,12 @@ export type OfficePreviewStageState =
       zoom: number;
       /** 演讲者备注面板是否展开。 */
       showSpeakerNotes: boolean;
+      /** 演示文稿媒体读取配置。 */
+      mediaOptions?: false | OfficeFileViewerPresentationMediaOptions;
+      /** 是否按源文件播放页级切换。 */
+      transitions: OfficeFileViewerPresentationTransitions;
+      /** 最近一次工具栏翻页产生的切换意图。 */
+      transitionIntent?: PresentationNavigationIntent;
     }
   | {
       kind: 'spreadsheet';
@@ -94,6 +106,8 @@ export type OfficePreviewStageState =
       zoom: number;
       /** 文档大纲是否展开。 */
       showOutline: boolean;
+      /** 当前采用的 Word 修订内容投影模式。 */
+      wordRevisionMode: WordRevisionMode;
     }
   | {
       kind: 'doc';
@@ -103,6 +117,8 @@ export type OfficePreviewStageState =
       zoom: number;
       /** 文档大纲是否展开。 */
       showOutline: boolean;
+      /** 当前采用的 Word 修订内容投影模式。 */
+      wordRevisionMode: WordRevisionMode;
     };
 
 /** 预览舞台属性。 */
@@ -143,6 +159,9 @@ function OfficePreviewStageComponent({
           activeIndex={state.activeIndex}
           zoom={state.zoom}
           showSpeakerNotes={state.showSpeakerNotes}
+          mediaOptions={state.mediaOptions}
+          transitions={state.transitions}
+          transitionIntent={state.transitionIntent}
           onSelectSlide={onSelectSlide}
         />
       );
@@ -166,6 +185,7 @@ function OfficePreviewStageComponent({
           preview={state.preview}
           zoom={state.zoom}
           showOutline={state.showOutline}
+          wordRevisionMode={state.wordRevisionMode}
           onCloseOutline={onCloseWordOutline}
           onOpenSearch={onOpenSearch}
         />
@@ -178,6 +198,7 @@ function OfficePreviewStageComponent({
           preview={state.preview}
           zoom={state.zoom}
           showOutline={state.showOutline}
+          wordRevisionMode={state.wordRevisionMode}
           onCloseOutline={onCloseWordOutline}
           onOpenSearch={onOpenSearch}
         />

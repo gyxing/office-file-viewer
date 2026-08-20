@@ -3,6 +3,7 @@ import type {
   PresentationSourceSnapshot,
 } from '../../../presentation/PresentationSource';
 import type {
+  PresentationAnnotation,
   SlideModel,
   SpeakerNotesModel,
 } from '../../../presentation/types';
@@ -65,6 +66,14 @@ export class WorkerPresentationSource implements PresentationSource {
   getSpeakerNotes(index: number, signal?: AbortSignal) {
     return this.client.request<SpeakerNotesModel | undefined>(
       'get-notes',
+      { index },
+      { signal },
+    );
+  }
+
+  getAnnotations(index: number, signal?: AbortSignal) {
+    return this.client.request<readonly PresentationAnnotation[]>(
+      'get-presentation-annotations',
       { index },
       { signal },
     );

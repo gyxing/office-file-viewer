@@ -10,6 +10,7 @@ import {
   parseXml,
   textContent,
 } from '../../shared/ooxml/xml';
+import type { WordRevision } from '../word/review/types';
 import {
   DEFAULT_DOCX_PAGE,
   mapAlignment,
@@ -30,12 +31,24 @@ import {
   type ReadBlockChildrenOptions,
 } from './docxParsingContext';
 import type { DocxBlockParseOperations } from './parseDocxBlock';
+import {
+  endDocxCommentRange,
+  getActiveDocxCommentIds,
+  recordDocxCommentReference,
+  recordDocxRevision,
+  registerDocxReviewBlock,
+  startDocxCommentRange,
+} from './parseDocxComments';
 import { createDocxDrawingParser } from './parseDocxDrawing';
 import {
   parseDocxFieldHyperlink,
   parseDocxHyperlinkElement,
 } from './parseDocxHyperlink';
 import { nextDocxNumberPrefix } from './parseDocxNumbering';
+import {
+  getDocxContentRevisionKind,
+  parseDocxRevision,
+} from './parseDocxRevisions';
 import type {
   DocxBlock,
   DocxInline,
@@ -109,6 +122,44 @@ type DocxFieldState = {
   hyperlink?: OfficeHyperlink;
 };
 
+/** 当前段落已经产生的可定位字符偏移。 */
+type DocxInlineOffset = { value: number };
+
+/** 判断行内内容在默认最终态是否可见。 */
+function isDocxInlineVisibleInFinal(inline: DocxInline) {
+  return !inline.review?.revisions?.some(
+    (revision) => revision.kind === 'delete' || revision.kind === 'move-from',
+  );
+}
+
+/** 按批注范围和修订状态装饰行内模型，并推进正文字符偏移。 */
+function appendReviewedInline(
+  target: DocxInline[],
+  inline: DocxInline,
+  context: ParseContext,
+  offset: DocxInlineOffset,
+  revisions: readonly WordRevision[],
+  originalStyle?: DocxTextStyle,
+) {
+  const annotationIds = getActiveDocxCommentIds(context.review);
+  const review =
+    annotationIds?.length || revisions.length || originalStyle
+      ? {
+          annotationIds,
+          revisions: revisions.length ? [...revisions] : undefined,
+          originalStyle,
+        }
+      : undefined;
+  const reviewedInline: DocxInline = review ? { ...inline, review } : inline;
+  target.push(reviewedInline);
+  // 批注范围默认以 final 模式可见正文为坐标，避免隐藏删除文本推偏定位。
+  if (!isDocxInlineVisibleInFinal(reviewedInline)) return;
+  if (inline.type === 'text') offset.value += inline.text.length;
+  else if (inline.type === 'tab' || inline.type === 'note-reference') {
+    offset.value += 1;
+  }
+}
+
 function applyHyperlinkToInline(
   inline: DocxInline,
   hyperlink: OfficeHyperlink | undefined,
@@ -172,6 +223,23 @@ function haveEqualTextStyles(
   );
 }
 
+/** 判断相邻文字运行是否属于完全相同的批注范围和修订。 */
+function haveEqualInlineReview(left: DocxInline, right: DocxInline) {
+  const leftAnnotations = left.review?.annotationIds ?? [];
+  const rightAnnotations = right.review?.annotationIds ?? [];
+  const leftRevisions = left.review?.revisions ?? [];
+  const rightRevisions = right.review?.revisions ?? [];
+  return (
+    leftAnnotations.length === rightAnnotations.length &&
+    leftAnnotations.every((id, index) => id === rightAnnotations[index]) &&
+    leftRevisions.length === rightRevisions.length &&
+    leftRevisions.every(
+      (revision, index) => revision.id === rightRevisions[index]?.id,
+    ) &&
+    haveEqualTextStyles(left.review?.originalStyle, right.review?.originalStyle)
+  );
+}
+
 /** 合并跨 run 的同样式连续空格，避免浏览器在相邻 span 边界错误压缩列距。 */
 function mergeAdjacentPreservedSpaces(inlines: DocxInline[]) {
   return inlines.reduce<DocxInline[]>((merged, inline) => {
@@ -182,7 +250,8 @@ function mergeAdjacentPreservedSpaces(inlines: DocxInline[]) {
       previous.text.endsWith(' ') &&
       inline.text.startsWith(' ') &&
       previous.hyperlink === inline.hyperlink &&
-      haveEqualTextStyles(previous.style, inline.style)
+      haveEqualTextStyles(previous.style, inline.style) &&
+      haveEqualInlineReview(previous, inline)
     ) {
       previous.text += inline.text;
       previous.preserveSpace = true;
@@ -198,7 +267,10 @@ function parseRun(
   runNode: Element,
   paragraphStyle: DocxTextStyle | undefined,
   context: ParseContext,
+  blockId: string,
+  offset: DocxInlineOffset,
   fieldStack: DocxFieldState[],
+  wrapperRevisions: readonly WordRevision[],
   wrapperHyperlink?: OfficeHyperlink,
   insideShape = false,
 ): DocxInline[] {
@@ -212,6 +284,31 @@ function parseRun(
     resolveRunStyle(rPr, context.styles, context.theme, paragraphStyle),
     shapeThemeFontFamily ? { fontFamily: shapeThemeFontFamily } : undefined,
   );
+  const propertyChange = childByLocalName(rPr, 'rPrChange');
+  const formatRevision = propertyChange
+    ? recordDocxRevision(
+        context.review,
+        parseDocxRevision(
+          propertyChange,
+          'format',
+          `${blockId}-${offset.value}-format-${
+            context.review.revisions.size + 1
+          }`,
+        ),
+      )
+    : undefined;
+  const originalProperties = childByLocalName(propertyChange, 'rPr');
+  const originalStyle = originalProperties
+    ? resolveRunStyle(
+        originalProperties,
+        context.styles,
+        context.theme,
+        paragraphStyle,
+      )
+    : undefined;
+  const revisions = formatRevision
+    ? [...wrapperRevisions, formatRevision]
+    : wrapperRevisions;
   const inlines: DocxInline[] = [];
 
   Array.from(runNode.children).forEach((child) => {
@@ -231,93 +328,159 @@ function parseRun(
       if (field) field.instruction += textContent(child);
       return;
     }
+    if (matchesLocalName(child, 'commentReference')) {
+      const id = attr(child, 'w:id') ?? attr(child, 'id');
+      if (id) {
+        recordDocxCommentReference(context.review, id, {
+          blockId,
+          offset: offset.value,
+        });
+      }
+      return;
+    }
+    if (
+      matchesLocalName(child, 'footnoteReference') ||
+      matchesLocalName(child, 'endnoteReference')
+    ) {
+      const noteId = attr(child, 'w:id') ?? attr(child, 'id');
+      if (!noteId) return;
+      const noteKind = matchesLocalName(child, 'footnoteReference')
+        ? 'footnote'
+        : 'endnote';
+      const labels =
+        noteKind === 'footnote'
+          ? context.footnoteLabels
+          : context.endnoteLabels;
+      appendReviewedInline(
+        inlines,
+        {
+          type: 'note-reference',
+          noteId,
+          noteKind,
+          label: labels[noteId] ?? noteId,
+          style: runStyle,
+        },
+        context,
+        offset,
+        revisions,
+        originalStyle,
+      );
+      return;
+    }
     const activeHyperlink =
       wrapperHyperlink ?? currentFieldHyperlink(fieldStack);
-    if (matchesLocalName(child, 't')) {
+    if (matchesLocalName(child, 't') || matchesLocalName(child, 'delText')) {
       const text = textContent(child);
-      inlines.push({
-        type: 'text',
-        text,
-        // OOXML 会保留文本节点内部的连续空格；xml:space 额外覆盖首尾空格。
-        preserveSpace:
-          attr(child, 'xml:space') === 'preserve' || / {2,}/.test(text)
-            ? true
-            : undefined,
-        style: runStyle,
-        hyperlink: activeHyperlink,
-      });
+      appendReviewedInline(
+        inlines,
+        {
+          type: 'text',
+          text,
+          // OOXML 会保留文本节点内部的连续空格；xml:space 额外覆盖首尾空格。
+          preserveSpace:
+            attr(child, 'xml:space') === 'preserve' || / {2,}/.test(text)
+              ? true
+              : undefined,
+          style: runStyle,
+          hyperlink: activeHyperlink,
+        },
+        context,
+        offset,
+        revisions,
+        originalStyle,
+      );
       return;
     }
     if (matchesLocalName(child, 'tab')) {
-      inlines.push({ type: 'tab', style: runStyle });
+      appendReviewedInline(
+        inlines,
+        { type: 'tab', style: runStyle },
+        context,
+        offset,
+        revisions,
+        originalStyle,
+      );
       return;
     }
     if (matchesLocalName(child, 'br') || matchesLocalName(child, 'cr')) {
-      inlines.push({ type: 'break' });
+      appendReviewedInline(
+        inlines,
+        { type: 'break' },
+        context,
+        offset,
+        revisions,
+      );
       return;
     }
     const drawingInline = drawingParser.parseRunChild(child, context);
     if (drawingInline) {
-      inlines.push(applyHyperlinkToInline(drawingInline, activeHyperlink));
+      appendReviewedInline(
+        inlines,
+        applyHyperlinkToInline(drawingInline, activeHyperlink),
+        context,
+        offset,
+        revisions,
+      );
     }
   });
 
   return inlines;
 }
 
-/** 判断修订是否连同段落标记一起删除。 */
-function hasDeletedParagraphMark(pNode: Element) {
-  const paragraphProperties = childByLocalName(pNode, 'pPr');
-  const paragraphMarkProperties = childByLocalName(paragraphProperties, 'rPr');
-  return Array.from(paragraphMarkProperties?.children ?? []).some(
-    (child) =>
-      matchesLocalName(child, 'del') || matchesLocalName(child, 'moveFrom'),
-  );
-}
-
-/** 判断段落在忽略删除修订后是否仍有需要保留的行内内容。 */
-function hasFinalParagraphContent(paragraph: DocxParagraphBlock) {
-  return paragraph.inlines.some((inline) => {
-    if (inline.type === 'bookmark') return false;
-    if (inline.type === 'text') return inline.text.length > 0;
-    return true;
-  });
-}
-
+/** 保留删除段落的完整模型，具体修订模式在渲染投影阶段决定显隐。 */
 function readParagraphBlocks(
   pNode: Element,
   id: string,
   context: ParseContext,
   options?: ReadBlockChildrenOptions,
 ): DocxParagraphBlock[] {
-  const paragraph = parseParagraph(pNode, id, context, options);
-  // 删除段落标记可能仅用于合并相邻段落；只有最终状态确实为空时才移除行盒。
-  if (hasDeletedParagraphMark(pNode) && !hasFinalParagraphContent(paragraph)) {
-    return [];
-  }
-  return [paragraph];
+  return [parseParagraph(pNode, id, context, options)];
 }
-
-/** 按“最终状态”读取段落行内内容：保留插入/移入内容，忽略删除/移出内容。 */
+/** 保留全部修订内容，并用行内元数据描述最终态、原始态和标记态。 */
 function readParagraphRunChildren(
   parentNode: Element,
   paragraphStyle: DocxTextStyle | undefined,
   context: ParseContext,
   blockId: string,
   fieldStack: DocxFieldState[],
+  offset: DocxInlineOffset,
+  revisions: readonly WordRevision[],
   wrapperHyperlink?: OfficeHyperlink,
   insideShape = false,
 ) {
   const inlines: DocxInline[] = [];
 
   Array.from(parentNode.children).forEach((child) => {
+    if (matchesLocalName(child, 'commentRangeStart')) {
+      const id = attr(child, 'w:id') ?? attr(child, 'id');
+      if (id) {
+        startDocxCommentRange(context.review, id, {
+          blockId,
+          offset: offset.value,
+        });
+      }
+      return;
+    }
+    if (matchesLocalName(child, 'commentRangeEnd')) {
+      const id = attr(child, 'w:id') ?? attr(child, 'id');
+      if (id) {
+        endDocxCommentRange(context.review, id, {
+          blockId,
+          offset: offset.value,
+        });
+      }
+      return;
+    }
     if (matchesLocalName(child, 'r')) {
       inlines.push(
         ...parseRun(
           child,
           paragraphStyle,
           context,
+          blockId,
+          offset,
           fieldStack,
+          revisions,
           wrapperHyperlink,
           insideShape,
         ),
@@ -332,7 +495,31 @@ function readParagraphRunChildren(
       inlines.push({ type: 'bookmark', name, markerId });
       return;
     }
-    if (matchesLocalName(child, 'del') || matchesLocalName(child, 'moveFrom')) {
+    const revisionKind = getDocxContentRevisionKind(child);
+    if (revisionKind) {
+      const revision = recordDocxRevision(
+        context.review,
+        parseDocxRevision(
+          child,
+          revisionKind,
+          `${blockId}-${offset.value}-${revisionKind}-${
+            context.review.revisions.size + 1
+          }`,
+        ),
+      );
+      inlines.push(
+        ...readParagraphRunChildren(
+          child,
+          paragraphStyle,
+          context,
+          blockId,
+          fieldStack,
+          offset,
+          [...revisions, revision],
+          wrapperHyperlink,
+          insideShape,
+        ),
+      );
       return;
     }
     if (matchesLocalName(child, 'sdt')) {
@@ -345,6 +532,8 @@ function readParagraphRunChildren(
             context,
             blockId,
             fieldStack,
+            offset,
+            revisions,
             wrapperHyperlink,
             insideShape,
           ),
@@ -361,6 +550,8 @@ function readParagraphRunChildren(
           context,
           blockId,
           fieldStack,
+          offset,
+          revisions,
           hyperlink ?? wrapperHyperlink,
           insideShape,
         ),
@@ -377,6 +568,8 @@ function readParagraphRunChildren(
           context,
           blockId,
           fieldStack,
+          offset,
+          revisions,
           hyperlink ?? wrapperHyperlink,
           insideShape,
         ),
@@ -384,8 +577,6 @@ function readParagraphRunChildren(
       return;
     }
     if (
-      matchesLocalName(child, 'ins') ||
-      matchesLocalName(child, 'moveTo') ||
       matchesLocalName(child, 'smartTag') ||
       matchesLocalName(child, 'customXml') ||
       matchesLocalName(child, 'sdtContent')
@@ -397,6 +588,8 @@ function readParagraphRunChildren(
           context,
           blockId,
           fieldStack,
+          offset,
+          revisions,
           wrapperHyperlink,
           insideShape,
         ),
@@ -414,12 +607,15 @@ function readParagraphRuns(
   blockId: string,
   insideShape = false,
 ) {
+  registerDocxReviewBlock(context.review, blockId);
   return mergeAdjacentPreservedSpaces(
     readParagraphRunChildren(
       pNode,
       paragraphStyle,
       context,
       blockId,
+      [],
+      { value: 0 },
       [],
       undefined,
       insideShape,
@@ -429,6 +625,7 @@ function readParagraphRuns(
 
 function textFromInlines(inlines: DocxInline[]) {
   return inlines
+    .filter(isDocxInlineVisibleInFinal)
     .map((inline) =>
       inline.type === 'text' ? inline.text : inline.type === 'tab' ? '\t' : '',
     )
@@ -440,6 +637,7 @@ function containsOnlyPositionedInlines(inlines: DocxInline[]) {
   if (!inlines.length) return false;
   let containsPositionedObject = false;
   const onlyPositionedContent = inlines.every((inline) => {
+    if (!isDocxInlineVisibleInFinal(inline)) return true;
     if (inline.type === 'text') return !inline.text.trim();
     if (inline.type === 'bookmark') return true;
     if (inline.type === 'break' || inline.type === 'tab') return false;
@@ -473,6 +671,59 @@ function parseParagraph(
     context.theme,
     options?.paragraphContextStyle,
   );
+  const paragraphMarkProperties = childByLocalName(pPr, 'rPr');
+  const paragraphMarkChange = childByLocalName(
+    paragraphMarkProperties,
+    'rPrChange',
+  );
+  const paragraphRevisions: WordRevision[] = [];
+  if (paragraphMarkChange) {
+    paragraphRevisions.push(
+      recordDocxRevision(
+        context.review,
+        parseDocxRevision(
+          paragraphMarkChange,
+          'format',
+          `${id}-paragraph-mark-${context.review.revisions.size + 1}`,
+        ),
+      ),
+    );
+  }
+  const deletedParagraphMark = Array.from(
+    paragraphMarkProperties?.children ?? [],
+  ).find((child) => Boolean(getDocxContentRevisionKind(child)));
+  const deletedParagraphKind = deletedParagraphMark
+    ? getDocxContentRevisionKind(deletedParagraphMark)
+    : undefined;
+  if (deletedParagraphMark && deletedParagraphKind) {
+    paragraphRevisions.push(
+      recordDocxRevision(
+        context.review,
+        parseDocxRevision(
+          deletedParagraphMark,
+          deletedParagraphKind,
+          `${id}-paragraph-mark-${context.review.revisions.size + 1}`,
+        ),
+      ),
+    );
+  }
+  const originalParagraphMarkProperties = childByLocalName(
+    paragraphMarkChange,
+    'rPr',
+  );
+  const paragraphReview = paragraphRevisions.length
+    ? {
+        revisions: paragraphRevisions,
+        originalStyle: originalParagraphMarkProperties
+          ? resolveRunStyle(
+              originalParagraphMarkProperties,
+              context.styles,
+              context.theme,
+              style.style,
+            )
+          : undefined,
+      }
+    : undefined;
   const inlines = readParagraphRuns(
     pNode,
     style.style,
@@ -714,6 +965,7 @@ function parseParagraph(
     id,
     type: 'paragraph',
     inlines,
+    review: paragraphReview,
     text,
     outlineLevel,
     isTableOfContents: style.isTocStyle || undefined,

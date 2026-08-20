@@ -37,6 +37,9 @@ export function adaptPptSlide(
     hidden: slide.hidden,
     background: slide.background,
     speakerNotes: slide.speakerNotes,
+    annotations: slide.annotations,
+    transition: slide.transition,
+    warnings: slide.warnings,
     elements: [
       ...inherited,
       ...slide.elements.map((element, index) => ({

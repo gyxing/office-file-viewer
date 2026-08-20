@@ -1,15 +1,19 @@
 import type { ReactNode } from 'react';
 import React, { useLayoutEffect, useRef } from 'react';
+import { collectDocxNoteReferences } from '../../services/docx/docxNoteReferences';
 import type {
   DocxMeasuredBlock,
   DocxMeasurementBatch,
 } from '../../services/docx/docxPagination';
 import type { DocxBlock } from '../../services/docx/types';
+import { WordNoteBlock } from '../word-review/WordNoteBlock';
 import { DocxPageFrame } from './DocxPageFrame';
 import {
   resolveDocxSpacingBefore,
   shouldSuppressDocxContextualSpacing,
 } from './docxParagraphSpacing';
+import { measureVisibleDocxBlockHeight } from './docxRenderUtils';
+import { measureDocxFootnotes } from './measureDocxFootnotes';
 import { measureDocxParagraphLines } from './measureDocxParagraphLines';
 import { measureDocxTableRows } from './measureDocxTableRows';
 
@@ -53,21 +57,43 @@ export function DocxMeasureHost({
       const article = hostRef.current?.querySelector<HTMLElement>(
         '.office-file-docx-page-frame__article',
       );
-      const elements = Array.from(article?.children ?? []) as HTMLElement[];
+      const elements = (
+        Array.from(article?.children ?? []) as HTMLElement[]
+      ).filter(
+        (element) => !element.classList.contains('office-file-word-notes'),
+      );
       const contextCount = batch.contextBefore?.previousBlock ? 1 : 0;
       const measuredElements = elements.slice(contextCount);
       if (measuredElements.length !== batch.blocks.length) {
         throw new Error('DOCX 测量批次的块数量与渲染结果不一致');
       }
+      const measuredFootnotes = measureDocxFootnotes(
+        batch.sourcePage.footnotes ?? [],
+        article,
+        batch.sourcePage.page,
+      );
+      const claimedNoteIds = new Set<string>();
       const measurements = batch.blocks.map((block, index) => {
         const element = measuredElements[index];
-        const nextElement = measuredElements[index + 1];
-        const height = nextElement
-          ? nextElement.offsetTop - element.offsetTop
-          : element.offsetHeight +
-            Number.parseFloat(
-              window.getComputedStyle(element).marginBottom || '0',
-            );
+        const height = measureVisibleDocxBlockHeight(measuredElements, index);
+        const blockFootnotes = Array.from(
+          new Set(
+            collectDocxNoteReferences([block])
+              .filter((reference) => reference.noteKind === 'footnote')
+              .map((reference) => `footnote:${reference.noteId}`),
+          ),
+        ).flatMap((noteId) => {
+          if (claimedNoteIds.has(noteId)) return [];
+          claimedNoteIds.add(noteId);
+          const measured = measuredFootnotes.get(
+            noteId.replace(/^footnote:/, ''),
+          );
+          return measured ? [measured] : [];
+        });
+        const footnoteReserveHeight = blockFootnotes.reduce(
+          (height, note) => height + (note.fragments[0]?.height ?? 0),
+          0,
+        );
         return {
           block,
           height,
@@ -76,6 +102,8 @@ export function DocxMeasureHost({
           ),
           rowOffset: batch.rowOffsets[block.id],
           originalTableRowCount: batch.originalTableRowCounts[block.id],
+          footnoteReserveHeight,
+          measuredFootnotes: blockFootnotes,
           ...measureDocxParagraphLines(element, block, height),
           ...measureDocxTableRows(element, block),
         };
@@ -118,6 +146,10 @@ export function DocxMeasureHost({
             ),
           );
         })}
+        <WordNoteBlock
+          notes={batch.sourcePage.footnotes ?? []}
+          page={batch.sourcePage.page}
+        />
       </DocxPageFrame>
     </div>
   );

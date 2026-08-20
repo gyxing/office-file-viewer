@@ -53,6 +53,7 @@ export type PresentationPerformanceStats = {
 /** 按渲染成本估算单个元素权重，嵌套组会递归累计子元素。 */
 export function getPresentationElementWeight(element: SlideElement): number {
   if (element.type === 'image') return 20;
+  if (element.type === 'media') return 30;
   if (element.type === 'chart') return 30;
   if (element.type === 'table') return Math.max(1, element.rows.length) * 4;
   if (element.type === 'group') {

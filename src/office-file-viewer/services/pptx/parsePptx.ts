@@ -9,10 +9,7 @@ import type { OfficeArchiveResourcePolicy } from '../../shared/resource/OfficeRe
 import { collectRenderableOfficeMedia } from '../media/officeMetafile';
 import type { OfficeFormatParser } from '../parsing/formatParserRegistry';
 import { throwIfParseAborted } from '../parsing/runtime/types';
-import {
-  parseSlideXml,
-  readPptxDefaultTextStyle,
-} from './parsePptxSlide';
+import { parseSlideXml, readPptxDefaultTextStyle } from './parsePptxSlide';
 import { throwIfPptxParseAborted } from './PptxPackageContext';
 import {
   buildPptxPackageState,
@@ -115,7 +112,14 @@ export async function parsePptx(
   }
 
   throwIfPptxParseAborted(signal);
-  return { width: size.width, height: size.height, theme, slides };
+  const warnings = slides.flatMap((slide) => slide.warnings ?? []);
+  return {
+    width: size.width,
+    height: size.height,
+    theme,
+    slides,
+    warnings: warnings.length ? warnings : undefined,
+  };
 }
 
 /** 通过统一运行时合同解析 PPTX，并输出完整演示文稿模型。 */

@@ -1,6 +1,13 @@
 import type { OfficeHyperlink } from '../../shared/hyperlink';
 import type { OfficeChartModel } from '../../shared/ooxml/charts';
 import type { OfficeResourceSource } from '../resource-store';
+import type {
+  SpreadsheetAnnotation,
+  SpreadsheetAutoFilter,
+  SpreadsheetConditionalFormattingRule,
+  SpreadsheetPane,
+  SpreadsheetTable,
+} from './semantics/types';
 
 /** 描述电子表格标准模型过程中可继续处理的警告。 */
 export type SpreadsheetWarning = {
@@ -78,6 +85,16 @@ export type SpreadsheetSheet = {
   charts: SpreadsheetChart[];
   /** 工作表声明的稀疏超链接范围。 */
   hyperlinks?: SpreadsheetHyperlinkRange[];
+  /** 工作表冻结或普通拆分窗格。 */
+  pane?: SpreadsheetPane;
+  /** 工作表声明的 Excel Table。 */
+  tables?: SpreadsheetTable[];
+  /** 工作表级静态筛选范围。 */
+  autoFilter?: SpreadsheetAutoFilter;
+  /** 按单元格定位的批注。 */
+  annotations?: SpreadsheetAnnotation[];
+  /** 工作表声明的条件格式规则。 */
+  conditionalFormatting?: SpreadsheetConditionalFormattingRule[];
 };
 
 /** 工作表中一个可绑定到单元格窗口的超链接范围。 */
@@ -152,6 +169,28 @@ export type SpreadsheetCell = {
   hiddenByMerge?: boolean;
   /** 源文件为单元格声明的超链接。 */
   hyperlink?: OfficeHyperlink;
+  /** 源文件为当前单元格声明的批注。 */
+  annotation?: SpreadsheetAnnotation;
+  /** 当前命中的数据条或图标集条件格式。 */
+  conditionalVisual?: {
+    /** 数据条使用的宽度百分比。 */
+    dataBarPercent?: number;
+    /** 数据条使用的 CSS 颜色。 */
+    dataBarColor?: string;
+    /** 图标集中的零基图标索引。 */
+    iconIndex?: number;
+    /** 图标集名称。 */
+    iconSet?: string;
+  };
+  /** 当前单元格在 Excel Table 或 AutoFilter 中的显示角色。 */
+  table?: {
+    /** 当前单元格所属 Table；仅 AutoFilter 时为空。 */
+    tableId?: string;
+    /** 表头、普通数据或汇总行。 */
+    role: 'header' | 'body' | 'totals';
+    /** 表头是否显示静态筛选指示。 */
+    showFilter?: boolean;
+  };
 };
 
 /** 工作表合并区域及其行列边界。 */
@@ -353,4 +392,14 @@ export type SpreadsheetRangeData = {
   images: readonly SpreadsheetImage[];
   /** 与范围相交的图表。 */
   charts: readonly SpreadsheetChart[];
+  /** 当前工作表冻结或普通拆分窗格。 */
+  pane?: SpreadsheetPane;
+  /** 与范围相交的 Excel Table。 */
+  tables?: readonly SpreadsheetTable[];
+  /** 当前工作表级静态筛选范围。 */
+  autoFilter?: SpreadsheetAutoFilter;
+  /** 与范围相交的单元格批注。 */
+  annotations?: readonly SpreadsheetAnnotation[];
+  /** 与范围相交的条件格式规则。 */
+  conditionalFormatting?: readonly SpreadsheetConditionalFormattingRule[];
 };

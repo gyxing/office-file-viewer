@@ -1,6 +1,7 @@
 import type { OfficeSearchProvider } from '../search/types';
 import type { PresentationPerformanceProfile } from './presentationPerformance';
 import type {
+  PresentationAnnotation,
   PresentationWarning,
   SlideModel,
   SpeakerNotesModel,
@@ -17,6 +18,8 @@ export type PresentationSlideDescriptor = {
   hidden: boolean;
   /** 当前页是否存在演讲者备注。 */
   hasSpeakerNotes: boolean;
+  /** 当前页可按需读取的批注数量。 */
+  annotationCount: number;
   /** 未完整解析时用于性能画像的元素数量估值。 */
   estimatedElementCount: number;
   /** 当前页内容版本，重试或重新解析时递增。 */
@@ -62,6 +65,11 @@ export interface PresentationSource {
     index: number,
     signal?: AbortSignal,
   ): Promise<SpeakerNotesModel | undefined>;
+  /** 只读取指定幻灯片的批注，不要求调用方加载其他页面。 */
+  getAnnotations(
+    index: number,
+    signal?: AbortSignal,
+  ): Promise<readonly PresentationAnnotation[]>;
   /** 确保指定内容范围已经开始加载或可用。 */
   ensureRange(start: number, end: number, signal?: AbortSignal): Promise<void>;
   /** 保留指定可视范围并回收远离窗口的缓存内容。 */

@@ -4,10 +4,7 @@ import {
   type OfficeRelationship,
 } from '../../shared/ooxml/media';
 import { getOfficePartRelationshipsPath } from '../../shared/ooxml/relationships';
-import {
-  readOfficeTheme,
-  type OfficeTheme,
-} from '../../shared/ooxml/theme';
+import { readOfficeTheme, type OfficeTheme } from '../../shared/ooxml/theme';
 import { emuToPx } from '../../shared/ooxml/units';
 import { parseWpsWebExtensionChartModel } from '../../shared/ooxml/wpsChart';
 import {
@@ -35,11 +32,14 @@ import {
   formatPptxTextField,
   type PptxTextFieldContext,
 } from './formatPptxTextField';
+import { parsePptxComments } from './parsePptxComments';
 import {
   hasPptxHyperlinkAction,
   parsePptxHyperlink,
   type PptxSlideTargetMap,
 } from './parsePptxHyperlink';
+import { parsePptxMediaElement } from './parsePptxMedia';
+import { parsePptxTransition } from './parsePptxTransitions';
 import { parsePptxSpeakerNotes } from './parseSpeakerNotes';
 import type {
   LayoutDefinition,
@@ -1042,6 +1042,11 @@ function parsePptxObjectHyperlink(
   );
 }
 
+/** 读取 PresentationML 非可视属性中的源对象编号，供现代批注精确定位。 */
+function readPptxSourceObjectId(node: Element) {
+  return attr(descendantByLocalName(node, 'cNvPr'), 'id') ?? undefined;
+}
+
 function parseGroupElement(
   node: Element,
   index: number,
@@ -1132,7 +1137,21 @@ export function parsePptxVisualTree(
     );
 
   nodes.forEach((node, elementIndex) => {
+    const sourceObjectId = readPptxSourceObjectId(node);
     if (matchesLocalName(node, 'pic')) {
+      const media = parsePptxMediaElement(
+        node,
+        elementIndex,
+        packageState,
+        rels,
+      );
+      if (media) {
+        media.id = `${sourcePrefix}-${media.id}`;
+        media.sourceObjectId = sourceObjectId;
+        media.hyperlink = parsePptxObjectHyperlink(node, rels, slideTargets);
+        elements.push(media);
+        return;
+      }
       const chart = parseWpsWebExtensionChart(
         node,
         elementIndex,
@@ -1142,12 +1161,14 @@ export function parsePptxVisualTree(
       if (chart) {
         chart.hyperlink = parsePptxObjectHyperlink(node, rels, slideTargets);
         chart.id = `${sourcePrefix}-${chart.id}`;
+        chart.sourceObjectId = sourceObjectId;
         elements.push(chart);
         return;
       }
       const image = parseImageElement(node, elementIndex, packageState, rels);
       image.hyperlink = parsePptxObjectHyperlink(node, rels, slideTargets);
       image.id = `${sourcePrefix}-${image.id}`;
+      image.sourceObjectId = sourceObjectId;
       elements.push(image);
       return;
     }
@@ -1175,6 +1196,7 @@ export function parsePptxVisualTree(
           : parseUnsupportedElement(elementIndex, 'Unsupported graphic frame'));
       element.hyperlink = parsePptxObjectHyperlink(node, rels, slideTargets);
       element.id = `${sourcePrefix}-${element.id}`;
+      element.sourceObjectId = sourceObjectId;
       elements.push(element);
       return;
     }
@@ -1206,10 +1228,7 @@ export function parsePptxVisualTree(
     const inherited = ph
       ? resolvePlaceholderStyle(ph, placeholderStyles)
       : shapeStyleNode
-      ? mergePlaceholderStyle(
-          defaultTextStyle,
-          placeholderStyles?.['other:0'],
-        )
+      ? mergePlaceholderStyle(defaultTextStyle, placeholderStyles?.['other:0'])
       : defaultTextStyle;
     const txBody = childByLocalName(node, 'txBody');
     const hasText = Boolean(txBody);
@@ -1222,11 +1241,7 @@ export function parsePptxVisualTree(
     const visualNode = childByLocalName(node, 'spPr');
     const imageFill = descendantByLocalName(visualNode, 'blipFill');
     const visual = visualNode
-      ? readShapeVisualStyle(
-          visualNode,
-          theme,
-          shapeStyleNode,
-        )
+      ? readShapeVisualStyle(visualNode, theme, shapeStyleNode)
       : undefined;
     const hasVisibleVisual = Boolean(
       imageFill ||
@@ -1251,6 +1266,7 @@ export function parsePptxVisualTree(
       const image = parseImageElement(node, elementIndex, packageState, rels);
       image.hyperlink = parsePptxObjectHyperlink(node, rels, slideTargets);
       image.id = `${sourcePrefix}-image-fill-${elementIndex}`;
+      image.sourceObjectId = sourceObjectId;
       elements.push(image);
       // 图片填充是形状的视觉底层；仅当文本框确有内容时继续叠加文字。
       if (!hasTextContent) return;
@@ -1279,6 +1295,7 @@ export function parsePptxVisualTree(
     elements[elements.length - 1].id = `${sourcePrefix}-${
       elements[elements.length - 1].id
     }`;
+    elements[elements.length - 1].sourceObjectId = sourceObjectId;
   });
 
   return elements;
@@ -2101,6 +2118,24 @@ export function parseSlideXml(
     ),
   );
 
+  const commentResult = parsePptxComments(
+    packageState,
+    relPath,
+    `slide-${index}`,
+    index - 1,
+    width,
+    height,
+    elements,
+  );
+  const transitionResult = parsePptxTransition(
+    childByLocalName(slide, 'transition'),
+    index - 1,
+  );
+  const warnings = [
+    ...commentResult.warnings,
+    ...(transitionResult.warning ? [transitionResult.warning] : []),
+  ];
+
   return {
     id: `slide-${index}`,
     index,
@@ -2112,6 +2147,9 @@ export function parseSlideXml(
       packageState.relationships,
       relPath,
     ),
+    annotations: commentResult.annotations,
+    transition: transitionResult.transition,
+    warnings: warnings.length ? warnings : undefined,
     elements,
   };
 }

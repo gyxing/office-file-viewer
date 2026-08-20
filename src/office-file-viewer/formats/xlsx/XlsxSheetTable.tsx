@@ -65,6 +65,34 @@ function XlsxSheetTableComponent({
     () => rowHeaderHeights.reduce((sum, height) => sum + height, 0),
     [rowHeaderHeights],
   );
+  const frozenRowTopByIndex = useMemo(() => {
+    const offsets = new Map<number, number>();
+    if (!sheet.pane || sheet.pane.state === 'split') return offsets;
+    let top = stickyInset + renderedColumnHeaderHeight;
+    tableModel.rows.forEach(({ row }, index) => {
+      if (row.index > sheet.pane!.frozenRows) return;
+      offsets.set(row.index, top);
+      top += rowHeaderHeights[index];
+    });
+    return offsets;
+  }, [
+    renderedColumnHeaderHeight,
+    rowHeaderHeights,
+    sheet.pane,
+    stickyInset,
+    tableModel.rows,
+  ]);
+  const frozenColumnLeftByIndex = useMemo(() => {
+    const offsets = new Map<number, number>();
+    if (!sheet.pane || sheet.pane.state === 'split') return offsets;
+    let left = stickyInset + XLSX_ROW_HEADER_WIDTH;
+    tableModel.columns.forEach(({ column, width }) => {
+      if (column.index > sheet.pane!.frozenColumns) return;
+      offsets.set(column.index, left);
+      left += width;
+    });
+    return offsets;
+  }, [sheet.pane, stickyInset, tableModel.columns]);
   const cellStyleCache = useMemo(() => {
     const cache = new Map<string, CSSProperties>();
     tableModel.rows.forEach((row) => {
@@ -126,7 +154,15 @@ function XlsxSheetTableComponent({
           <div
             key={column.index}
             className="office-file-xlsx-sheet-table__overlay-column-header"
-            style={{ width, height: renderedColumnHeaderHeight }}
+            style={{
+              width,
+              height: renderedColumnHeaderHeight,
+              position: frozenColumnLeftByIndex.has(column.index)
+                ? 'sticky'
+                : undefined,
+              left: frozenColumnLeftByIndex.get(column.index),
+              zIndex: frozenColumnLeftByIndex.has(column.index) ? 5 : undefined,
+            }}
           >
             {column.label}
           </div>
@@ -148,6 +184,11 @@ function XlsxSheetTableComponent({
             style={{
               width: XLSX_ROW_HEADER_WIDTH,
               height: rowHeaderHeights[index],
+              position: frozenRowTopByIndex.has(row.index)
+                ? 'sticky'
+                : undefined,
+              top: frozenRowTopByIndex.get(row.index),
+              zIndex: frozenRowTopByIndex.has(row.index) ? 5 : undefined,
             }}
           >
             {row.index}
@@ -210,6 +251,12 @@ function XlsxSheetTableComponent({
                       style.borderColor ?? '#b9c2d0'
                     }`
                   : '1px solid #d9e0ea';
+                const frozenTop = frozenRowTopByIndex.get(cell.rowIndex);
+                const frozenLeft = frozenColumnLeftByIndex.get(
+                  cell.columnIndex,
+                );
+                const frozen =
+                  frozenTop !== undefined || frozenLeft !== undefined;
                 return (
                   <td
                     key={cell.ref}
@@ -227,6 +274,22 @@ function XlsxSheetTableComponent({
                       borderRight: style.borderRight ?? fallbackBorder,
                       borderBottom: style.borderBottom ?? fallbackBorder,
                       borderLeft: style.borderLeft ?? fallbackBorder,
+                      position: frozen ? 'sticky' : undefined,
+                      top: frozenTop,
+                      left: frozenLeft,
+                      zIndex:
+                        frozenTop !== undefined && frozenLeft !== undefined
+                          ? 6
+                          : frozen
+                          ? 4
+                          : undefined,
+                      background: frozen
+                        ? style.backgroundColor ?? '#fff'
+                        : undefined,
+                      boxShadow:
+                        frozenTop !== undefined || frozenLeft !== undefined
+                          ? '0 1px 0 #91a0b3, 1px 0 0 #91a0b3'
+                          : undefined,
                     }}
                   >
                     <SpreadsheetCellRenderer

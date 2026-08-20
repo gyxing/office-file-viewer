@@ -7,6 +7,7 @@ import { inferOfficeFontBaseWeight } from '../../fonts/OfficeFontResolver';
 import type {
   ChartElement,
   ImageElement,
+  MediaElement,
   ShapeElement,
   SlideBackground,
   SlideElement,
@@ -262,6 +263,7 @@ async function parseShape(
   }
   const common = {
     id: `ppt-shape-${shapeId}`,
+    sourceObjectId: String(shapeId),
     x: anchor.x,
     y: anchor.y,
     width: anchor.width,
@@ -333,6 +335,31 @@ async function parseShape(
       chartId: `ppt-chart-${externalObjectId}`,
     };
     return chart;
+  }
+  const mediaSource = externalObjectId
+    ? context.presentationMedia.get(externalObjectId)
+    : undefined;
+  if (mediaSource) {
+    const posterSrc =
+      blipIndex === undefined ? undefined : context.blipUrls.get(blipIndex);
+    const media: MediaElement = {
+      id: common.id,
+      sourceObjectId: common.sourceObjectId,
+      type: 'media',
+      x: common.x,
+      y: common.y,
+      width: common.width,
+      height: common.height,
+      rotate: common.rotate,
+      flipH: common.flipH,
+      flipV: common.flipV,
+      zIndex: common.zIndex,
+      hyperlink: common.hyperlink,
+      media: mediaSource,
+      posterSrc,
+      alt: `PowerPoint 媒体 ${externalObjectId}`,
+    };
+    return media;
   }
   const textbox = findChild(record, OFFICE_ART_RECORD.CLIENT_TEXTBOX);
   const metroText = textbox

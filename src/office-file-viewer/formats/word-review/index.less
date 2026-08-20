@@ -1,0 +1,244 @@
+.office-file-word-revision {
+  position: relative;
+  cursor: pointer;
+  transition: background 120ms ease, box-shadow 120ms ease;
+}
+
+.office-file-word-revision--insert {
+  color: var(--office-file-revision-color);
+  text-decoration: underline;
+  text-decoration-color: var(--office-file-revision-color);
+  text-underline-offset: 2px;
+}
+
+.office-file-word-revision--delete {
+  color: var(--office-file-revision-color);
+  background: var(--office-file-revision-tint);
+  text-decoration: line-through;
+  text-decoration-color: var(--office-file-revision-color);
+}
+
+.office-file-word-revision--format {
+  border-bottom: 1px dotted var(--office-file-revision-color);
+}
+
+.office-file-word-revision:hover,
+.office-file-word-revision[data-active='true'] {
+  background: var(--office-file-revision-tint);
+  box-shadow: inset 0 -2px var(--office-file-revision-color);
+}
+
+.office-file-word-paragraph-revision {
+  box-shadow: inset 2px 0 var(--office-file-revision-color);
+}
+
+.office-file-word-review-overlay {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.office-file-word-markup-portal {
+  position: absolute;
+  z-index: 6;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.office-file-word-markup-portal__extent {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+
+.office-file-word-markup-connector {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  opacity: 0.82;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.office-file-word-markup-connector path {
+  fill: none;
+  stroke: var(--office-file-word-markup-color);
+  stroke-dasharray: 3 3;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.office-file-word-markup-connector[data-emphasized='true'] {
+  opacity: 1;
+}
+
+.office-file-word-markup-connector[data-emphasized='true'] path {
+  stroke-width: 1.5;
+}
+
+.office-file-word-markup-callout {
+  position: absolute;
+  z-index: 6;
+  display: flex;
+  box-sizing: border-box;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 8px;
+  overflow: hidden;
+  padding: 4px 8px 4px 10px;
+  color: #1f2937;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-left: 2px solid var(--office-file-word-markup-color);
+  border-radius: 0;
+  box-shadow: none;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background 120ms ease;
+}
+
+.office-file-word-markup-callout:hover,
+.office-file-word-markup-callout[data-emphasized='true'] {
+  background: rgb(22 119 210 / 8%);
+}
+
+.office-file-word-markup-callout--revision:hover,
+.office-file-word-markup-callout--revision[data-emphasized='true'] {
+  background: rgb(229 72 77 / 8%);
+}
+
+.office-file-word-markup-callout[data-resolved='true'] {
+  opacity: 0.64;
+}
+
+.office-file-word-markup-callout:focus-visible {
+  outline: 1px solid var(--office-file-word-markup-color);
+  outline-offset: 1px;
+}
+
+.office-file-word-markup-callout__avatar {
+  display: grid;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  margin-top: 1px;
+  color: #fff;
+  font-size: 18px;
+  background: var(--office-file-word-markup-color);
+  border-radius: 2px;
+}
+
+.office-file-word-markup-callout__content {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.office-file-word-markup-callout__content strong {
+  overflow: hidden;
+  color: var(--office-file-word-markup-color);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.office-file-word-markup-callout__content > span {
+  display: block;
+  max-height: 2.9em;
+  overflow: hidden;
+  color: #111827;
+  overflow-wrap: anywhere;
+}
+
+.office-file-docx-note-reference {
+  margin: 0 1px;
+  vertical-align: super;
+}
+
+.office-file-docx-note-reference button {
+  padding: 0;
+  color: #0958d9;
+  font: inherit;
+  font-size: 0.75em;
+  line-height: 1;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.office-file-docx-note-reference button:focus-visible {
+  outline: 1px solid #1677ff;
+  outline-offset: 1px;
+}
+
+.office-file-word-notes {
+  z-index: 3;
+  color: #334155;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.office-file-word-notes--footnotes {
+  position: absolute;
+  max-height: calc(
+    var(--office-file-docx-page-height) -
+      var(--office-file-docx-page-margin-top) -
+      var(--office-file-docx-page-margin-bottom) - 24px
+  );
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: #fff;
+}
+
+.office-file-word-notes--endnotes {
+  position: relative;
+  margin-top: 18px;
+}
+
+.office-file-word-notes__separator {
+  display: block;
+  width: 30%;
+  margin-bottom: 5px;
+  border-top: 1px solid #64748b;
+}
+
+.office-file-word-notes__item {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  gap: 3px;
+  margin-top: 3px;
+}
+
+.office-file-word-notes__item > sup {
+  color: #1f2937;
+  text-align: right;
+}
+
+.office-file-word-notes__content {
+  min-width: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .office-file-word-markup-callout,
+  .office-file-word-markup-connector {
+    transition-duration: 1ms;
+  }
+}

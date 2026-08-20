@@ -164,3 +164,26 @@ export function getDocxCssLineHeight(block: DocxParagraphBlock) {
   // OOXML 的 exact/atLeast 行距已经换算为像素，不能作为无单位倍率传给 React。
   return block.lineHeight > 4 ? `${block.lineHeight}px` : block.lineHeight;
 }
+
+/**
+ * 读取分页测量使用的流式块高度，跳过修订投影后不再参与排版的隐藏块。
+ */
+export function measureVisibleDocxBlockHeight(
+  elements: readonly HTMLElement[],
+  index: number,
+): number {
+  const element = elements[index];
+  const style = window.getComputedStyle(element);
+  if (style.display === 'none' || element.offsetHeight === 0) return 0;
+
+  // 隐藏修订块的 offsetTop 会回落到 0，必须寻找下一个可见块才能保持流式高度连续。
+  for (let nextIndex = index + 1; nextIndex < elements.length; nextIndex += 1) {
+    const candidate = elements[nextIndex];
+    const candidateStyle = window.getComputedStyle(candidate);
+    if (candidateStyle.display === 'none' || candidate.offsetHeight === 0) {
+      continue;
+    }
+    return Math.max(0, candidate.offsetTop - element.offsetTop);
+  }
+  return element.offsetHeight + Number.parseFloat(style.marginBottom || '0');
+}

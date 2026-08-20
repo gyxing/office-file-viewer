@@ -11,6 +11,11 @@ import type {
 } from './docParseTypes';
 import { readDocNumberingCatalog } from './parseDocNumbering';
 import {
+  hasDocPropertyRevision,
+  parseDocCharacterRevisions,
+  readDocRevisionAuthors,
+} from './parseDocRevisions';
+import {
   isDocParagraphTocStyle,
   parseDocStyleOutlineCatalog,
   readDocParagraphOutlineLevel,
@@ -110,6 +115,14 @@ export function readDocFib(wordDocument: Uint8Array): DocFib {
     ccpTxbx: readFibField(wordDocument, 100),
     fcStshf: readFibField(wordDocument, 154),
     lcbStshf: readFibField(wordDocument, 158),
+    fcPlcffndRef: readFibField(wordDocument, 170),
+    lcbPlcffndRef: readFibField(wordDocument, 174),
+    fcPlcffndTxt: readFibField(wordDocument, 178),
+    lcbPlcffndTxt: readFibField(wordDocument, 182),
+    fcPlcfandRef: readFibField(wordDocument, 186),
+    lcbPlcfandRef: readFibField(wordDocument, 190),
+    fcPlcfandTxt: readFibField(wordDocument, 194),
+    lcbPlcfandTxt: readFibField(wordDocument, 198),
 
     fcPlcfSed: readFibField(wordDocument, 202),
     lcbPlcfSed: readFibField(wordDocument, 206),
@@ -127,10 +140,22 @@ export function readDocFib(wordDocument: Uint8Array): DocFib {
     lcbPlcfBkl: readFibField(wordDocument, 342),
     fcClx: readFibField(wordDocument, 418),
     lcbClx: readFibField(wordDocument, 422),
+    fcGrpXstAtnOwners: readFibField(wordDocument, 442),
+    lcbGrpXstAtnOwners: readFibField(wordDocument, 446),
     fcPlcSpaMom: readFibField(wordDocument, 474),
     lcbPlcSpaMom: readFibField(wordDocument, 478),
+    fcPlcfAtnBkf: readFibField(wordDocument, 490),
+    lcbPlcfAtnBkf: readFibField(wordDocument, 494),
+    fcPlcfAtnBkl: readFibField(wordDocument, 498),
+    lcbPlcfAtnBkl: readFibField(wordDocument, 502),
+    fcPlcfendRef: readFibField(wordDocument, 522),
+    lcbPlcfendRef: readFibField(wordDocument, 526),
+    fcPlcfendTxt: readFibField(wordDocument, 530),
+    lcbPlcfendTxt: readFibField(wordDocument, 534),
     fcDggInfo: readFibField(wordDocument, 554),
     lcbDggInfo: readFibField(wordDocument, 558),
+    fcSttbfRMark: readFibField(wordDocument, 562),
+    lcbSttbfRMark: readFibField(wordDocument, 566),
     fcPlcfTxbxTxt: readFibField(wordDocument, 602),
     lcbPlcfTxbxTxt: readFibField(wordDocument, 606),
     fcPlfLst: readFibField(wordDocument, 738),
@@ -708,11 +733,13 @@ function readDocSections(
     };
     let gridMode = 0;
     let linePitch: number | undefined;
+    let propertyRevision = false;
     const fcSepx = tableView.getInt32(sedOffset + index * 12 + 2, true);
     if (fcSepx >= 0 && fcSepx + 2 <= wordDocument.length) {
       const length = readInt16(wordView, fcSepx);
       if (length > 0 && fcSepx + 2 + length <= wordDocument.length) {
         const grpprl = wordDocument.slice(fcSepx + 2, fcSepx + 2 + length);
+        propertyRevision = hasDocPropertyRevision(grpprl);
         const grpprlView = new DataView(
           grpprl.buffer,
           grpprl.byteOffset,
@@ -758,6 +785,7 @@ function readDocSections(
         gridMode !== 0 && linePitch !== undefined && linePitch > 0
           ? twipToPx(linePitch)
           : undefined,
+      propertyRevision: propertyRevision || undefined,
     });
   }
 
@@ -1023,7 +1051,17 @@ function parseChpxFkpPage(
     const chpxLength = page[chpxStart] ?? 0;
     const grpprl = page.slice(chpxStart + 1, chpxStart + 1 + chpxLength);
     const style = parseGrpprlStyle(grpprl, fonts);
-    if (style) runs.push({ fcStart, fcEnd, style });
+    const revisions = parseDocCharacterRevisions(grpprl);
+    const propertyRevision = hasDocPropertyRevision(grpprl);
+    if (style || revisions.length || propertyRevision) {
+      runs.push({
+        fcStart,
+        fcEnd,
+        style,
+        revisions: revisions.length ? revisions : undefined,
+        propertyRevision: propertyRevision || undefined,
+      });
+    }
   }
 
   return runs;
@@ -1134,8 +1172,10 @@ function parsePapxFkpPage(
       resolvedGrpprl,
       outlineCatalog,
     );
+    const propertyRevision = hasDocPropertyRevision(directGrpprl);
     if (
       style ||
+      propertyRevision ||
       structure.inTable !== undefined ||
       structure.tableRowEnd !== undefined ||
       structure.tableRowHeight !== undefined ||
@@ -1157,6 +1197,7 @@ function parsePapxFkpPage(
         ...structure,
         outlineLevel,
         isTableOfContents,
+        propertyRevision: propertyRevision || undefined,
       });
     }
   }
@@ -1207,6 +1248,40 @@ function styleForRange(
       (style, run) => mergeBinaryTextStyle(style, run.style),
       undefined,
     );
+}
+
+/** 将字符范围内的二进制修订属性转换为共享 Word 修订模型。 */
+function reviewForRange(
+  byteStart: number,
+  byteEnd: number,
+  charStart: number,
+  charEnd: number,
+  characterRuns: DocCharacterRun[],
+  authors: readonly string[],
+) {
+  const revisions = characterRuns
+    .filter((run) => run.fcEnd > byteStart && run.fcStart < byteEnd)
+    .flatMap((run) => run.revisions ?? []);
+  const unique = new Map(
+    revisions.map((revision) => [
+      `${revision.kind}:${revision.authorIndex ?? -1}:${
+        revision.createdAt ?? ''
+      }`,
+      revision,
+    ]),
+  );
+  if (!unique.size) return undefined;
+  return {
+    revisions: [...unique.values()].map((revision, index) => ({
+      id: `doc-revision-${revision.kind}-${charStart}-${charEnd}-${index}`,
+      kind: revision.kind,
+      author:
+        revision.authorIndex === undefined
+          ? undefined
+          : authors[revision.authorIndex],
+      createdAt: revision.createdAt,
+    })),
+  };
 }
 
 function paragraphStyleForRange(
@@ -1310,6 +1385,7 @@ function textSegmentsFromPieces(
   pieces: DocPiece[],
   characterRuns: DocCharacterRun[],
   paragraphRuns: DocParagraphRun[],
+  revisionAuthors: readonly string[],
 ) {
   return pieces.flatMap((piece) => {
     return splitPieceByStyleRuns(piece, characterRuns, paragraphRuns).map(
@@ -1339,6 +1415,14 @@ function textSegmentsFromPieces(
             ),
           ),
           ...structure,
+          review: reviewForRange(
+            byteStart,
+            byteEnd,
+            scopedPiece.charStart,
+            scopedPiece.charEnd,
+            characterRuns,
+            revisionAuthors,
+          ),
         };
       },
     );
@@ -1465,6 +1549,7 @@ export function readDocBinaryContent(input: {
     fib.lcbPlfLfo,
   );
   const bookmarkResult = readDocBookmarks(tableStream, fib);
+  const revisionAuthors = readDocRevisionAuthors(tableStream, fib);
   const sections = readDocSections(wordDocument, tableStream, fib);
   const normalStyle = readInheritedParagraphStyle(
     new Uint8Array([0, 0]),
@@ -1497,7 +1582,12 @@ export function readDocBinaryContent(input: {
     outlineCatalog,
     numbering,
     bookmarks: bookmarkResult.bookmarks,
+    revisionAuthors,
     bookmarkWarnings: bookmarkResult.warnings,
+    hasUnsupportedPropertyRevisions:
+      sections.some((section) => section.propertyRevision) ||
+      characterRuns.some((run) => run.propertyRevision) ||
+      paragraphRuns.some((run) => run.propertyRevision),
   };
 }
 
@@ -1518,5 +1608,6 @@ export function readDocStorySegments(
     pieces,
     content.characterRuns,
     content.paragraphRuns,
+    content.revisionAuthors,
   );
 }

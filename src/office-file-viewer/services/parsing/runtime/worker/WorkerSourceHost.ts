@@ -386,6 +386,9 @@ export class WorkerSourceHost {
       if (operation === 'get-materialized-sheet') {
         return source.getMaterializedSheet(sheetId, signal);
       }
+      if (operation === 'get-sheet-annotations') {
+        return source.getAnnotations(sheetId, signal);
+      }
       if (operation === 'get-range') {
         return source.getRange(sheetId, args.range as SpreadsheetRange, signal);
       }
@@ -408,6 +411,9 @@ export class WorkerSourceHost {
       }
       if (operation === 'get-notes') {
         return source.getSpeakerNotes(Number(args.index), signal);
+      }
+      if (operation === 'get-presentation-annotations') {
+        return source.getAnnotations(Number(args.index), signal);
       }
       if (operation === 'ensure-presentation-range') {
         return source.ensureRange(Number(args.start), Number(args.end), signal);

@@ -1,5 +1,4 @@
 import { openOfficeArchive } from '../../shared/ooxml/archive';
-import { imageMimeType } from '../../shared/ooxml/media';
 import type {
   OfficeArchiveEntry,
   OfficeArchiveReader,
@@ -14,12 +13,16 @@ import type { OfficeArchiveResourcePolicy } from '../../shared/resource/OfficeRe
 import {
   convertOfficeImageBlob,
   officeImageMimeType,
+  officeMetafileFormat,
 } from '../media/officeMetafile';
+import { getPresentationMediaMimeType } from '../presentation/mediaTypes';
 import {
   createPresentationPerformanceProfile,
   type PresentationPerformanceProfile,
 } from '../presentation/presentationPerformance';
 import type { OfficeResourceSource } from '../resource-store';
+import { parsePptxComments } from './parsePptxComments';
+import { readPptxDefaultTextStyle } from './parsePptxSlide';
 import type {
   PptxPackageContext,
   PptxSlideDescriptor,
@@ -32,7 +35,6 @@ import {
   readTableStyles,
   readTheme,
 } from './readPptxPresentationParts';
-import { readPptxDefaultTextStyle } from './parsePptxSlide';
 
 /** PPTX 压缩包的大文件判定指标。 */
 export type PptxArchiveProfile = {
@@ -162,6 +164,8 @@ export async function readPptxStructure(
         path === 'ppt/theme/theme1.xml' ||
         path === 'ppt/tableStyles.xml' ||
         path.endsWith('.rels') ||
+        /ppt\/(comments|authors)\//i.test(path) ||
+        /ppt\/commentAuthors\.xml$/i.test(path) ||
         /^ppt\/slideMasters\/slideMaster\d+\.xml$/i.test(path) ||
         /^ppt\/slideLayouts\/slideLayout\d+\.xml$/i.test(path),
     );
@@ -174,15 +178,19 @@ export async function readPptxStructure(
       const source: OfficeResourceSource = {
         kind: 'lazy',
         id: `${sessionId}:pptx:${entry.path}`,
-        mimeType: officeImageMimeType(entry.path),
+        mimeType: officeMetafileFormat(entry.path)
+          ? officeImageMimeType(entry.path)
+          : getPresentationMediaMimeType(entry.path),
         size: entry.uncompressedSize,
         async load(resourceSignal) {
           const blob = await reader.readBlob(
             entry.path,
-            imageMimeType(entry.path),
+            getPresentationMediaMimeType(entry.path),
             resourceSignal,
           );
-          return convertOfficeImageBlob(entry.path, blob);
+          return officeMetafileFormat(entry.path)
+            ? convertOfficeImageBlob(entry.path, blob)
+            : blob;
         },
       };
       mediaByPath[entry.path] = source;
@@ -229,11 +237,20 @@ export async function readPptxStructure(
     const slideSize =
       archiveEntries.find((entry) => entry.path === slidePath)
         ?.uncompressedSize ?? 0;
+    const annotationCount = parsePptxComments(
+      packageState,
+      relsPath,
+      `slide-${index + 1}`,
+      index,
+      size.width,
+      size.height,
+    ).annotations.length;
     return {
       id: `slide-${index + 1}`,
       index: index + 1,
       hidden: attr(node, 'show') === '0',
       hasSpeakerNotes: Boolean(notesPath),
+      annotationCount,
       estimatedElementCount: Math.max(1, Math.ceil(slideSize / 1024)),
       revision: 1,
       status: 'estimated',

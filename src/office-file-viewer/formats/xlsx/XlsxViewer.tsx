@@ -1,14 +1,24 @@
 // XlsxViewer 负责 XLSX 工作簿预览的整体布局，包括工作表选择和当前工作表内容区。
-import React, { memo, useCallback, useMemo, useRef, useState } from 'react';
+import React, {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { createMemoryOfficeAnnotationSource } from '../../services/annotations';
 import type { OfficeFileViewerPreviewState } from '../../services/parsing/internalTypes';
 import type { SpreadsheetSource } from '../../services/spreadsheet/SpreadsheetSource';
 import { getSpreadsheetSource } from '../../services/spreadsheet/spreadsheetSourceRegistry';
 import type { SpreadsheetViewMode } from '../../services/spreadsheet/viewMode';
+import { useOfficeAnnotationSourceRegistration } from '../../shared/annotations';
 import { OfficePreviewEmpty } from '../common/OfficePreviewEmpty';
 import { useOfficeSearchProviderRegistration } from '../search/OfficeSearchContext';
 import './index.less';
 import type { SpreadsheetNavigationController } from './spreadsheetNavigation';
 import { SpreadsheetSheetState } from './SpreadsheetSheetState';
+import { useSpreadsheetAnnotationNavigation } from './useSpreadsheetAnnotationNavigation';
 import { useSpreadsheetHyperlinkNavigation } from './useSpreadsheetHyperlinkNavigation';
 import { useSpreadsheetSearchNavigation } from './useSpreadsheetSearchNavigation';
 import { useSpreadsheetSource } from './useSpreadsheetSource';
@@ -101,6 +111,46 @@ function XlsxSourceViewer({
   }
   const state = useSpreadsheetSource(source, activeSheetId);
   const descriptor = state.activeDescriptor;
+  const [annotations, setAnnotations] = useState<
+    Awaited<ReturnType<SpreadsheetSource['getAnnotations']>>
+  >([]);
+  useEffect(() => {
+    const controller = new AbortController();
+    setAnnotations([]);
+    if (!descriptor || descriptor.kind !== 'worksheet') {
+      return () => controller.abort();
+    }
+    void source.getAnnotations(descriptor.id, controller.signal).then(
+      (items) => {
+        if (!controller.signal.aborted) setAnnotations(items);
+      },
+      () => undefined,
+    );
+    return () => controller.abort();
+  }, [descriptor, source]);
+  const annotationSource = useMemo(
+    () =>
+      descriptor && annotations.length
+        ? createMemoryOfficeAnnotationSource({
+            annotations: annotations.map((annotation) => ({
+              id: annotation.id,
+              author: annotation.author,
+              createdAt: annotation.createdAt,
+              text: annotation.text,
+              resolved: annotation.resolved,
+              parentId: annotation.parentId,
+              target: {
+                kind: 'spreadsheet-cell',
+                sheetId: descriptor.id,
+                row: annotation.row,
+                column: annotation.column,
+              },
+            })),
+          })
+        : undefined,
+    [annotations, descriptor],
+  );
+  useOfficeAnnotationSourceRegistration(annotationSource);
   const navigationControllerRef = useRef<SpreadsheetNavigationController>();
   useSpreadsheetHyperlinkNavigation({
     snapshot: state.snapshot,
@@ -109,6 +159,11 @@ function XlsxSourceViewer({
     navigationControllerRef,
   });
   useSpreadsheetSearchNavigation({
+    activeSheetId: descriptor?.id,
+    onSelectSheet,
+    navigationControllerRef,
+  });
+  useSpreadsheetAnnotationNavigation({
     activeSheetId: descriptor?.id,
     onSelectSheet,
     navigationControllerRef,

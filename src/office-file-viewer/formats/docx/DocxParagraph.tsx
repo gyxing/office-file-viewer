@@ -1,8 +1,17 @@
 // DocxParagraph 渲染 DOCX 段落块，并应用段落级缩进、间距、边框和文字样式。
-import type { CSSProperties } from 'react';
+import type { CSSProperties, MouseEvent } from 'react';
 import React, { memo, useMemo } from 'react';
 import type { DocxParagraphBlock } from '../../services/docx/types';
+import {
+  OfficeAnnotationMarker,
+  useOfficeAnnotationRuntime,
+} from '../../shared/annotations';
 import { useOfficeFontResolver } from '../../shared/fonts/OfficeFontProvider';
+import {
+  useWordRevisionMode,
+  WordRevisionText,
+} from '../word-review/WordRevisionText';
+import { getWordRevisionCssVariables } from '../word-review/wordRevisionAppearance';
 import { DocxInlineContent } from './DocxInlineContent';
 import {
   buildDocxTextStyle,
@@ -70,6 +79,28 @@ function DocxParagraphComponent({
   searchBlockId = block.sourceBlockId ?? block.id,
 }: DocxParagraphProps) {
   const resolveFontFamily = useOfficeFontResolver();
+  const revisionMode = useWordRevisionMode();
+  const reviewRuntime = useOfficeAnnotationRuntime();
+  const paragraphRevision =
+    block.review?.revisions?.[(block.review.revisions?.length ?? 0) - 1];
+  const paragraphRevisionActive =
+    reviewRuntime?.state.activeRevision?.id === paragraphRevision?.id;
+  const handleParagraphRevisionClick = (event: MouseEvent<HTMLElement>) => {
+    const target = event.target as Element;
+    const nestedRevision = target.closest('[data-office-word-revision]');
+    if (
+      !paragraphRevision ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.defaultPrevented ||
+      target.closest('[data-office-annotation-id]') ||
+      (nestedRevision && nestedRevision !== event.currentTarget)
+    ) {
+      return;
+    }
+    if (paragraphRevisionActive) reviewRuntime?.actions.clearActiveRevision();
+    else void reviewRuntime?.actions.activateRevisionId(paragraphRevision.id);
+  };
   // 浏览器段落 strut 需采用首个实际文字运行的字体指标，否则不同字体基线会额外撑高每一行。
   const lineMetricInline =
     block.inlines.find(
@@ -90,7 +121,8 @@ function DocxParagraphComponent({
   const hasFlowContent = block.inlines.some((inline) => {
     if (inline.type === 'text') return inline.text.length > 0;
     if (inline.type === 'tab') return true;
-    if (inline.type === 'break') return true;
+    if (inline.type === 'break' || inline.type === 'note-reference')
+      return true;
     if (inline.type === 'image') return !inline.image.position;
     if (inline.type === 'shape') return !inline.shape.position;
     if (inline.type === 'chart') return !inline.chart.position;
@@ -122,6 +154,7 @@ function DocxParagraphComponent({
       : getDocxEmptyParagraphHeight(block);
     return {
       ...positionStyle,
+      display: block.revisionHidden ? 'none' : undefined,
       position: block.position ? positionStyle.position : 'relative',
       transform:
         !block.position && shapeBaselineOffset !== undefined
@@ -198,37 +231,95 @@ function DocxParagraphComponent({
   const renderInline = (
     inline: (typeof block.inlines)[number],
     index: number,
-  ) => (
-    <DocxInlineContent
-      key={`${block.id}-inline-${index}`}
-      inline={inline}
-      sourceId={`${block.id}-inline-${index}`}
-      searchBlockId={searchBlockId}
-      resolveFontFamily={resolveFontFamily}
-      isParagraphEnd={index === paragraphEndInlineIndex}
-      autoSpaceLatin={
-        inline.type === 'text' &&
-        inline.advanceWidth === undefined &&
-        block.autoSpaceLatin !== false
-      }
-      autoSpaceNumber={
-        inline.type === 'text' &&
-        inline.advanceWidth === undefined &&
-        block.autoSpaceNumber !== false
-      }
-      previousTextCharacter={findAdjacentDocxTextCharacter(
-        block.inlines,
-        index,
-        -1,
-      )}
-      nextTextCharacter={findAdjacentDocxTextCharacter(block.inlines, index, 1)}
-    />
-  );
-
+  ) => {
+    const content = (
+      <DocxInlineContent
+        key={`${block.id}-inline-${index}`}
+        inline={inline}
+        sourceId={`${block.id}-inline-${index}`}
+        searchBlockId={searchBlockId}
+        resolveFontFamily={resolveFontFamily}
+        isParagraphEnd={index === paragraphEndInlineIndex}
+        autoSpaceLatin={
+          inline.type === 'text' &&
+          inline.advanceWidth === undefined &&
+          block.autoSpaceLatin !== false
+        }
+        autoSpaceNumber={
+          inline.type === 'text' &&
+          inline.advanceWidth === undefined &&
+          block.autoSpaceNumber !== false
+        }
+        previousTextCharacter={findAdjacentDocxTextCharacter(
+          block.inlines,
+          index,
+          -1,
+        )}
+        nextTextCharacter={findAdjacentDocxTextCharacter(
+          block.inlines,
+          index,
+          1,
+        )}
+      />
+    );
+    if (inline.type !== 'text') return content;
+    let reviewedContent = (
+      <WordRevisionText
+        key={`${block.id}-review-${index}`}
+        review={inline.review}
+      >
+        {content}
+      </WordRevisionText>
+    );
+    const annotationIds = inline.review?.annotationIds ?? [];
+    for (
+      let markerIndex = annotationIds.length - 1;
+      markerIndex >= 0;
+      markerIndex -= 1
+    ) {
+      const annotationId = annotationIds[markerIndex];
+      reviewedContent = (
+        <OfficeAnnotationMarker
+          key={`${block.id}-annotation-${annotationId}-${index}`}
+          annotationId={annotationId}
+          visible={revisionMode === 'markup'}
+        >
+          {reviewedContent}
+        </OfficeAnnotationMarker>
+      );
+    }
+    return reviewedContent;
+  };
   return (
     <Container
-      className={isTocLine ? 'office-file-docx-toc-line' : undefined}
-      style={paragraphStyle}
+      className={[
+        isTocLine ? 'office-file-docx-toc-line' : undefined,
+        revisionMode === 'markup' && block.review?.revisions?.length
+          ? 'office-file-word-paragraph-revision'
+          : undefined,
+      ]
+        .filter(Boolean)
+        .join(' ')}
+      style={{
+        ...paragraphStyle,
+        ...(revisionMode === 'markup' && paragraphRevision
+          ? getWordRevisionCssVariables(paragraphRevision)
+          : undefined),
+      }}
+      data-office-word-revision={
+        revisionMode === 'markup' ? paragraphRevision?.id : undefined
+      }
+      data-office-word-revision-kind={
+        revisionMode === 'markup' ? paragraphRevision?.kind : undefined
+      }
+      data-office-word-revision-author={
+        revisionMode === 'markup' ? paragraphRevision?.author : undefined
+      }
+      data-office-word-revision-created-at={
+        revisionMode === 'markup' ? paragraphRevision?.createdAt : undefined
+      }
+      data-active={paragraphRevisionActive ? 'true' : undefined}
+      onClick={handleParagraphRevisionClick}
       data-office-word-outline-target={
         block.outlineLevel !== undefined ? block.id : undefined
       }

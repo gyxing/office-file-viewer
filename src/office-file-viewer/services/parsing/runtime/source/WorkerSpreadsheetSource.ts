@@ -1,4 +1,5 @@
 import type { OfficeSearchProvider } from '../../../search/types';
+import type { SpreadsheetAnnotation } from '../../../spreadsheet/semantics/types';
 import type { SpreadsheetPerformanceProfile } from '../../../spreadsheet/spreadsheetPerformance';
 import type {
   SpreadsheetSheetLayout,
@@ -86,6 +87,14 @@ export class WorkerSpreadsheetSource implements SpreadsheetSource {
   getMaterializedSheet(sheetId: string, signal?: AbortSignal) {
     return this.client.request<SpreadsheetSheet | undefined>(
       'get-materialized-sheet',
+      { sheetId },
+      { signal },
+    );
+  }
+
+  getAnnotations(sheetId: string, signal?: AbortSignal) {
+    return this.client.request<readonly SpreadsheetAnnotation[]>(
+      'get-sheet-annotations',
       { sheetId },
       { signal },
     );

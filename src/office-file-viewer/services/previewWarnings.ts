@@ -41,6 +41,14 @@ export type OfficeFileViewerWarning =
   | OfficeFileViewerGenericWarning
   | OfficeFontFallbackWarning;
 
+/** 从 DOC 字符串警告中恢复可选的稳定代码前缀。 */
+function parseDocWarning(message: string) {
+  const match = /^\[([A-Z0-9_]+)\]\s*(.*)$/s.exec(message);
+  return match
+    ? { code: match[1], message: match[2] }
+    : { code: 'DOC_PARSE_WARNING', message };
+}
+
 /** 读取物化模型或按需数据源已经公开的解析警告。 */
 export function collectOfficePreviewWarnings(
   preview: OfficeFileViewerPreviewState,
@@ -48,10 +56,9 @@ export function collectOfficePreviewWarnings(
   let warnings: ReadonlyArray<{ code: string; message: string }> = [];
   if (preview.mode === 'source') {
     if (preview.previewKind === 'doc') {
-      warnings = preview.summary.warnings.map((message) => ({
-        code: 'DOC_PARSE_WARNING',
-        message,
-      }));
+      warnings = preview.summary.warnings.map(parseDocWarning);
+    } else if (preview.previewKind === 'docx') {
+      warnings = preview.summary.review?.warnings ?? [];
     } else if (
       preview.previewKind === 'ppt' ||
       preview.previewKind === 'pptx'
@@ -59,10 +66,9 @@ export function collectOfficePreviewWarnings(
       warnings = preview.summary.warnings ?? [];
     }
   } else if (preview.model.kind === 'doc') {
-    warnings = preview.model.document.warnings.map((message) => ({
-      code: 'DOC_PARSE_WARNING',
-      message,
-    }));
+    warnings = preview.model.document.warnings.map(parseDocWarning);
+  } else if (preview.model.kind === 'docx') {
+    warnings = preview.model.document.review?.warnings ?? [];
   } else if (preview.model.kind === 'ppt' || preview.model.kind === 'pptx') {
     warnings = preview.model.document.warnings ?? [];
   } else if (preview.model.kind === 'xls' || preview.model.kind === 'xlsx') {

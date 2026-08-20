@@ -7,6 +7,7 @@ import type {
 import type { SpreadsheetViewMode } from '../../services/spreadsheet/viewMode';
 import { useOfficeHyperlink } from '../../shared/hyperlink';
 import { OfficeSearchHighlightedText } from '../search/OfficeSearchContext';
+import { SpreadsheetAnnotationMarker } from './SpreadsheetAnnotationMarker';
 import type { SpreadsheetCellContentBounds } from './spreadsheetCellOverflow';
 import {
   estimateSpreadsheetLineWidth,
@@ -167,6 +168,20 @@ function resolveBoundedWrapFontSize(
   return Math.max(1, Math.floor(lower * 100) / 100);
 }
 
+/** 渲染不依赖图标字体的条件格式图标。 */
+function SpreadsheetConditionalIcon({ index }: { index: number }) {
+  const colors = ['#cf1322', '#d48806', '#389e0d'];
+  return (
+    <svg
+      className="office-file-spreadsheet-conditional-icon"
+      viewBox="0 0 12 12"
+      aria-hidden="true"
+    >
+      <circle cx="6" cy="6" r="4.5" fill={colors[index] ?? colors[0]} />
+    </svg>
+  );
+}
+
 /** 渲染电子表格单元格的共享内容层。 */
 function SpreadsheetCellRendererComponent({
   cell,
@@ -210,6 +225,19 @@ function SpreadsheetCellRendererComponent({
   );
   return (
     <>
+      {cell.conditionalVisual?.dataBarPercent !== undefined ? (
+        <span
+          className="office-file-spreadsheet-data-bar"
+          aria-hidden="true"
+          style={{
+            width: `${cell.conditionalVisual.dataBarPercent}%`,
+            backgroundColor: cell.conditionalVisual.dataBarColor,
+          }}
+        />
+      ) : null}
+      {cell.conditionalVisual?.iconIndex !== undefined ? (
+        <SpreadsheetConditionalIcon index={cell.conditionalVisual.iconIndex} />
+      ) : null}
       <div
         {...hyperlinkProps}
         className={`office-file-xlsx-sheet-table__cell-content${
@@ -253,6 +281,13 @@ function SpreadsheetCellRendererComponent({
       </div>
       {cell.style?.diagonalBorder ? (
         <SpreadsheetDiagonalBorderLayer border={cell.style.diagonalBorder} />
+      ) : null}
+      <SpreadsheetAnnotationMarker annotation={cell.annotation} />
+      {cell.table?.showFilter ? (
+        <span
+          className="office-file-spreadsheet-filter-indicator"
+          aria-hidden="true"
+        />
       ) : null}
     </>
   );

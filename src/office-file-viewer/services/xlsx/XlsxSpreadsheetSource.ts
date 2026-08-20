@@ -267,6 +267,10 @@ export class XlsxSpreadsheetSource implements SpreadsheetSource {
           images: [...previewImages, ...cellImages],
           charts: objects.charts,
           hyperlinks: parsed.hyperlinks,
+          tables: parsed.tables,
+          autoFilter: parsed.autoFilter,
+          annotations: parsed.annotations,
+          conditionalFormatting: parsed.conditionalFormatting,
         });
         const elapsed = performance.now() - startedAt;
         const nextProfile = createSpreadsheetPerformanceProfile({
@@ -405,8 +409,20 @@ export class XlsxSpreadsheetSource implements SpreadsheetSource {
       merges: [...range.merges],
       images: [...range.images],
       charts: [...range.charts],
+      pane: layout.pane,
+      tables: range.tables ? [...range.tables] : undefined,
+      autoFilter: range.autoFilter,
+      annotations: range.annotations ? [...range.annotations] : undefined,
+      conditionalFormatting: range.conditionalFormatting
+        ? [...range.conditionalFormatting]
+        : undefined,
     };
     return sheet;
+  }
+
+  async getAnnotations(sheetId: string, signal?: AbortSignal) {
+    await this.ensureSheet(sheetId, signal);
+    return this.stores.get(sheetId)!.getAnnotations();
   }
 
   async getRange(

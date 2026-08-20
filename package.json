@@ -1,6 +1,6 @@
 {
   "name": "office-file-viewer",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "A browser-based React component for offline preview of DOC/DOCX/WPS, XLS/XLSX, and PPT/PPTX files.",
   "keywords": [
     "office",
@@ -55,9 +55,10 @@
     "dist"
   ],
   "scripts": {
-    "build": "yarn run build:modules && yarn run build:styles",
+    "build": "yarn run build:modules && yarn run build:worker && yarn run build:styles",
     "build:modules": "father build",
     "build:styles": "node scripts/build-package-styles.mjs",
+    "build:worker": "node scripts/build-package-worker.mjs",
     "check": "yarn run check:types && yarn run check:lint && yarn run check:styles && yarn run check:build",
     "check:build": "yarn run build && yarn run docs:build",
     "check:lint": "eslint src/office-file-viewer --ext .ts,.tsx",
@@ -105,6 +106,7 @@
     "@umijs/lint": "^4.0.0",
     "antd": "^5.29.3",
     "dumi": "^2.4.38-beta.1",
+    "esbuild": "~0.18.20",
     "eslint": "^8.23.0",
     "father": "^4.1.0",
     "husky": "^8.0.1",

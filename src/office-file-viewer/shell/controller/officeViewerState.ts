@@ -1,3 +1,4 @@
+import type { WordRevisionMode } from '../../services/annotations/types';
 import type { ParseProgress } from '../../services/parsing';
 import type { OfficeFileViewerPreviewState } from '../../services/parsing/internalTypes';
 import type { PreviewKind } from '../../services/preview';
@@ -61,6 +62,10 @@ export type OfficeViewerViewState = {
   showWordOutline: boolean;
   /** 当前文档查找侧栏是否展开。 */
   showSearch: boolean;
+  /** 当前文档审阅侧栏是否展开。 */
+  showReviewPanel: boolean;
+  /** Word 修订内容采用的只读投影模式。 */
+  wordRevisionMode: WordRevisionMode;
   /** 电子表格当前采用的显示模式。 */
   spreadsheetViewMode: SpreadsheetViewMode;
 };
@@ -152,6 +157,16 @@ export type OfficeViewerAction =
       visible: boolean;
     }
   | {
+      type: 'review-panel-changed';
+      /** 文档审阅侧栏的目标状态。 */
+      visible: boolean;
+    }
+  | {
+      type: 'word-revision-mode-changed';
+      /** Word 修订内容的目标投影模式。 */
+      mode: WordRevisionMode;
+    }
+  | {
       type: 'spreadsheet-view-mode-changed';
       /** 电子表格的目标显示模式。 */
       viewMode: SpreadsheetViewMode;
@@ -172,6 +187,8 @@ export function createInitialOfficeViewerState(options: {
       internalShowSpeakerNotes: options.defaultViewState.speakerNotesVisible,
       showWordOutline: options.defaultViewState.wordOutlineVisible,
       showSearch: options.defaultViewState.searchVisible,
+      showReviewPanel: options.defaultViewState.reviewPanelVisible,
+      wordRevisionMode: options.defaultViewState.wordRevisionMode,
       spreadsheetViewMode: options.defaultViewState.spreadsheetViewMode,
     },
   };
@@ -245,6 +262,7 @@ export function officeViewerReducer(
           activeSheetId: undefined,
           showWordOutline: false,
           showSearch: false,
+          showReviewPanel: false,
           spreadsheetViewMode: DEFAULT_SPREADSHEET_VIEW_MODE,
         },
       };
@@ -263,6 +281,8 @@ export function officeViewerReducer(
           internalShowSpeakerNotes: action.viewState.speakerNotesVisible,
           showWordOutline: action.viewState.wordOutlineVisible,
           showSearch: action.viewState.searchVisible,
+          showReviewPanel: action.viewState.reviewPanelVisible,
+          wordRevisionMode: action.viewState.wordRevisionMode,
           spreadsheetViewMode: action.viewState.spreadsheetViewMode,
         },
       };
@@ -313,6 +333,7 @@ export function officeViewerReducer(
           activeSheetId: undefined,
           showWordOutline: false,
           showSearch: false,
+          showReviewPanel: false,
           spreadsheetViewMode: DEFAULT_SPREADSHEET_VIEW_MODE,
         },
       };
@@ -359,6 +380,18 @@ export function officeViewerReducer(
       return {
         ...state,
         view: { ...state.view, showSearch: action.visible },
+      };
+    case 'review-panel-changed':
+      if (state.view.showReviewPanel === action.visible) return state;
+      return {
+        ...state,
+        view: { ...state.view, showReviewPanel: action.visible },
+      };
+    case 'word-revision-mode-changed':
+      if (state.view.wordRevisionMode === action.mode) return state;
+      return {
+        ...state,
+        view: { ...state.view, wordRevisionMode: action.mode },
       };
     case 'spreadsheet-view-mode-changed':
       if (state.view.spreadsheetViewMode === action.viewMode) return state;

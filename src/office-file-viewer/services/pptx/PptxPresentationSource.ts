@@ -73,6 +73,7 @@ export class PptxPresentationSource implements PresentationSource {
   >();
   private readonly notes = new Map<number, SpeakerNotesModel | undefined>();
   private revision = 1;
+  private warnings: PresentationSourceSnapshot['warnings'] = [];
   private disposed = false;
   private disposePromise?: Promise<void>;
   private performance: PresentationPerformanceProfile;
@@ -123,6 +124,7 @@ export class PptxPresentationSource implements PresentationSource {
       theme: this.context.theme,
       slideCount: this.descriptors.length,
       slides: this.descriptors,
+      warnings: this.warnings,
       performance: { ...this.performance },
     };
   }
@@ -178,10 +180,14 @@ export class PptxPresentationSource implements PresentationSource {
               this.performance.totalElementWeight +
               getPresentationSlideWeight(slide),
           };
+          if (slide.warnings?.length) {
+            this.warnings = [...(this.warnings ?? []), ...slide.warnings];
+          }
           this.updateDescriptor(index, {
             status: 'ready',
             errorMessage: undefined,
             estimatedElementCount: slide.elements.length,
+            annotationCount: slide.annotations?.length ?? 0,
           });
           return slide;
         },
@@ -229,6 +235,11 @@ export class PptxPresentationSource implements PresentationSource {
       );
     }
     return waitForSharedResult(request, signal);
+  }
+
+  async getAnnotations(index: number, signal?: AbortSignal) {
+    const slide = await this.getSlide(index, signal);
+    return slide.annotations ?? [];
   }
 
   async ensureRange(start: number, end: number, signal?: AbortSignal) {

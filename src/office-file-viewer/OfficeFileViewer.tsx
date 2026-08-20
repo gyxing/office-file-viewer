@@ -1,6 +1,13 @@
 // OfficeFileViewer 是组件库对外主入口，负责组合本地化、控制器、工具栏和格式预览舞台。
 import type { CSSProperties, ReactElement } from 'react';
-import React, { memo, useMemo } from 'react';
+import React, {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { OfficeSearchRuntimeBoundary } from './formats/search/OfficeSearchContext';
 import { OfficeSearchSidebar } from './formats/search/OfficeSearchSidebar';
 import { useOfficeSearchController } from './formats/search/useOfficeSearchController';
@@ -10,6 +17,7 @@ import {
   useOfficeFileViewerMessages,
   type OfficeFileViewerLocale,
 } from './locale';
+import type { OfficeFileViewerReviewOptions } from './services/annotations/types';
 import type { OfficeFileViewerFontOptions } from './services/fonts/types';
 import type { OfficeFileViewerUri } from './services/input/normalizeOfficeFileUri';
 import type {
@@ -17,6 +25,11 @@ import type {
   OfficePreviewReadyInfo,
   ParseProgress,
 } from './services/parsing';
+import type { OfficeFileViewerPresentationMediaOptions } from './services/presentation/mediaTypes';
+import type {
+  OfficeFileViewerPresentationTransitions,
+  PresentationNavigationIntent,
+} from './services/presentation/transitionTypes';
 import {
   isPresentationPreviewKind,
   isSpreadsheetPreviewKind,
@@ -25,6 +38,11 @@ import {
 import type { OfficeFileViewerWarning } from './services/previewWarnings';
 import { OfficeResourceStoreProvider } from './services/resource-store';
 import type { OfficeFileViewerSearchOptions } from './services/search/types';
+import {
+  OfficeAnnotationPanel,
+  OfficeAnnotationRuntimeBoundary,
+  useOfficeAnnotationController,
+} from './shared/annotations';
 import { OfficeFontProvider } from './shared/fonts/OfficeFontProvider';
 import {
   OfficeHyperlinkProvider,
@@ -43,6 +61,7 @@ import {
   OfficeToolbar,
   type FullscreenControls,
   type OfficeToolbarFormatControls,
+  type OfficeToolbarReviewControls,
   type OfficeToolbarSearchControls,
   type ZoomControls,
 } from './shell/Toolbar';
@@ -53,15 +72,20 @@ import type {
   OfficeFileViewerViewStateChange,
 } from './shell/viewState';
 
+export type { OfficeFileViewerReviewOptions } from './services/annotations/types';
 export type { OfficeFileViewerFontOptions } from './services/fonts/types';
 export type {
   OfficeFileViewerUri,
   OfficeFileViewerUriLoader,
 } from './services/input/normalizeOfficeFileUri';
+export type { OfficeFileViewerPresentationMediaOptions } from './services/presentation/mediaTypes';
+export type { OfficeFileViewerPresentationTransitions } from './services/presentation/transitionTypes';
 export type { OfficeFileViewerSearchOptions } from './services/search/types';
 
 /** 未声明搜索选项时复用稳定空对象，避免无关渲染重置查询。 */
 const DEFAULT_SEARCH_OPTIONS: OfficeFileViewerSearchOptions = {};
+/** 未声明审阅选项时复用稳定空对象，保持旧调用方默认行为。 */
+const DEFAULT_REVIEW_OPTIONS: OfficeFileViewerReviewOptions = {};
 
 /** Office文件预览器组件属性。 */
 export type OfficeFileViewerProps = {
@@ -110,6 +134,12 @@ export type OfficeFileViewerProps = {
   hyperlink?: boolean;
   /** 控制文档全文查找；默认启用，传 false 时移除入口和运行时。 */
   search?: false | OfficeFileViewerSearchOptions;
+  /** 控制批注、修订与注释审阅；默认启用，传 false 时移除运行时。 */
+  review?: false | OfficeFileViewerReviewOptions;
+  /** 控制演示文稿内嵌媒体、外部媒体和下载操作。 */
+  presentationMedia?: false | OfficeFileViewerPresentationMediaOptions;
+  /** 是否按源文稿播放支持的页级切换，默认关闭。 */
+  transitions?: OfficeFileViewerPresentationTransitions;
   /** 配置源字体别名、全局回退字体和缺失字体诊断。 */
   fontOptions?: OfficeFileViewerFontOptions;
   /** 链接被有效激活时触发，可阻止组件执行默认导航。 */
@@ -140,6 +170,9 @@ function OfficeFileViewerContent({
   imagePreview,
   hyperlink = true,
   search,
+  review,
+  presentationMedia,
+  transitions = false,
   fontOptions,
   onHyperlinkActivate,
   onParseProgress,
@@ -149,12 +182,18 @@ function OfficeFileViewerContent({
   const searchOptions = searchEnabled
     ? search ?? DEFAULT_SEARCH_OPTIONS
     : DEFAULT_SEARCH_OPTIONS;
+  const reviewEnabled = review !== false;
+  const reviewOptions =
+    reviewEnabled && review ? review : DEFAULT_REVIEW_OPTIONS;
   const { state, actions, meta, viewerRef, resourceStore } =
     useOfficeViewerController({
       uri,
       defaultZoom,
       searchEnabled,
       defaultSearchVisible: Boolean(searchOptions.defaultVisible),
+      reviewEnabled,
+      defaultReviewPanelVisible: Boolean(reviewOptions.defaultPanelVisible),
+      defaultWordRevisionMode: reviewOptions.defaultRevisionMode ?? 'final',
       defaultViewState,
       viewState,
       onViewStateChange,
@@ -171,6 +210,22 @@ function OfficeFileViewerContent({
     });
   const { document: documentState, view } = state;
   const preview = meta.preview;
+  // Word 使用正文内的页侧标记区，固定审阅面板只服务 Excel 和 PowerPoint。
+  const isWordFormat = meta.format.kind === 'word';
+  const annotationController = useOfficeAnnotationController({
+    enabled: reviewEnabled,
+    sessionKey: preview?.sessionId,
+    showComments: reviewOptions.showComments !== false,
+    showNotes: reviewOptions.showNotes !== false,
+    onActivate: isWordFormat ? undefined : actions.openReviewPanel,
+  });
+  const reviewSnapshot = annotationController.state.snapshot;
+  const reviewPanelItemCount =
+    (annotationController.options.showComments ? reviewSnapshot.count : 0) +
+    (annotationController.options.showNotes ? reviewSnapshot.noteCount : 0);
+  const hasReviewPanelContent = !isWordFormat && reviewPanelItemCount > 0;
+  const reviewPanelVisible =
+    reviewEnabled && hasReviewPanelContent && view.showReviewPanel;
   const loading =
     documentState.phase === 'resolving' || documentState.phase === 'parsing';
   const parseProgress =
@@ -188,6 +243,43 @@ function OfficeFileViewerContent({
   const displayedFileName =
     loadedFileName ?? defaultFileName ?? messages.file.unloaded;
   const hasWordOutline = meta.format.kind === 'word' && meta.format.hasOutline;
+  const transitionTokenRef = useRef(0);
+  const [presentationTransitionIntent, setPresentationTransitionIntent] =
+    useState<PresentationNavigationIntent>();
+  useEffect(() => {
+    transitionTokenRef.current = 0;
+    setPresentationTransitionIntent(undefined);
+  }, [preview?.sessionId]);
+  const navigatePresentation = useCallback(
+    (direction: PresentationNavigationIntent['direction']) => {
+      if (meta.format.kind !== 'presentation') return;
+      const targetIndex =
+        view.activeSlideIndex + (direction === 'next' ? 1 : -1);
+      if (
+        (direction === 'next' && !meta.format.canNext) ||
+        (direction === 'previous' && !meta.format.canPrevious)
+      ) {
+        return;
+      }
+      transitionTokenRef.current += 1;
+      setPresentationTransitionIntent({
+        token: transitionTokenRef.current,
+        targetIndex,
+        direction,
+      });
+      if (direction === 'next') actions.nextSlide();
+      else actions.previousSlide();
+    },
+    [actions, meta.format, view.activeSlideIndex],
+  );
+  const previousPresentation = useCallback(
+    () => navigatePresentation('previous'),
+    [navigatePresentation],
+  );
+  const nextPresentation = useCallback(
+    () => navigatePresentation('next'),
+    [navigatePresentation],
+  );
   const formatControls = useMemo<OfficeToolbarFormatControls>(() => {
     if (meta.format.kind === 'presentation') {
       return {
@@ -197,8 +289,8 @@ function OfficeFileViewerContent({
             ? {
                 canPrevious: meta.format.canPrevious,
                 canNext: meta.format.canNext,
-                previous: actions.previousSlide,
-                next: actions.nextSlide,
+                previous: previousPresentation,
+                next: nextPresentation,
               }
             : undefined,
         speakerNotes: {
@@ -217,6 +309,15 @@ function OfficeFileViewerContent({
               toggle: actions.toggleWordOutline,
             }
           : undefined,
+        revisionMode:
+          reviewEnabled &&
+          (reviewSnapshot.supportsRevisionModes || reviewSnapshot.count > 0)
+            ? {
+                value: view.wordRevisionMode,
+                disabled: !meta.hasRenderableContent,
+                change: actions.changeWordRevisionMode,
+              }
+            : undefined,
       };
     }
     if (meta.format.kind === 'spreadsheet') {
@@ -231,16 +332,21 @@ function OfficeFileViewerContent({
     }
     return { kind: 'empty' };
   }, [
-    actions.nextSlide,
-    actions.previousSlide,
+    actions.changeWordRevisionMode,
     actions.changeSpreadsheetViewMode,
     actions.toggleSpeakerNotes,
     actions.toggleWordOutline,
     meta.format,
     meta.hasRenderableContent,
     meta.speakerNotesVisible,
+    nextPresentation,
+    previousPresentation,
+    reviewEnabled,
+    reviewSnapshot.count,
+    reviewSnapshot.supportsRevisionModes,
     view.showWordOutline,
     view.spreadsheetViewMode,
+    view.wordRevisionMode,
   ]);
   const zoomControls = useMemo<ZoomControls>(
     () => ({
@@ -280,6 +386,25 @@ function OfficeFileViewerContent({
     onOpen: actions.openSearch,
     onClose: actions.closeSearch,
   });
+  const reviewControls = useMemo<OfficeToolbarReviewControls>(
+    () =>
+      reviewEnabled && hasReviewPanelContent
+        ? {
+            kind: 'enabled',
+            visible: reviewPanelVisible,
+            disabled: false,
+            count: reviewPanelItemCount,
+            toggle: actions.toggleReviewPanel,
+          }
+        : { kind: 'disabled' },
+    [
+      actions.toggleReviewPanel,
+      hasReviewPanelContent,
+      reviewEnabled,
+      reviewPanelItemCount,
+      reviewPanelVisible,
+    ],
+  );
   const searchControls = useMemo<OfficeToolbarSearchControls>(
     () =>
       searchEnabled
@@ -315,6 +440,9 @@ function OfficeFileViewerContent({
       activeIndex: view.activeSlideIndex,
       zoom: view.zoom,
       showSpeakerNotes: meta.speakerNotesVisible,
+      mediaOptions: presentationMedia,
+      transitions,
+      transitionIntent: presentationTransitionIntent,
     };
   } else if (isSpreadsheetPreviewKind(preview.previewKind)) {
     previewStageState = {
@@ -330,6 +458,7 @@ function OfficeFileViewerContent({
       preview,
       zoom: view.zoom,
       showOutline: view.showWordOutline && hasWordOutline,
+      wordRevisionMode: view.wordRevisionMode,
     };
   } else {
     previewStageState = {
@@ -337,6 +466,7 @@ function OfficeFileViewerContent({
       preview,
       zoom: view.zoom,
       showOutline: view.showWordOutline && hasWordOutline,
+      wordRevisionMode: view.wordRevisionMode,
     };
   }
   // 专用 height 配置优先于 style.height，避免两个入口同时传值时结果不确定。
@@ -381,53 +511,69 @@ function OfficeFileViewerContent({
                 enabled={searchEnabled}
                 controller={searchController}
               >
-                <div className="office-file-viewer__layout">
-                  <OfficeToolbar
-                    fileName={displayedFileName}
-                    previewKind={meta.previewKind}
-                    formatControls={formatControls}
-                    zoomControls={zoomControls}
-                    fullscreenControls={fullscreenControls}
-                    searchControls={searchControls}
-                    onSelectFile={actions.selectFile}
-                  />
-                  <div className="office-file-viewer__content">
-                    <div className="office-file-viewer__workspace">
-                      {searchEnabled ? (
-                        <OfficeSearchSidebar
-                          visible={view.showSearch}
-                          sessionKey={preview?.sessionId}
-                          controller={searchController}
-                          onClose={actions.closeSearch}
-                          onShowOutline={
-                            hasWordOutline
-                              ? actions.toggleWordOutline
-                              : undefined
-                          }
-                        />
-                      ) : null}
-                      <div className="office-file-viewer__stage">
-                        <OfficePreviewStage
-                          state={previewStageState}
-                          onCloseWordOutline={actions.closeWordOutline}
-                          onOpenSearch={
-                            searchEnabled ? actions.openSearch : undefined
-                          }
-                          onSelectSlide={actions.selectSlide}
-                          onSelectSheet={actions.selectSheet}
-                        />
-                      </div>
-                    </div>
-                    <OfficeParseStatus
-                      progress={
-                        loading && meta.hasRenderableContent
-                          ? parseProgress
-                          : undefined
-                      }
-                      warning={partialWarning}
+                <OfficeAnnotationRuntimeBoundary
+                  enabled={reviewEnabled}
+                  controller={annotationController}
+                >
+                  <div className="office-file-viewer__layout">
+                    <OfficeToolbar
+                      fileName={displayedFileName}
+                      previewKind={meta.previewKind}
+                      formatControls={formatControls}
+                      zoomControls={zoomControls}
+                      fullscreenControls={fullscreenControls}
+                      searchControls={searchControls}
+                      reviewControls={reviewControls}
+                      onSelectFile={actions.selectFile}
                     />
+                    <div className="office-file-viewer__content">
+                      <div className="office-file-viewer__workspace">
+                        {searchEnabled ? (
+                          <OfficeSearchSidebar
+                            visible={view.showSearch}
+                            sessionKey={preview?.sessionId}
+                            controller={searchController}
+                            onClose={actions.closeSearch}
+                            onShowOutline={
+                              hasWordOutline
+                                ? actions.toggleWordOutline
+                                : undefined
+                            }
+                          />
+                        ) : null}
+                        <div className="office-file-viewer__stage">
+                          <OfficePreviewStage
+                            state={previewStageState}
+                            onCloseWordOutline={actions.closeWordOutline}
+                            onOpenSearch={
+                              searchEnabled ? actions.openSearch : undefined
+                            }
+                            onSelectSlide={actions.selectSlide}
+                            onSelectSheet={actions.selectSheet}
+                          />
+                        </div>
+                        {reviewEnabled && !isWordFormat ? (
+                          <OfficeAnnotationPanel
+                            visible={reviewPanelVisible}
+                            sessionKey={
+                              preview?.sessionId ?? 'empty-review-session'
+                            }
+                            controller={annotationController}
+                            onClose={actions.closeReviewPanel}
+                          />
+                        ) : null}
+                      </div>
+                      <OfficeParseStatus
+                        progress={
+                          loading && meta.hasRenderableContent
+                            ? parseProgress
+                            : undefined
+                        }
+                        warning={partialWarning}
+                      />
+                    </div>
                   </div>
-                </div>
+                </OfficeAnnotationRuntimeBoundary>
               </OfficeSearchRuntimeBoundary>
             </OfficeFontProvider>
           </OfficeImagePreviewProvider>

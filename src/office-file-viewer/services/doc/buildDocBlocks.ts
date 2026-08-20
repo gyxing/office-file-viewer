@@ -185,6 +185,8 @@ type DocFieldTextChunk = {
 
 /** 内部标记：EMBED 字段结果应消费 ObjectPool 预览，而非普通随文图片。 */
 const DOC_OBJECT_IMAGE_MARKER = '\ue000';
+/** 内部标记：脚注或尾注引用在标准化文本中保留独立行内节点。 */
+const DOC_NOTE_REFERENCE_MARKER = '\ue001';
 
 /** 跨样式片段保留 Word 字段结果，避免字段指令被 run 边界拆开后泄露为正文。 */
 function preserveDocFieldResultSegments(segments: DocTextSegment[]) {
@@ -320,10 +322,12 @@ function normalizeDocTextSegments(
   let objectImageIndex = 0;
 
   return preserveDocFieldResultSegments(segments).flatMap((segment) => {
-    const normalizedText = normalizeDocText(segment.text);
+    const normalizedText = segment.noteReference
+      ? DOC_NOTE_REFERENCE_MARKER
+      : normalizeDocText(segment.text);
 
     return normalizedText
-      .split(/(\n|\f|\u0001|\u0008|\ue000)/)
+      .split(/(\n|\f|\u0001|\u0008|\ue000|\ue001)/)
       .map((text, textIndex): DocImageSegment => {
         if (text === '\u0001') {
           const image = images[imageIndex];
@@ -347,6 +351,7 @@ function normalizeDocTextSegments(
             tableWidth: segment.tableWidth,
             tableCellLayouts: segment.tableCellLayouts,
             hyperlink: segment.hyperlink,
+            review: segment.review,
             bookmarkMarkers:
               textIndex === 0 ? segment.bookmarkMarkers : undefined,
           };
@@ -374,6 +379,30 @@ function normalizeDocTextSegments(
             tableWidth: segment.tableWidth,
             tableCellLayouts: segment.tableCellLayouts,
             hyperlink: segment.hyperlink,
+            review: segment.review,
+            bookmarkMarkers:
+              textIndex === 0 ? segment.bookmarkMarkers : undefined,
+          };
+        }
+        if (text === DOC_NOTE_REFERENCE_MARKER) {
+          return {
+            text,
+            style: segment.style,
+            noteReference: segment.noteReference,
+            inTable: segment.inTable,
+            tableRowEnd: segment.tableRowEnd,
+            tableRowHeight: segment.tableRowHeight,
+            tableRowHeightRule: segment.tableRowHeightRule,
+            pageBreakBefore: segment.pageBreakBefore,
+            outlineLevel: segment.outlineLevel,
+            isTableOfContents: segment.isTableOfContents,
+            listId: segment.listId,
+            listLevel: segment.listLevel,
+            tableColumns: segment.tableColumns,
+            tableAlign: segment.tableAlign,
+            tableOffsetLeft: segment.tableOffsetLeft,
+            tableWidth: segment.tableWidth,
+            tableCellLayouts: segment.tableCellLayouts,
             bookmarkMarkers:
               textIndex === 0 ? segment.bookmarkMarkers : undefined,
           };
@@ -400,6 +429,7 @@ function normalizeDocTextSegments(
             tableWidth: segment.tableWidth,
             tableCellLayouts: segment.tableCellLayouts,
             hyperlink: segment.hyperlink,
+            review: segment.review,
             bookmarkMarkers:
               textIndex === 0 ? segment.bookmarkMarkers : undefined,
           };
@@ -422,6 +452,7 @@ function normalizeDocTextSegments(
           tableWidth: segment.tableWidth,
           tableCellLayouts: segment.tableCellLayouts,
           hyperlink: segment.hyperlink,
+          review: segment.review,
           bookmarkMarkers:
             textIndex === 0 ? segment.bookmarkMarkers : undefined,
         };
@@ -429,11 +460,13 @@ function normalizeDocTextSegments(
       .filter(
         (item) =>
           item.image ||
+          item.noteReference ||
           item.bookmarkMarkers?.length ||
           (item.text.length &&
             item.text !== '\u0001' &&
             item.text !== '\u0008' &&
-            item.text !== DOC_OBJECT_IMAGE_MARKER),
+            item.text !== DOC_OBJECT_IMAGE_MARKER &&
+            item.text !== DOC_NOTE_REFERENCE_MARKER),
       );
   });
 }
@@ -457,7 +490,8 @@ function sameInlineHyperlink(left: DocTextInline, right: DocTextInline) {
   if (left.type !== 'text' || right.type !== 'text') return false;
   return (
     JSON.stringify(left.hyperlink ?? null) ===
-    JSON.stringify(right.hyperlink ?? null)
+      JSON.stringify(right.hyperlink ?? null) &&
+    JSON.stringify(left.review ?? null) === JSON.stringify(right.review ?? null)
   );
 }
 
@@ -594,7 +628,7 @@ function sliceLineInlines(line: DocLine, start: number) {
 
   line.inlines.forEach((inline) => {
     if (inline.type === 'image') return;
-    if (inline.type === 'bookmark') {
+    if (inline.type === 'bookmark' || inline.type === 'note-reference') {
       result.push(inline);
       return;
     }
@@ -1526,6 +1560,7 @@ export async function buildDocBlocksFromSegments(
           text: '\n',
           style: segment.style,
           hyperlink: segment.hyperlink,
+          review: segment.review,
         });
         currentLineSegments.push(segment);
         continue;
@@ -1537,6 +1572,13 @@ export async function buildDocBlocksFromSegments(
       const line = makeLine(segment);
       resetLine();
       await processLine(line);
+    } else if (segment.noteReference) {
+      currentLineInlines.push({
+        type: 'note-reference',
+        ...segment.noteReference,
+        style: segment.style,
+      });
+      currentLineSegments.push(segment);
     } else if (segment.image) {
       currentLineInlines.push({ type: 'image', image: segment.image });
       // 图片锚点同样携带所在段落的对齐与间距，不能只保留图片资源本身。
@@ -1564,6 +1606,7 @@ export async function buildDocBlocksFromSegments(
         text: segment.text,
         style: segment.style,
         hyperlink: segment.hyperlink,
+        review: segment.review,
       });
       currentLineSegments.push(segment);
     }

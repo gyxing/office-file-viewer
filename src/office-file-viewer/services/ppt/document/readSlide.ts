@@ -2,6 +2,8 @@ import type { ThemeModel } from '../../presentation/types';
 import { PPT_RECORD } from '../binary/constants';
 import { PptRecordReader } from '../binary/PptRecordReader';
 import { parsePptDrawing } from '../drawing';
+import { parsePptComments } from '../parsePptComments';
+import { parsePptTransition } from '../parsePptTransitions';
 import type {
   PptEditChain,
   PptParseContext,
@@ -67,6 +69,17 @@ export async function readPptSlide(
   const parsedDrawing = drawing
     ? await parsePptDrawing(drawing, theme, fonts, context)
     : undefined;
+  const elements = parsedDrawing?.elements ?? [];
+  const annotations = parsePptComments(
+    record,
+    `ppt-slide-${descriptor.persistId}`,
+    descriptor.index,
+    elements,
+  );
+  const transitionResult = parsePptTransition(record, descriptor.index);
+  if (transitionResult.warning) {
+    context.warnings.push(transitionResult.warning);
+  }
   return {
     id: `ppt-slide-${descriptor.persistId}`,
     persistId: descriptor.persistId,
@@ -77,7 +90,10 @@ export async function readPptSlide(
     masterId,
     hidden: descriptor.hidden,
     background: parsedDrawing?.background,
-    elements: parsedDrawing?.elements ?? [],
+    annotations,
+    transition: transitionResult.transition,
+    warnings: transitionResult.warning ? [transitionResult.warning] : undefined,
+    elements,
     sourceOffset: offset,
   };
 }
