@@ -115,7 +115,8 @@
   pointer-events: none;
 }
 
-.office-file-spreadsheet-view-mode {
+.office-file-spreadsheet-view-mode,
+.office-file-word-revision-mode {
   box-sizing: border-box;
   height: 32px;
   padding: 0 8px;
@@ -129,16 +130,19 @@
   transition: border-color 160ms ease, box-shadow 160ms ease;
 }
 
-.office-file-spreadsheet-view-mode:hover:not(:disabled) {
+.office-file-spreadsheet-view-mode:hover:not(:disabled),
+.office-file-word-revision-mode:hover:not(:disabled) {
   border-color: var(--office-file-control-hover);
 }
 
-.office-file-spreadsheet-view-mode:focus-visible {
+.office-file-spreadsheet-view-mode:focus-visible,
+.office-file-word-revision-mode:focus-visible {
   border-color: var(--office-file-control-hover);
   box-shadow: 0 0 0 2px rgb(22 119 255 / 12%);
 }
 
-.office-file-spreadsheet-view-mode:disabled {
+.office-file-spreadsheet-view-mode:disabled,
+.office-file-word-revision-mode:disabled {
   color: #94a3b8;
   background: #f8fafc;
   cursor: not-allowed;

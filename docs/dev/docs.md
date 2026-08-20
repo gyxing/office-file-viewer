@@ -178,6 +178,9 @@ Remote source rules:
 | `imagePreview`                   | `boolean \| OfficeFileViewerImagePreviewOptions`     | `true`            | Content-image preview, download, and context-menu configuration  |
 | `hyperlink`                      | `boolean`                                            | `true`            | Enables hyperlinks explicitly declared by the source document    |
 | `search`                         | `false \| OfficeFileViewerSearchOptions`             | `{}`              | Full-document search runtime and initial matching options        |
+| `review`                         | `false \| OfficeFileViewerReviewOptions`             | `{}`              | Read-only comments, revisions, footnotes, and endnotes           |
+| `presentationMedia`              | `false \| OfficeFileViewerPresentationMediaOptions`  | `{}`              | Presentation media, external-source, and download policy         |
+| `transitions`                    | `false \| 'source'`                                  | `false`           | Play supported source slide transitions                          |
 | `fontOptions`                    | `OfficeFileViewerFontOptions`                        | `{}`              | Font aliases, fallback families, and missing-font diagnostics    |
 | `onHyperlinkActivate`            | `(event: OfficeHyperlinkActivateEvent) => void`      | -                 | Called on valid activation and can prevent default navigation    |
 | `onParseProgress`                | `(progress: ParseProgress) => void`                  | -                 | Called when the current parse stage or progress changes          |
@@ -262,6 +265,47 @@ type OfficeFileViewerSearchOptions = {
 
 Search is enabled when the prop is omitted. Pass `false` to remove its action, keyboard shortcut, and runtime. Object values are uncontrolled defaults; use `viewState.searchVisible` for controlled visibility. Search covers Word body content, Excel cells, and visible text on PowerPoint slides. Word comments and PowerPoint speaker notes are currently excluded.
 
+### Read-only review and Word notes
+
+Review is enabled by default. Word shows the revision-view selector only when comments or revisions exist; comments and revisions render directly in the page-side markup rail without a Review button or fixed panel. Excel and PowerPoint expose the Review entry only when comments exist.
+
+```ts | pure
+type OfficeFileViewerReviewOptions = {
+  defaultPanelVisible?: boolean;
+  defaultRevisionMode?: 'final' | 'markup' | 'original';
+  showComments?: boolean;
+  showNotes?: boolean;
+};
+```
+
+`defaultPanelVisible` and `viewState.reviewPanelVisible` control only the Excel and PowerPoint review panel. Word page-side markup is controlled by `wordRevisionMode`.
+
+- DOCX restores comment threads, insertions, deletions, moves, and common formatting revisions with final, markup, and original read-only projections.
+- Word revision modes are switched from the toolbar. Markup places comments and revisions in one page-side rail: comments use blue author markers, revisions use red author markers, and dashed leaders connect both kinds directly to their text while the rail resolves vertical collisions. The physical page and one base rail are centered as a stable group; additional rail columns grow only to the right, so scrolling does not shift the page horizontally. It uses neither rounded cards nor a separate review list. Narrow containers retain the rail through horizontal scrolling instead of covering body content.
+- DOC/WPS restores recoverable insert/delete metadata and binary comments. Unsupported property-level original formatting keeps the final format and emits a stable warning.
+- DOC, DOCX, and WPS footnotes appear on the reference page, long footnotes continue in order, and endnotes appear at the end. Search excludes comments and notes by default.
+- Excel cell comments and PowerPoint slide comments use the same review panel. Selecting an item switches the worksheet or slide before focusing its target.
+- `review={false}` removes the review runtime without changing the final body projection.
+
+### Spreadsheet business semantics
+
+XLS/XLSX restore frozen panes, Table/AutoFilter metadata, cell comments, and a safe conditional-formatting subset: `cellIs`, two/three-color scales, data bars, common icon sets, duplicate/unique values, Top10, and above/below average. Rules that require range-wide statistics are scanned in Source tiles and cached per rule, so scrolling does not recalculate against only the visible window. Unsupported formula rules are retained as summaries and emit warnings. The viewer never re-filters, re-sorts, or fully recalculates the workbook.
+
+### Presentation media and slide transitions
+
+```ts | pure
+type OfficeFileViewerPresentationMediaOptions = {
+  allowExternal?: boolean;
+  download?: boolean;
+};
+
+type OfficeFileViewerPresentationTransitions = false | 'source';
+```
+
+Embedded audio and video use native browser controls with `autoplay={false}` and `preload="metadata"`. A media URL is created only for the active slide, and leaving the slide pauses playback and releases its reference. `presentationMedia={false}` disables playback; downloads default to enabled. External media makes no request by default. `allowExternal: true` permits only HTTP(S); `javascript`, `data`, `vbscript`, local paths, and unknown executable schemes remain blocked.
+
+Transitions are disabled by default. With `transitions="source"`, toolbar previous/next actions restore `fade`, `push`, `wipe`, `split`, `cover`, and `uncover`. Thumbnail, search, and comment navigation does not trigger transitions. Rapid navigation cancels the old animation, and reduced-motion preference switches immediately.
+
 ### Font aliases and fallback
 
 The package does not bundle or download Office fonts. Rendering keeps the source font first, then adds built-in aliases, host aliases, global fallback families, and a CSS generic family. Hosts can extend the mapping for their deployment environment:
@@ -297,7 +341,9 @@ type OfficeFileViewerViewState = {
   activeSheetId?: string;
   wordOutlineVisible: boolean;
   searchVisible: boolean;
+  reviewPanelVisible: boolean;
   speakerNotesVisible: boolean;
+  wordRevisionMode: 'final' | 'markup' | 'original';
   spreadsheetViewMode: 'source' | 'reading';
 };
 ```
@@ -342,6 +388,14 @@ type OfficeParseOptions = {
 | `'never'`  | Disables Workers. Parsing runs on the main thread, while large files can still use on-demand sources and virtual rendering                                                                      |
 
 Each active parse session owns its Worker and resource reader. Source changes, cancellation, and unmounting cancel requests and release the Worker, archive reader, and Blob URLs. Searches plus on-demand page, worksheet, slide, and lazy-resource reads stay inside the Worker for large files; the main thread receives only the structured data currently needed for display. `workerFactory` is intended for hosts with special asset paths or Content Security Policy requirements; most applications should use the built-in factory.
+
+Vite pre-bundles dependencies in its development server. Only when development explicitly forces `worker: 'always'`, add the package to `optimizeDeps.exclude` so Vite preserves and processes the built-in Worker asset URL. Production builds and the default `auto` mode do not require this setting.
+
+```ts | pure
+export default {
+  optimizeDeps: { exclude: ['office-file-viewer'] },
+};
+```
 
 The file-profile thresholds used by `auto` select complete parsing, on-demand reads, virtual rendering, and task-yielding strategies. They are not file-size limits and never reject a file by themselves. Small files intentionally keep the simpler complete-model path to avoid unnecessary Worker messaging and lazy-read overhead.
 
@@ -483,13 +537,13 @@ try {
 
 | Document type      | Extension | Main parser coverage                                                                                                   |
 | ------------------ | --------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Word OOXML         | `.docx`   | Paragraphs, lists, tables, images, charts, shapes, links, styles, and theme colors                                     |
-| Word 97-2003       | `.doc`    | Binary structure, text runs, tables, lists, formatting, images, field links, body bookmarks, and OfficeArt layers      |
-| WPS Writer         | `.wps`    | Reuses the DOC binary pipeline, prioritizing readable content, field links, body bookmarks, and document resources     |
-| Excel OOXML        | `.xlsx`   | Worksheets, values, styles, merged cells, dimensions, floating images, charts, and links                               |
-| Excel 97-2003      | `.xls`    | BIFF8 cells, formatting, merged ranges, dimensions, OfficeArt images, charts, and links                                |
-| PowerPoint OOXML   | `.pptx`   | Master/layout inheritance, text, shapes, images, tables, links, backgrounds, effects, notes, fields, and common charts |
-| PowerPoint 97-2003 | `.ppt`    | Binary records, masters, text, shapes, images, links, embedded charts, compatible text, speaker notes, and fallbacks   |
+| Word OOXML         | `.docx`   | Body layout, graphics, links, outlines, comments, revisions, footnotes, and endnotes                                   |
+| Word 97-2003       | `.doc`    | Binary body, tables, graphics, links, outlines, and recoverable comments, revisions, footnotes, and endnotes           |
+| WPS Writer         | `.wps`    | Reuses the DOC binary pipeline, prioritizing body content, resources, and recoverable review semantics                 |
+| Excel OOXML        | `.xlsx`   | Worksheets, graphics, links, frozen panes, tables/filters, comments, and common conditional formatting                 |
+| Excel 97-2003      | `.xls`    | BIFF8 cells, OfficeArt, charts, links, panes, comments, and recoverable filter, table, and conditional-format metadata |
+| PowerPoint OOXML   | `.pptx`   | Masters/layouts, graphics, links, comments, notes, embedded/external media, and six common slide transitions           |
+| PowerPoint 97-2003 | `.ppt`    | Binary masters, graphics, links, comments, notes, recoverable media, common transitions, and static fallbacks          |
 
 Common chart coverage includes line, column, pie, doughnut, area, scatter, bubble, radar, and map charts. Embedded document snapshots are used when possible for unsupported or damaged chart content.
 
@@ -523,7 +577,9 @@ The display-mode selector appears only for XLS/XLSX previews:
 - Legacy DOC/WPS, XLS, and PPT parsing prioritizes readable content. Complex pagination, anchors, text wrapping, OfficeArt effects, and animations may differ from desktop applications.
 - Page-level DOC/WPS OfficeArt canvases are currently displayed as a single SVG image, so independent link hit areas for child shapes cannot be retained precisely. These links emit a non-fatal degradation warning; field links and body bookmarks are unaffected.
 - OOXML files can contain unsupported macros, ActiveX controls, OLE objects, SmartArt, vendor extensions, or complex animations. Such content may be ignored, degraded, or represented by an embedded static snapshot.
-- Word documents currently display the final body state. Comments, tracked-change markup, and review balloons are not shown; footnotes and endnotes are also excluded from body rendering and full-document search.
+- Review is read-only: comments cannot be added, replied to, deleted, resolved, or written back. DOC/WPS property-level revisions that cannot restore original values keep final formatting.
+- Excel does not re-run filters, sorting, or a complete formula engine. Unsupported conditional-format formulas are retained only as rule summaries.
+- PowerPoint object animations, triggers, timelines, media synchronization, and codec transcoding are outside the current scope.
 - The viewer is read-only. It does not edit, save, convert, print-layout, or export Office files to PDF or images.
 - Externally linked images and dynamic map data can still require network access. If map data fails, an embedded snapshot is used when available; otherwise the viewer shows an explicit failure state.
 

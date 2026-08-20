@@ -1,5 +1,9 @@
 import type { OfficeHyperlink } from '../../shared/hyperlink';
 import type { OfficeResourceSource } from '../resource-store/types';
+import type {
+  WordInlineReview,
+  WordReviewDocument,
+} from '../word/review/types';
 import type { WordBookmarkTarget, WordOutlineItem } from '../word/types';
 
 /** DOCX 东亚标点字符间距压缩方式。 */
@@ -28,6 +32,10 @@ export type DocxDocument = {
   preserveSectionPagination?: boolean;
   /** 源文档声明的东亚标点字符间距压缩方式。 */
   characterSpacingControl?: DocxCharacterSpacingControl;
+  /** 源文档中可恢复的批注、修订、脚注和尾注。 */
+  review?: WordReviewDocument;
+  /** 可按正文引用呈现的脚注和尾注正文。 */
+  notes?: DocxNotes;
 };
 
 /** DOCX 单页内容及页眉页脚变体。 */
@@ -40,6 +48,8 @@ export type DocxPageContent = {
   preservePhysicalPage?: boolean;
   /** 按源文档顺序排列的内容块。 */
   blocks: DocxBlock[];
+  /** 当前页面正文实际引用的去重脚注。 */
+  footnotes?: DocxNote[];
   /** 页眉在首页、偶数页和默认页上的内容变体。 */
   headers?: DocxPageRegionVariants<DocxBlock[]>;
   /** 页脚是否包含动态页码的首页、偶数页和默认页变体。 */
@@ -138,6 +148,10 @@ export type DocxParagraphBlock = {
   type: 'paragraph';
   /** 按源文档顺序排列的行内内容。 */
   inlines: DocxInline[];
+  /** 段落标记关联的格式修订。 */
+  review?: DocxInlineReview;
+  /** 当前修订投影是否隐藏整段，但仍保留零高 DOM 供分页测量对齐。 */
+  revisionHidden?: boolean;
   /** 文本内容。 */
   text: string;
   /** 源 DOCX 明确声明的大纲级别，使用从 0 开始的内部表示。 */
@@ -321,15 +335,27 @@ export type DocxTableCell = {
   noWrap?: boolean;
 };
 
+/** DOCX 行内内容关联的批注、修订和格式修订原始样式。 */
+export type DocxInlineReview = WordInlineReview &
+  Readonly<{
+    /** 格式修订发生前的文字样式，仅 original 模式使用。 */
+    originalStyle?: DocxTextStyle;
+  }>;
+
 /** DOCX 行内内容模型。 */
-export type DocxInline =
+export type DocxInline = (
   | DocxTextInline
   | DocxTabInline
   | DocxBreakInline
   | DocxBookmarkInline
+  | DocxNoteReferenceInline
   | DocxImageInline
   | DocxChartInline
-  | DocxShapeInline;
+  | DocxShapeInline
+) & {
+  /** 当前内容关联的批注范围和修订语义。 */
+  review?: DocxInlineReview;
+};
 
 /** DOCX 文本 行内内容模型。 */
 export type DocxTextInline = {
@@ -355,6 +381,20 @@ export type DocxBookmarkInline = {
   name: string;
   /** 当前书签标记的稳定标识。 */
   markerId: string;
+};
+
+/** DOCX 脚注或尾注的行内引用标记。 */
+export type DocxNoteReferenceInline = {
+  /** 用于区分脚注、尾注引用和普通文本。 */
+  type: 'note-reference';
+  /** 源部件中的注释标识。 */
+  noteId: string;
+  /** 脚注显示在引用页，尾注显示在文档末尾。 */
+  noteKind: 'footnote' | 'endnote';
+  /** 页面中显示的连续引用编号。 */
+  label: string;
+  /** 引用标记沿用的文字样式。 */
+  style?: DocxTextStyle;
 };
 
 /** DOCX 制表符 行内内容模型。 */
@@ -547,6 +587,26 @@ export type DocxImage = {
   position?: DocxPosition;
   /** 源文档为图片声明的超链接。 */
   hyperlink?: OfficeHyperlink;
+};
+
+/** 单条 DOCX 脚注或尾注正文。 */
+export type DocxNote = {
+  /** 源部件中的注释标识。 */
+  id: string;
+  /** 脚注显示在引用页，尾注显示在文档末尾。 */
+  kind: 'footnote' | 'endnote';
+  /** 页面中显示的连续引用编号。 */
+  label: string;
+  /** 注释正文复用标准 DOCX 块模型。 */
+  blocks: DocxBlock[];
+};
+
+/** DOCX 文档包含的脚注和尾注集合。 */
+export type DocxNotes = {
+  /** 按源文档顺序排列的脚注。 */
+  footnotes: DocxNote[];
+  /** 按源文档顺序排列的尾注。 */
+  endnotes: DocxNote[];
 };
 
 /** DOCX 文本渲染样式。 */

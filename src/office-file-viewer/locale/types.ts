@@ -144,6 +144,67 @@ export type OfficeFileViewerMessages = {
     /** 调整查找侧栏宽度时使用的文案。 */
     resize: string;
   };
+  /** Office 审阅、批注和修订模式相关文案。 */
+  review: {
+    /** 审阅面板区域的无障碍名称。 */
+    region: string;
+    /** 工具栏和面板显示的标题。 */
+    title: string;
+    /** 展开审阅面板的操作文案。 */
+    expand: string;
+    /** 收起审阅面板的操作文案。 */
+    collapse: string;
+    /** 调整审阅面板宽度时使用的文案。 */
+    resize: string;
+    /** 关闭审阅面板的操作文案。 */
+    close: string;
+    /** 批注列表的无障碍名称。 */
+    comments: string;
+    /** 上一条批注操作文案。 */
+    previous: string;
+    /** 下一条批注操作文案。 */
+    next: string;
+    /** 没有可列出批注时显示的说明。 */
+    empty: string;
+    /** 批注正文为空时显示的说明。 */
+    emptyComment: string;
+    /** 修订没有可见文字摘要时显示的说明。 */
+    emptyRevision: string;
+    /** 批注作者缺失时显示的说明。 */
+    unknownAuthor: string;
+    /** 已解决批注的状态文案。 */
+    resolved: string;
+    /** Word 修订模式控件标题。 */
+    revisionMode: string;
+    /** Word 最终态修订模式文案。 */
+    revisionFinal: string;
+    /** Word 标记态修订模式文案。 */
+    revisionMarkup: string;
+    /** Word 原始态修订模式文案。 */
+    revisionOriginal: string;
+    /** 插入修订类别文案。 */
+    revisionInsert: string;
+    /** 删除修订类别文案。 */
+    revisionDelete: string;
+    /** 移出修订类别文案。 */
+    revisionMoveFrom: string;
+    /** 移入修订类别文案。 */
+    revisionMoveTo: string;
+    /** 格式修订类别文案。 */
+    revisionFormat: string;
+    /** 生成批注数量文案。 */
+    itemCount: (count: number) => string;
+    /** 生成笔记数量文案。 */
+    noteCount: (count: number) => string;
+    /** 未知 Word 页面时显示的目标文案。 */
+    wordTarget: string;
+    /** 生成页面目标文案。 */
+    pageTarget: (page: number) => string;
+    /** 生成单元格目标文案。 */
+    cellTarget: (sheetId: string, row: number, column: number) => string;
+    /** 生成幻灯片目标文案。 */
+    slideTarget: (slideId: string) => string;
+  };
   /** 电子表格预览相关文案。 */
   spreadsheet: {
     /** 显示模式选择控件的无障碍名称。 */
@@ -173,6 +234,16 @@ export type OfficeFileViewerMessages = {
     resizeNotes: string;
     /** 没有演讲者备注时显示的文案。 */
     emptyNotes: string;
+    /** 外部媒体未获得加载许可时显示的文案。 */
+    externalMediaBlocked: string;
+    /** 浏览器无法播放当前媒体时显示的文案。 */
+    mediaUnsupported: string;
+    /** 媒体资源正在按需加载时显示的文案。 */
+    mediaLoading: string;
+    /** 下载当前音视频资源的操作文案。 */
+    downloadMedia: string;
+    /** 为音频或视频控件生成可访问名称。 */
+    mediaLabel: (kind: 'audio' | 'video', name?: string) => string;
   };
   /** 内容图片预览、下载和右键菜单相关文案。 */
   imagePreview: {

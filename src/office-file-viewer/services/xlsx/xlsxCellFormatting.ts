@@ -45,6 +45,8 @@ export type StyleBook = {
   >;
   /** 按样式索引排列的单元格格式引用。 */
   styles: ParsedStyle[];
+  /** 条件格式 dxfId 引用的差异样式。 */
+  differentialStyles: XlsxCellStyle[];
 };
 
 /** 完成解析且从 1 开始计数的单元格坐标。 */
@@ -265,12 +267,15 @@ function applyTint(hex: string | undefined, tintValue?: string) {
   );
 }
 
-function parseColor(node: Element | null | undefined, theme: OfficeTheme) {
-  if (!node) return undefined;
-  if (attr(node, 'auto') === '1') return '#000000';
-  const rgb = attr(node, 'rgb');
-  const themeIndex = attr(node, 'theme');
-  const indexed = attr(node, 'indexed');
+/** 从无 DOM 的属性映射解析主题色、索引色和 tint。 */
+export function parseXlsxColorAttributes(
+  attributes: ReadonlyMap<string, string>,
+  theme: OfficeTheme,
+) {
+  if (attributes.get('auto') === '1') return '#000000';
+  const rgb = attributes.get('rgb');
+  const themeIndex = attributes.get('theme');
+  const indexed = attributes.get('indexed');
   const base =
     normalizeHexColor(rgb) ??
     resolveOfficeThemeColor(
@@ -278,7 +283,17 @@ function parseColor(node: Element | null | undefined, theme: OfficeTheme) {
       theme,
     ) ??
     normalizeHexColor(indexed ? INDEXED_COLORS[Number(indexed)] : undefined);
-  return applyTint(base, attr(node, 'tint'));
+  return applyTint(base, attributes.get('tint'));
+}
+
+function parseColor(node: Element | null | undefined, theme: OfficeTheme) {
+  if (!node) return undefined;
+  const attributes = new Map<string, string>();
+  ['auto', 'rgb', 'theme', 'indexed', 'tint'].forEach((name) => {
+    const value = attr(node, name);
+    if (value !== undefined) attributes.set(name, value);
+  });
+  return parseXlsxColorAttributes(attributes, theme);
 }
 
 function parseBorderStyle(
@@ -344,7 +359,15 @@ function pointToCssPx(point?: number) {
 
 /** 读取 XLSX 样式表并建立字体、填充和边框索引。 */
 export function parseStyles(xml: string, theme: OfficeTheme): StyleBook {
-  if (!xml) return { fonts: [], fills: [], borders: [], styles: [] };
+  if (!xml) {
+    return {
+      fonts: [],
+      fills: [],
+      borders: [],
+      styles: [],
+      differentialStyles: [],
+    };
+  }
   const doc = parseXml(xml);
   const styleSheet = doc.documentElement;
 
@@ -370,7 +393,11 @@ export function parseStyles(xml: string, theme: OfficeTheme): StyleBook {
   const fills = childrenByLocalName(fillsNode, 'fill').map((fillNode) => {
     const pattern = childByLocalName(fillNode, 'patternFill');
     return {
-      backgroundColor: parseColor(childByLocalName(pattern, 'fgColor'), theme),
+      backgroundColor:
+        parseColor(childByLocalName(pattern, 'fgColor'), theme) ??
+        (attr(pattern, 'patternType') === 'solid'
+          ? parseColor(childByLocalName(pattern, 'bgColor'), theme)
+          : undefined),
     };
   });
 
@@ -458,8 +485,47 @@ export function parseStyles(xml: string, theme: OfficeTheme): StyleBook {
     },
   );
 
-  return { fonts, fills, borders, styles };
+  const differentialStyles = childrenByLocalName(
+    childByLocalName(styleSheet, 'dxfs'),
+    'dxf',
+  ).map((dxf): XlsxCellStyle => {
+    const font = childByLocalName(dxf, 'font');
+    const fill = childByLocalName(dxf, 'fill');
+    const pattern = childByLocalName(fill, 'patternFill');
+    const border = childByLocalName(dxf, 'border');
+    const top = parseBorderStyle(childByLocalName(border, 'top'), theme);
+    const right = parseBorderStyle(childByLocalName(border, 'right'), theme);
+    const bottom = parseBorderStyle(childByLocalName(border, 'bottom'), theme);
+    const left = parseBorderStyle(childByLocalName(border, 'left'), theme);
+    return Object.fromEntries(
+      Object.entries({
+        bold: font ? Boolean(childByLocalName(font, 'b')) : undefined,
+        italic: font ? Boolean(childByLocalName(font, 'i')) : undefined,
+        underline: font ? Boolean(childByLocalName(font, 'u')) : undefined,
+        color: parseColor(childByLocalName(font, 'color'), theme),
+        fontSize: pointToCssPx(
+          Number(attr(childByLocalName(font, 'sz'), 'val') ?? 0),
+        ),
+        fontFamily: attr(childByLocalName(font, 'name'), 'val'),
+        backgroundColor:
+          parseColor(childByLocalName(pattern, 'fgColor'), theme) ??
+          (attr(pattern, 'patternType') === 'solid'
+            ? parseColor(childByLocalName(pattern, 'bgColor'), theme)
+            : undefined),
+        border: Boolean(top || right || bottom || left),
+        borderTop: borderToCss(top),
+        borderRight: borderToCss(right),
+        borderBottom: borderToCss(bottom),
+        borderLeft: borderToCss(left),
+      }).filter(([, value]) => value !== undefined && value !== false),
+    ) as XlsxCellStyle;
+  });
+
+  return { fonts, fills, borders, styles, differentialStyles };
 }
+
+/** 为条件格式解析器开放与普通样式一致的颜色解析。 */
+export const parseXlsxColor = parseColor;
 
 /** 解析并确定 `resolveStyle` 对应的引用或配置。 */
 export function resolveStyle(

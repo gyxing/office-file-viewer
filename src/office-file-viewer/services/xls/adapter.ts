@@ -1,5 +1,9 @@
 import type { OfficeArtHyperlinkTarget } from '../../shared/officeart';
 import type { PortableResource } from '../parsing/protocol/messages';
+import {
+  applyConditionalFormatting,
+  applySpreadsheetTableSemantics,
+} from '../spreadsheet/semantics';
 import type {
   SpreadsheetCell,
   SpreadsheetCellStyle,
@@ -276,6 +280,18 @@ function computeUsedRange(sheet: Biff8Worksheet) {
     maxRow = Math.max(maxRow, hyperlink.endRow - 1);
     maxColumn = Math.max(maxColumn, hyperlink.endColumn - 1);
   }
+  for (const annotation of sheet.annotations) {
+    maxRow = Math.max(maxRow, annotation.row - 1);
+    maxColumn = Math.max(maxColumn, annotation.column - 1);
+  }
+  for (const table of sheet.tables) {
+    maxRow = Math.max(maxRow, table.range.endRow - 1);
+    maxColumn = Math.max(maxColumn, table.range.endColumn - 1);
+  }
+  if (sheet.autoFilter?.range) {
+    maxRow = Math.max(maxRow, sheet.autoFilter.range.endRow - 1);
+    maxColumn = Math.max(maxColumn, sheet.autoFilter.range.endColumn - 1);
+  }
   return { maxRow, maxColumn };
 }
 
@@ -359,6 +375,9 @@ function adaptWorksheet(
     sheet.cells.map((cell) => [`${cell.row}:${cell.column}`, cell]),
   );
   const cells = new Map<string, SpreadsheetCell>();
+  const annotationByRef = new Map(
+    sheet.annotations.map((annotation) => [annotation.ref, annotation]),
+  );
   const columns: SpreadsheetColumn[] = Array.from(
     { length: maxColumn + 1 },
     (_, column) => {
@@ -389,6 +408,7 @@ function adaptWorksheet(
         columnInfo?.xfIndex,
         workbook,
       );
+      cell.annotation = annotationByRef.get(cell.ref);
       cells.set(cell.ref, cell);
       return cell;
     });
@@ -406,6 +426,18 @@ function adaptWorksheet(
   });
   const merges = adaptMerges(sheet, cells);
   applyXlsxHyperlinkRanges(cells, sheet.hyperlinks);
+  applySpreadsheetTableSemantics(
+    [...cells.values()],
+    {
+      startRow: 1,
+      endRow: maxRow + 1,
+      startColumn: 1,
+      endColumn: maxColumn + 1,
+    },
+    sheet.tables,
+    sheet.autoFilter,
+  );
+  applyConditionalFormatting([...cells.values()], sheet.conditionalFormatting);
   const endRef = cellRef(maxRow, maxColumn);
   return {
     id: sheet.descriptor.id,
@@ -426,6 +458,11 @@ function adaptWorksheet(
     rows,
     merges,
     hyperlinks: sheet.hyperlinks,
+    pane: sheet.pane,
+    tables: sheet.tables,
+    autoFilter: sheet.autoFilter,
+    annotations: sheet.annotations,
+    conditionalFormatting: sheet.conditionalFormatting,
     images: [],
     charts: [],
   };
@@ -507,6 +544,22 @@ export function adaptBiff8WorksheetSparse(
   const cells = sheet.cells.map((cell) =>
     adaptBiff8Cell(cell, cell.row, cell.column, undefined, workbook),
   );
+  const cellByAnnotationRef = new Map(cells.map((cell) => [cell.ref, cell]));
+  sheet.annotations.forEach((annotation) => {
+    let cell = cellByAnnotationRef.get(annotation.ref);
+    if (!cell) {
+      cell = adaptBiff8Cell(
+        undefined,
+        annotation.row - 1,
+        annotation.column - 1,
+        undefined,
+        workbook,
+      );
+      cells.push(cell);
+      cellByAnnotationRef.set(annotation.ref, cell);
+    }
+    cell.annotation ??= annotation;
+  });
   const cellByRef = new Map(cells.map((cell) => [cell.ref, cell]));
   const merges = sheet.merges.map((merge) => {
     const ref = cellRef(merge.startRow, merge.startColumn);
@@ -551,6 +604,9 @@ export function adaptBiff8WorksheetSparse(
     cells,
     merges,
     hyperlinks: sheet.hyperlinks,
+    pane: sheet.pane,
+    annotations: sheet.annotations,
+    conditionalFormatting: sheet.conditionalFormatting,
   };
 }
 

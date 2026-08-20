@@ -1,5 +1,6 @@
 import type { OfficeEntryMap } from '../../shared/ooxml/archive';
 import { createMediaStore, imageMimeType } from '../../shared/ooxml/media';
+import { getPresentationMediaMimeType } from '../presentation/mediaTypes';
 import { parseEmf } from '../xls/drawing/metafile/parseEmf';
 import { parseWmf } from '../xls/drawing/metafile/parseWmf';
 import { vectorSceneToSvg } from '../xls/drawing/metafile/vectorSceneToSvg';
@@ -88,7 +89,7 @@ export async function collectRenderableOfficeMedia(
       continue;
     }
     if (!officeMetafileFormat(path)) {
-      media.register(path, value);
+      media.register(path, value, getPresentationMediaMimeType(path));
       continue;
     }
     // 物化模式本就会一次性读取媒体，顺序转换可限制多个复杂画布同时占用内存。

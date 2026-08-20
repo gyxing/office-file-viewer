@@ -5,6 +5,7 @@ import {
   useOfficeFileViewerMessages,
   type OfficeFileViewerMessages,
 } from '../locale';
+import type { WordRevisionMode } from '../services/annotations/types';
 import type { PreviewKind } from '../services/preview';
 import type { SpreadsheetViewMode } from '../services/spreadsheet/viewMode';
 import { OfficeButton } from '../shared/ui/OfficeButton';
@@ -15,11 +16,13 @@ import {
   FullscreenIcon,
   NotesIcon,
   OutlineIcon,
+  ReviewIcon,
   SearchIcon,
 } from '../shared/ui/OfficeIcons';
 import { OfficeTooltip } from '../shared/ui/OfficeTooltip';
 import { OfficeFileTypeIcon } from './OfficeFileTypeIcon';
 import { SpreadsheetViewModeControl } from './SpreadsheetViewModeControl';
+import { WordRevisionModeControl } from './WordRevisionModeControl';
 import { ZoomControl, type ZoomControls } from './ZoomControl';
 
 export type { ZoomControls } from './ZoomControl';
@@ -61,6 +64,15 @@ export type OfficeToolbarFormatControls =
         /** 切换大纲侧栏的展开状态。 */
         toggle(): void;
       };
+      /** 文档包含修订时提供的只读投影切换能力。 */
+      revisionMode?: {
+        /** 当前采用的修订投影。 */
+        value: WordRevisionMode;
+        /** 当前是否禁止切换修订投影。 */
+        disabled: boolean;
+        /** 切换修订投影。 */
+        change(value: WordRevisionMode): void;
+      };
     }
   | {
       kind: 'spreadsheet';
@@ -98,6 +110,21 @@ export type OfficeToolbarSearchControls =
       toggle(): void;
     };
 
+/** 工具栏文档审阅入口的显式能力。 */
+export type OfficeToolbarReviewControls =
+  | { kind: 'disabled' }
+  | {
+      kind: 'enabled';
+      /** 审阅侧栏当前是否展开。 */
+      visible: boolean;
+      /** 当前文档是否尚无可展示的审阅内容。 */
+      disabled: boolean;
+      /** 当前批注、修订和笔记的合计数量。 */
+      count: number;
+      /** 切换审阅侧栏。 */
+      toggle(): void;
+    };
+
 /** 顶部工具栏组合所需的文件与操作能力。 */
 type OfficeToolbarProps = {
   /** 当前显示的文件名。 */
@@ -112,6 +139,8 @@ type OfficeToolbarProps = {
   fullscreenControls: FullscreenControls;
   /** 文档查找入口能力。 */
   searchControls: OfficeToolbarSearchControls;
+  /** 文档审阅入口能力。 */
+  reviewControls: OfficeToolbarReviewControls;
   /** 解析用户在文件选择器中选中的文件。 */
   onSelectFile(file: File): void;
 };
@@ -193,23 +222,36 @@ function renderPresentationControls({
   return items;
 }
 
-/** 仅在文档具有真实大纲时渲染显隐入口。 */
+/** 渲染 Word 大纲入口和修订投影切换。 */
 function WordControl({ controls, messages }: WordControlProps) {
-  if (!controls.outline) return null;
-  const outlineLabel = controls.outline.visible
-    ? messages.outline.collapse
-    : messages.outline.expand;
+  if (!controls.outline && !controls.revisionMode) return null;
+  const outlineLabel = controls.outline
+    ? controls.outline.visible
+      ? messages.outline.collapse
+      : messages.outline.expand
+    : undefined;
 
   return (
-    <OfficeButton
-      aria-label={outlineLabel}
-      aria-pressed={controls.outline.visible}
-      variant={controls.outline.visible ? 'primary' : 'default'}
-      icon={<OutlineIcon />}
-      onClick={controls.outline.toggle}
-    >
-      {messages.outline.title}
-    </OfficeButton>
+    <>
+      {controls.outline ? (
+        <OfficeButton
+          aria-label={outlineLabel}
+          aria-pressed={controls.outline.visible}
+          variant={controls.outline.visible ? 'primary' : 'default'}
+          icon={<OutlineIcon />}
+          onClick={controls.outline.toggle}
+        >
+          {messages.outline.title}
+        </OfficeButton>
+      ) : null}
+      {controls.revisionMode ? (
+        <WordRevisionModeControl
+          value={controls.revisionMode.value}
+          disabled={controls.revisionMode.disabled}
+          onChange={controls.revisionMode.change}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -239,6 +281,7 @@ function OfficeToolbarComponent({
   zoomControls,
   fullscreenControls,
   searchControls,
+  reviewControls,
   onSelectFile,
 }: OfficeToolbarProps) {
   const messages = useOfficeFileViewerMessages();
@@ -310,6 +353,23 @@ function OfficeToolbarComponent({
             onClick={searchControls.toggle}
           >
             {messages.search.title}
+          </OfficeButton>
+        ) : null}
+        {reviewControls.kind === 'enabled' ? (
+          <OfficeButton
+            data-testid="office-review-toggle"
+            aria-label={
+              reviewControls.visible
+                ? messages.review.collapse
+                : messages.review.expand
+            }
+            aria-pressed={reviewControls.visible}
+            variant={reviewControls.visible ? 'primary' : 'default'}
+            icon={<ReviewIcon />}
+            disabled={reviewControls.disabled}
+            onClick={reviewControls.toggle}
+          >
+            {messages.review.title}
           </OfficeButton>
         ) : null}
         <ZoomControl controls={zoomControls} />

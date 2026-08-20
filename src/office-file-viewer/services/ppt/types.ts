@@ -1,7 +1,10 @@
 import type { OfficeChartModel } from '../../shared/ooxml/charts';
 import { createResourceReference } from '../parsing/assembly/resourceReferences';
 import type { PortableResource } from '../parsing/protocol/messages';
+import type { PresentationMediaSource } from '../presentation/mediaTypes';
+import type { PresentationTransition } from '../presentation/transitionTypes';
 import type {
+  PresentationAnnotation,
   PresentationWarning,
   SlideBackground,
   SlideElement,
@@ -64,6 +67,8 @@ export type PptParseContext = {
   >;
   /** 按 ExHyperlink 编号索引的文档级链接表。 */
   hyperlinks: Map<number, PptHyperlinkEntry>;
+  /** 按外部对象编号索引的可播放音视频来源。 */
+  presentationMedia: Map<number, PresentationMediaSource>;
   /** PPT 幻灯片标识到演示顺序索引的映射。 */
   slideIndexById: Map<number, number>;
   /** 长任务主动让出主线程时间片的函数。 */
@@ -147,6 +152,12 @@ export type PptSlideModel = {
   background?: SlideBackground;
   /** 当前幻灯片关联的演讲者备注正文。 */
   speakerNotes?: SpeakerNotesModel;
+  /** 当前幻灯片包含的只读批注。 */
+  annotations?: PresentationAnnotation[];
+  /** 从源文件恢复的页级切换。 */
+  transition?: PresentationTransition;
+  /** 当前页局部降级说明。 */
+  warnings?: PresentationWarning[];
   /** 按绘制顺序排列的演示文稿元素。 */
   elements: SlideElement[];
   /** 当前对象在 PowerPoint Document 流中的字节偏移。 */
@@ -190,6 +201,7 @@ export function createPptParseContext(
       }
     >(),
     hyperlinks: new Map<number, PptHyperlinkEntry>(),
+    presentationMedia: new Map<number, PresentationMediaSource>(),
     slideIndexById: new Map<number, number>(),
     yieldIfNeeded,
   };

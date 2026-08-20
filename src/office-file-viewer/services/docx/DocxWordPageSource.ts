@@ -170,6 +170,8 @@ export class DocxWordPageSource implements DocxPagePreviewSource {
     title: string;
     images: DocxDocument['images'];
     bookmarks: NonNullable<DocxDocument['bookmarks']>;
+    review: DocxDocument['review'];
+    notes: DocxDocument['notes'];
   }) {
     this.throwIfUnavailable();
     if (!this.summary) throw new Error('DOCX Source 尚未收到元数据');
@@ -178,6 +180,8 @@ export class DocxWordPageSource implements DocxPagePreviewSource {
       title: result.title,
       images: result.images,
       bookmarks: result.bookmarks,
+      review: result.review,
+      notes: result.notes,
     };
     this.parsingCompleted = true;
     this.searchProvider.complete();

@@ -1,4 +1,5 @@
 import type { OfficeSearchProvider } from '../search/types';
+import type { SpreadsheetAnnotation, SpreadsheetPane } from './semantics/types';
 import type { SpreadsheetPerformanceProfile } from './spreadsheetPerformance';
 import type {
   SpreadsheetColumnMetric,
@@ -56,6 +57,8 @@ export type SpreadsheetSheetLayout = {
   rows: readonly SpreadsheetRowMetric[];
   /** 稀疏列尺寸覆盖。 */
   columns: readonly SpreadsheetColumnMetric[];
+  /** 工作表冻结或普通拆分窗格。 */
+  pane?: SpreadsheetPane;
 };
 
 /** 为普通和大型工作簿提供统一的 Sheet 与范围读取协议。 */
@@ -77,6 +80,11 @@ export interface SpreadsheetSource {
     sheetId: string,
     signal?: AbortSignal,
   ): Promise<SpreadsheetSheet | undefined>;
+  /** 读取指定工作表全部批注，不持有单元格或工作簿资源。 */
+  getAnnotations(
+    sheetId: string,
+    signal?: AbortSignal,
+  ): Promise<readonly SpreadsheetAnnotation[]>;
   /** 读取指定工作表范围内的单元格与对象。 */
   getRange(
     sheetId: string,

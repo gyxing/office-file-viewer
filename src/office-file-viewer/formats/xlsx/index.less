@@ -461,3 +461,82 @@
   display: block;
   width: max-content;
 }
+
+.office-file-xlsx-frozen-panes {
+  position: absolute;
+  z-index: 9;
+  inset: 0;
+  pointer-events: none;
+}
+
+.office-file-xlsx-frozen-panes .office-file-xlsx-virtual-grid__cell,
+.office-file-xlsx-frozen-panes__header {
+  pointer-events: auto;
+}
+
+.office-file-xlsx-virtual-grid__cell--frozen {
+  background-clip: padding-box;
+}
+
+.office-file-spreadsheet-annotation-marker {
+  position: absolute;
+  z-index: 6;
+  top: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-top: 8px solid #d4380d;
+  border-left: 8px solid transparent;
+  cursor: pointer;
+}
+
+.office-file-spreadsheet-annotation-marker:hover,
+.office-file-spreadsheet-annotation-marker[data-active='true'] {
+  border-top-color: #1677ff;
+  filter: drop-shadow(0 0 1px rgb(15 23 42 / 45%));
+}
+
+.office-file-spreadsheet-annotation-marker:focus-visible {
+  outline: 2px solid #1677ff;
+  outline-offset: 2px;
+}
+
+.office-file-spreadsheet-filter-indicator {
+  position: absolute;
+  z-index: 5;
+  top: 50%;
+  right: 3px;
+  width: 0;
+  height: 0;
+  border-top: 4px solid currentcolor;
+  border-right: 4px solid transparent;
+  border-left: 4px solid transparent;
+  opacity: 0.72;
+  transform: translateY(-25%);
+  pointer-events: none;
+}
+
+.office-file-spreadsheet-data-bar {
+  position: absolute;
+  z-index: 1;
+  top: 15%;
+  bottom: 15%;
+  left: 1px;
+  max-width: calc(100% - 2px);
+  opacity: 0.38;
+  pointer-events: none;
+}
+
+.office-file-spreadsheet-conditional-icon {
+  position: relative;
+  z-index: 3;
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 2px;
+  vertical-align: -1px;
+  pointer-events: none;
+}

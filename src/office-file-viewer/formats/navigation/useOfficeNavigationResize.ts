@@ -15,9 +15,16 @@ const MAX_NAVIGATION_WIDTH = 520;
 const MAX_WORKSPACE_WIDTH_RATIO = 0.45;
 /** 键盘调整导航面板宽度时的单次步长，单位为 CSS 像素。 */
 const KEYBOARD_RESIZE_STEP = 20;
-/** 拖拽宽度写入导航面板时使用的 CSS 自定义属性。 */
+/** 拖拽宽度写入导航面板时使用的默认 CSS 自定义属性。 */
 const NAVIGATION_WIDTH_CSS_VARIABLE = '--office-file-navigation-panel-width';
 
+/** 通用横向面板缩放的可选方向和样式变量。 */
+export type OfficeNavigationResizeOptions = {
+  /** 指针向哪一侧移动时增大面板宽度，右侧面板应使用 left。 */
+  growDirection?: 'left' | 'right';
+  /** 写入面板宽度的 CSS 自定义属性。 */
+  widthCssVariable?: string;
+};
 type NavigationResizeDrag = {
   /** 当前由分隔条捕获的指针标识。 */
   pointerId: number;
@@ -40,7 +47,11 @@ function clampNavigationWidth(value: number, maxWidth: number) {
 export function useOfficeNavigationResize(
   panelRef: RefObject<HTMLElement>,
   documentSessionId: string,
+  options: OfficeNavigationResizeOptions = {},
 ) {
+  const growDirection = options.growDirection ?? 'right';
+  const widthCssVariable =
+    options.widthCssVariable ?? NAVIGATION_WIDTH_CSS_VARIABLE;
   const handleRef = useRef<HTMLDivElement>(null);
   const widthRef = useRef(DEFAULT_NAVIGATION_WIDTH);
   const maxWidthRef = useRef(MAX_NAVIGATION_WIDTH);
@@ -69,17 +80,14 @@ export function useOfficeNavigationResize(
     (value: number) => {
       const nextWidth = clampNavigationWidth(value, maxWidthRef.current);
       widthRef.current = nextWidth;
-      panelRef.current?.style.setProperty(
-        NAVIGATION_WIDTH_CSS_VARIABLE,
-        `${nextWidth}px`,
-      );
+      panelRef.current?.style.setProperty(widthCssVariable, `${nextWidth}px`);
       handleRef.current?.setAttribute(
         'aria-valuenow',
         `${Math.round(nextWidth)}`,
       );
       return nextWidth;
     },
-    [panelRef],
+    [panelRef, widthCssVariable],
   );
 
   const syncWidthRange = useCallback(() => {
@@ -184,10 +192,14 @@ export function useOfficeNavigationResize(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       const drag = dragRef.current;
       if (!drag || drag.pointerId !== event.pointerId) return;
-      scheduleWidth(drag.startWidth + event.clientX - drag.startX);
+      const pointerDelta = event.clientX - drag.startX;
+      scheduleWidth(
+        drag.startWidth +
+          (growDirection === 'right' ? pointerDelta : -pointerDelta),
+      );
       event.preventDefault();
     },
-    [scheduleWidth],
+    [growDirection, scheduleWidth],
   );
 
   const handlePointerEnd = useCallback(
@@ -210,15 +222,16 @@ export function useOfficeNavigationResize(
       if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
       event.preventDefault();
       syncWidthRange();
+      const grows =
+        (growDirection === 'right' && event.key === 'ArrowRight') ||
+        (growDirection === 'left' && event.key === 'ArrowLeft');
       const nextWidth = applyWidth(
         widthRef.current +
-          (event.key === 'ArrowRight'
-            ? KEYBOARD_RESIZE_STEP
-            : -KEYBOARD_RESIZE_STEP),
+          (grows ? KEYBOARD_RESIZE_STEP : -KEYBOARD_RESIZE_STEP),
       );
       setWidth((current) => (current === nextWidth ? current : nextWidth));
     },
-    [applyWidth, syncWidthRange],
+    [applyWidth, growDirection, syncWidthRange],
   );
 
   return {

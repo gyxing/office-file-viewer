@@ -85,6 +85,7 @@ export class PptPresentationSource implements PresentationSource {
       index: descriptor.index,
       hidden: Boolean(descriptor.hidden),
       hasSpeakerNotes: structure.notesBySlideId.has(descriptor.slideId),
+      annotationCount: 0,
       estimatedElementCount: 1,
       revision: 1,
       status: 'estimated',
@@ -192,6 +193,7 @@ export class PptPresentationSource implements PresentationSource {
             status: 'ready',
             errorMessage: undefined,
             estimatedElementCount: slide.elements.length,
+            annotationCount: slide.annotations?.length ?? 0,
           });
           return slide;
         },
@@ -256,6 +258,11 @@ export class PptPresentationSource implements PresentationSource {
       );
     }
     return waitForPptResult(request, signal);
+  }
+
+  async getAnnotations(index: number, signal?: AbortSignal) {
+    const slide = await this.getSlide(index, signal);
+    return slide.annotations ?? [];
   }
 
   async ensureRange(start: number, end: number, signal?: AbortSignal) {

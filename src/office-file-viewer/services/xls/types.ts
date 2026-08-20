@@ -1,4 +1,11 @@
 import type {
+  SpreadsheetAnnotation,
+  SpreadsheetAutoFilter,
+  SpreadsheetConditionalFormattingRule,
+  SpreadsheetPane,
+  SpreadsheetTable,
+} from '../spreadsheet/semantics/types';
+import type {
   SpreadsheetHyperlinkRange,
   SpreadsheetWarning,
 } from '../spreadsheet/types';
@@ -102,6 +109,10 @@ export type Biff8DefinedName = {
   name: string;
   /** 已定义名称对应的原始公式令牌字节。 */
   tokens: Uint8Array;
+  /** 内置名称的零基编号，例如 0x0D 表示 _FilterDatabase。 */
+  builtInId?: number;
+  /** 局部名称所属工作表的一基索引；0 或缺失表示工作簿级名称。 */
+  sheetIndex?: number;
 };
 
 /** BIFF8 工作簿全局子流中的共享表和元数据。 */
@@ -254,6 +265,16 @@ export type Biff8Worksheet = {
   drawingRecords: Biff8RecordSequence[];
   /** 工作表声明的 BIFF8 超链接范围。 */
   hyperlinks: SpreadsheetHyperlinkRange[];
+  /** 工作表级静态 AutoFilter 范围和已过滤字段。 */
+  autoFilter?: SpreadsheetAutoFilter;
+  /** BIFF8 Feature11/12 中可恢复的表格范围。 */
+  tables: SpreadsheetTable[];
+  /** 工作表冻结或普通拆分窗格。 */
+  pane?: SpreadsheetPane;
+  /** 按单元格定位的批注。 */
+  annotations: SpreadsheetAnnotation[];
+  /** 工作表声明的条件格式规则。 */
+  conditionalFormatting: SpreadsheetConditionalFormattingRule[];
   /** 解析时产生但不阻止继续预览的警告。 */
   warnings: SpreadsheetWarning[];
 };

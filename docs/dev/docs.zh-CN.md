@@ -178,6 +178,9 @@ type OfficeFileViewerUri = File | string | OfficeFileViewerUriLoader;
 | `imagePreview`                   | `boolean \| OfficeFileViewerImagePreviewOptions`     | `true`     | 内容图片预览、下载与右键菜单配置       |
 | `hyperlink`                      | `boolean`                                            | `true`     | 是否启用源文档明确声明的超链接         |
 | `search`                         | `false \| OfficeFileViewerSearchOptions`             | `{}`       | 全文查找入口、运行时与初始匹配选项     |
+| `review`                         | `false \| OfficeFileViewerReviewOptions`             | `{}`       | 批注、修订、脚注和尾注的只读审阅配置   |
+| `presentationMedia`              | `false \| OfficeFileViewerPresentationMediaOptions`  | `{}`       | 演示文稿音视频、外部媒体与下载配置     |
+| `transitions`                    | `false \| 'source'`                                  | `false`    | 是否按源文稿播放支持的页级切换         |
 | `fontOptions`                    | `OfficeFileViewerFontOptions`                        | `{}`       | 字体别名、回退字体和缺失字体诊断       |
 | `onHyperlinkActivate`            | `(event: OfficeHyperlinkActivateEvent) => void`      | -          | 链接有效激活时触发，可阻止默认导航     |
 | `onParseProgress`                | `(progress: ParseProgress) => void`                  | -          | 解析阶段或完成度变化时触发             |
@@ -262,6 +265,47 @@ type OfficeFileViewerSearchOptions = {
 
 不传 `search` 时默认启用；传入 `false` 会同时移除入口、快捷键和查找运行时。对象配置只设置非受控初始值，后续显隐可以通过 `viewState.searchVisible` 控制。查找范围为 Word 正文、Excel 单元格和 PowerPoint 幻灯片中的可见文本；当前不包含 Word 批注和 PowerPoint 演讲者备注。
 
+### 只读审阅与 Word 注释
+
+不传 `review` 时默认启用。Word 只在存在批注或修订时显示修订视图选择，批注与修订直接进入页面右侧标记区，不创建“审阅”按钮或固定侧栏。Excel 和 PowerPoint 只有实际包含批注时才显示“审阅”入口。
+
+```ts | pure
+type OfficeFileViewerReviewOptions = {
+  defaultPanelVisible?: boolean;
+  defaultRevisionMode?: 'final' | 'markup' | 'original';
+  showComments?: boolean;
+  showNotes?: boolean;
+};
+```
+
+`defaultPanelVisible` 和 `viewState.reviewPanelVisible` 只控制 Excel、PowerPoint 审阅面板；Word 页侧标记区由 `wordRevisionMode` 控制。
+
+- DOCX 解析批注线程、插入、删除、移动和常见格式修订，并支持最终态、显示标记和原始态三种只读投影。
+- Word 修订模式在工具栏中切换。显示标记时，批注和修订统一进入页面右侧标记区：批注使用蓝色作者标记，修订使用红色作者标记，二者通过虚线连接对应文字并自动纵向避让；物理页与一列基础标记区作为整体居中，多出的标记列只向右扩展，不会导致页面左右跳动。不显示圆角卡片，也不创建独立审阅列表。容器较窄时保留页侧标记区并提供横向滚动，不把标记覆盖到正文上。
+- DOC/WPS 恢复可识别的插入、删除、作者、日期和二进制批注；无法可靠还原原始属性值时保留最终格式并发送稳定警告。
+- DOC、DOCX 和 WPS 的脚注显示在引用页底部，超长脚注按顺序进入续页；尾注显示在文档末尾。全文查找默认不索引批注、脚注或尾注。
+- Excel 单元格批注和 PowerPoint 幻灯片批注复用同一审阅面板；选择批注会先切换工作表或幻灯片，再定位目标。
+- 传入 `review={false}` 会移除审阅入口和运行时，但不会改变源正文的最终态内容。
+
+### Excel 业务语义
+
+XLS/XLSX 会只读还原冻结窗格、Table/AutoFilter、单元格批注和常用条件格式。支持的条件格式首期包含 `cellIs`、两色/三色色阶、数据条、常用图标集、重复值、唯一值、Top10 和高于/低于平均值。需要全范围统计的规则由 Source 分片扫描并按规则缓存；滚动不会用当前可见窗口重新计算。公式规则无法安全求值时只保留摘要并发送警告，不执行完整 Excel 公式重算，也不会重新筛选或排序数据。
+
+### PowerPoint 媒体与页级切换
+
+```ts | pure
+type OfficeFileViewerPresentationMediaOptions = {
+  allowExternal?: boolean;
+  download?: boolean;
+};
+
+type OfficeFileViewerPresentationTransitions = false | 'source';
+```
+
+内嵌音视频默认启用浏览器原生控件，固定 `autoplay={false}` 和 `preload="metadata"`，只在当前幻灯片创建资源 URL，离开页面会暂停并释放引用。`presentationMedia={false}` 关闭播放能力；`download` 默认为 `true`。外部媒体默认不发起请求，只有显式设置 `allowExternal: true` 时才允许 HTTP(S) 地址；`javascript`、`data`、`vbscript`、本地路径和未知执行协议始终阻止。
+
+页级切换默认关闭。设置 `transitions="source"` 后，工具栏上一页/下一页会还原 `fade`、`push`、`wipe`、`split`、`cover` 和 `uncover`；缩略图、搜索和批注定位不会误触动画。连续翻页会取消旧动画，系统偏好减少动画时直接切页。
+
 ### 字体别名与回退
 
 组件不捆绑或下载 Office 字体。渲染时会保留源字体优先级，并依次加入内置别名、宿主别名、全局回退字体和通用字体族。宿主可以按部署环境补充字体映射：
@@ -297,7 +341,9 @@ type OfficeFileViewerViewState = {
   activeSheetId?: string;
   wordOutlineVisible: boolean;
   searchVisible: boolean;
+  reviewPanelVisible: boolean;
   speakerNotesVisible: boolean;
+  wordRevisionMode: 'final' | 'markup' | 'original';
   spreadsheetViewMode: 'source' | 'reading';
 };
 ```
@@ -342,6 +388,14 @@ type OfficeParseOptions = {
 | `'never'`  | 禁用 Worker；解析在主线程执行，大文件仍可采用按需数据源与虚拟渲染                                                                 |
 
 每个活动解析会话只持有自己的 Worker 与资源读取器。来源切换、取消解析或组件卸载时，预览器会取消请求并释放对应 Worker、归档读取器和 Blob URL。大文件的查找和按需页、工作表或幻灯片读取会继续在 Worker 中执行，主线程只接收当前需要的结构化数据和惰性资源。`workerFactory` 主要用于需要特殊资源路径或内容安全策略的宿主；大多数应用应使用内置工厂。
+
+Vite 的开发服务器会预构建依赖。仅当开发环境强制使用 `worker: 'always'` 时，建议把组件库加入 `optimizeDeps.exclude`，让 Vite 保留并处理内置 Worker 的资源地址；生产构建与默认的 `auto` 模式不需要这项配置。
+
+```ts | pure
+export default {
+  optimizeDeps: { exclude: ['office-file-viewer'] },
+};
+```
 
 `auto` 使用的文件画像阈值只决定完整解析、按需读取、虚拟渲染和任务让出策略，不是文件大小限制，也不会因为命中阈值而拒绝文件。小文件刻意保留更简单的完整模型路径，避免 Worker 通信和惰性读取带来额外开销。
 
@@ -481,15 +535,15 @@ try {
 
 ## 支持格式与交互
 
-| 文档类型           | 扩展名  | 主要解析范围                                                                                        |
-| ------------------ | ------- | --------------------------------------------------------------------------------------------------- |
-| Word OOXML         | `.docx` | 段落、列表、表格、图片、图表、形状、链接、样式和主题颜色                                            |
-| Word 97-2003       | `.doc`  | 二进制文档结构、文本运行、表格、列表、格式、图片、字段链接、正文书签和基础页面级 OfficeArt 浮动分层 |
-| WPS Writer         | `.wps`  | 复用 DOC 二进制管线，优先还原可读内容、字段链接、正文书签和文档资源                                 |
-| Excel OOXML        | `.xlsx` | 工作表、值、样式、合并单元格、尺寸、浮动图片、图表和链接                                            |
-| Excel 97-2003      | `.xls`  | BIFF8 单元格、格式、合并区域、尺寸、OfficeArt 图片、图表和链接                                      |
-| PowerPoint OOXML   | `.pptx` | 母版/版式继承、文本、形状、图片、表格、链接、背景、效果、备注、动态字段和常用图表                   |
-| PowerPoint 97-2003 | `.ppt`  | 二进制记录、母版、文本、形状、图片、链接、嵌入图表、兼容文本、演讲者备注和静态回退                  |
+| 文档类型           | 扩展名  | 主要解析范围                                                                        |
+| ------------------ | ------- | ----------------------------------------------------------------------------------- |
+| Word OOXML         | `.docx` | 正文排版、图形、链接、大纲、批注、修订、脚注和尾注                                  |
+| Word 97-2003       | `.doc`  | 二进制正文、表格、图形、链接、大纲，以及可恢复的批注、修订、脚注和尾注              |
+| WPS Writer         | `.wps`  | 复用 DOC 二进制管线，优先还原正文、文档资源和可识别审阅语义                         |
+| Excel OOXML        | `.xlsx` | 工作表、图形、链接、冻结窗格、Table/筛选、批注和常用条件格式                        |
+| Excel 97-2003      | `.xls`  | BIFF8 单元格、OfficeArt、图表、链接、窗格、批注，以及可恢复的筛选、Table 和条件格式 |
+| PowerPoint OOXML   | `.pptx` | 母版/版式、图形、链接、批注、备注、内嵌/外部媒体和六种常用页级切换                  |
+| PowerPoint 97-2003 | `.ppt`  | 二进制母版、图形、链接、批注、备注、可恢复媒体、常用切换和静态回退                  |
 
 常见图表覆盖折线图、柱状图、饼图、圆环图、面积图、散点图、气泡图、雷达图和地图。无法解析或损坏的图表内容会尽可能使用文档内嵌快照。
 
@@ -523,7 +577,9 @@ try {
 - 旧格式 DOC/WPS、XLS 和 PPT 优先保证内容可读。复杂分页、锚点、文字环绕、OfficeArt 效果和动画可能与桌面应用不同。
 - DOC/WPS 的页面级 OfficeArt 画布当前以单张 SVG 图片显示，无法精确保留画布内每个子形状的独立链接点击区；这类链接会产生非阻断降级提示，字段链接和正文书签不受影响。
 - OOXML 文件可能包含尚未支持的宏、ActiveX 控件、OLE 对象、SmartArt、厂商扩展或复杂动画。这些内容可能被忽略、降级，或使用内嵌静态快照显示。
-- Word 文档当前显示最终正文状态，不呈现批注、修订标记或审阅气泡；脚注和尾注也未纳入正文渲染与全文查找。
+- 审阅能力只读，不支持新增、回复、删除、解决或写回批注；DOC/WPS 无法可靠恢复的属性级修订只保留最终格式。
+- Excel 不重新执行筛选、排序或完整公式重算；不支持的条件格式公式只保留规则摘要。
+- PowerPoint 不实现对象级动画、触发器、动画时间轴或媒体同步，也不转码浏览器不支持的媒体编码。
 - 预览器为只读组件，不提供编辑、保存、格式转换、打印排版，也不把 Office 文件导出为 PDF 或图片。
 - 外部链接图片和动态地图数据仍可能需要网络。地图数据失败时会优先使用内嵌快照；没有快照时显示明确失败状态。
 

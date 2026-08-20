@@ -1,3 +1,4 @@
+import type { WordRevisionMode } from '../services/annotations/types';
 import type { SpreadsheetViewMode } from '../services/spreadsheet/viewMode';
 
 /** 宿主可以读取或控制的文件预览视图状态。 */
@@ -12,6 +13,10 @@ export type OfficeFileViewerViewState = {
   wordOutlineVisible: boolean;
   /** 文档查找侧栏是否展开。 */
   searchVisible: boolean;
+  /** 文档审阅侧栏是否展开。 */
+  reviewPanelVisible: boolean;
+  /** Word 修订内容采用的只读投影模式。 */
+  wordRevisionMode: WordRevisionMode;
   /** 演讲者备注区域是否展开。 */
   speakerNotesVisible: boolean;
   /** 电子表格采用的显示模式。 */

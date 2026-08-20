@@ -11,6 +11,8 @@ type DocPageFrameProps = {
   zoom: number;
   /** 当前组件包含的子节点。 */
   children: ReactNode;
+  /** 显示标记时在物理页右侧预留的基础标记区宽度。 */
+  markupRailWidth?: number;
   /** 当前物理页需要显示的页眉徽标。 */
   headerImage?: DocImage;
   /** 按源文档层级叠放在当前物理页上的 OfficeArt 画布。 */
@@ -55,19 +57,28 @@ function DocPageFrameComponent({
   page,
   zoom,
   children,
+  markupRailWidth = 0,
   headerImage,
   pageDrawings = [],
   footerText,
 }: DocPageFrameProps) {
   const scale = zoom / 100;
-  // 外层占位使用缩放后的尺寸，内层 article 保留原始 Word 坐标系并用 transform 缩放。
+  // 外层把页面与基础标记区一起居中，内层仍按物理页尺寸裁切正文和图形。
   const shellStyle = useMemo<CSSProperties>(
+    () => ({
+      width: page.width * scale + markupRailWidth,
+      height: page.minHeight * scale,
+    }),
+    [markupRailWidth, page.minHeight, page.width, scale],
+  );
+  const pageClipStyle = useMemo<CSSProperties>(
     () => ({
       width: page.width * scale,
       height: page.minHeight * scale,
     }),
     [page.minHeight, page.width, scale],
   );
+  // article 保留原始 Word 坐标系，并通过 transform 应用预览缩放。
   const articleStyle = useMemo<CSSProperties>(
     () => ({
       width: page.width,
@@ -88,26 +99,33 @@ function DocPageFrameComponent({
 
   return (
     <div className="office-file-doc-page-frame" style={shellStyle}>
-      <article
-        className="office-file-doc-page-frame__article"
-        style={articleStyle}
+      <div
+        className="office-file-doc-page-frame__page-clip"
+        style={pageClipStyle}
       >
-        {renderPageDrawingLayer(pageDrawings, 'behindText')}
-        {renderPageDrawingLayer(pageDrawings, 'inFrontOfText')}
-        {headerImage ? (
-          <img
-            className="office-file-doc-page-frame__header-image"
-            src={headerImage.src}
-            alt=""
-            loading="lazy"
-            decoding="async"
-          />
-        ) : null}
-        {children}
-        {footerText ? (
-          <div className="office-file-doc-page-frame__footer">{footerText}</div>
-        ) : null}
-      </article>
+        <article
+          className="office-file-doc-page-frame__article"
+          style={articleStyle}
+        >
+          {renderPageDrawingLayer(pageDrawings, 'behindText')}
+          {renderPageDrawingLayer(pageDrawings, 'inFrontOfText')}
+          {headerImage ? (
+            <img
+              className="office-file-doc-page-frame__header-image"
+              src={headerImage.src}
+              alt=""
+              loading="lazy"
+              decoding="async"
+            />
+          ) : null}
+          {children}
+          {footerText ? (
+            <div className="office-file-doc-page-frame__footer">
+              {footerText}
+            </div>
+          ) : null}
+        </article>
+      </div>
     </div>
   );
 }

@@ -56,7 +56,8 @@
 
 .office-file-pptx-viewer__workspace {
   display: flex;
-  flex: 1 1 auto;
+  // 工作区只分配缩略图栏之外的剩余空间，避免当前页内容反向挤压缩略图栏。
+  flex: 1 1 0%;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
@@ -157,7 +158,8 @@
 }
 
 .office-file-pptx-slide__background,
-.office-file-pptx-slide__elements {
+.office-file-pptx-slide__elements,
+.office-file-pptx-slide__annotations {
   position: absolute;
   inset: 0;
 }
@@ -170,6 +172,421 @@
 
 .office-file-pptx-slide__elements {
   z-index: 1;
+}
+
+.office-file-pptx-slide__annotations {
+  z-index: 3;
+  pointer-events: none;
+}
+
+.office-file-pptx-annotation-marker {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  cursor: pointer;
+  pointer-events: auto;
+  color: #fff;
+  font-weight: 700;
+  font-size: 11px;
+  line-height: 1;
+  background: linear-gradient(135deg, #ffb02e 0%, #f97316 100%);
+  border: 2px solid #fff;
+  border-radius: 6px 6px 6px 2px;
+  box-shadow: 0 2px 6px rgba(124, 45, 18, 28%);
+  transform: translate(-50%, -50%);
+}
+
+.office-file-pptx-annotation-marker::after {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 4px;
+  height: 4px;
+  background: #fff;
+  border-radius: 50%;
+  content: '';
+}
+
+.office-file-pptx-annotation-marker:hover,
+.office-file-pptx-annotation-marker:focus-visible,
+.office-file-pptx-annotation-marker--active {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(47, 111, 237, 32%),
+    0 2px 6px rgba(124, 45, 18, 28%);
+}
+
+.office-file-pptx-annotation-marker--thumbnail {
+  width: 18px;
+  height: 18px;
+  pointer-events: none;
+}
+
+.office-file-pptx-media {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  overflow: hidden;
+  background-color: #111827;
+  background-position: center;
+  background-size: cover;
+  border: 1px solid rgba(255, 255, 255, 35%);
+  transform-origin: center;
+}
+
+.office-file-pptx-media video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+.office-file-pptx-media audio {
+  width: calc(100% - 24px);
+  min-width: 180px;
+}
+
+.office-file-pptx-media__message {
+  max-width: 80%;
+  padding: 8px 12px;
+  color: #f8fafc;
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+  background: rgba(15, 23, 42, 82%);
+  border-radius: 6px;
+}
+
+.office-file-pptx-media__message--error {
+  position: absolute;
+  z-index: 2;
+}
+
+.office-file-pptx-media__download {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+  text-decoration: none;
+  background: rgba(15, 23, 42, 78%);
+  border: 1px solid rgba(255, 255, 255, 28%);
+  border-radius: 5px;
+}
+
+.office-file-pptx-media__download:hover,
+.office-file-pptx-media__download:focus-visible {
+  color: #fff;
+  background: rgba(37, 99, 235, 90%);
+  outline: none;
+}
+
+.office-file-pptx-media__poster-icon {
+  width: 0;
+  height: 0;
+  border-top: 24px solid transparent;
+  border-bottom: 24px solid transparent;
+  border-left: 38px solid rgba(255, 255, 255, 88%);
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 35%));
+}
+
+.office-file-pptx-media--thumbnail {
+  pointer-events: none;
+}
+
+.office-file-presentation-transition {
+  position: relative;
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+.office-file-presentation-transition[data-transition-active='true'] {
+  overflow: hidden;
+}
+
+.office-file-presentation-transition__slide {
+  position: absolute;
+  inset: 0;
+  animation-duration: var(--office-file-presentation-transition-duration);
+  animation-timing-function: ease-in-out;
+  animation-fill-mode: both;
+  will-change: transform, opacity, clip-path;
+}
+
+.office-file-presentation-transition__slide--incoming {
+  z-index: 2;
+}
+
+.office-file-presentation-transition__slide--outgoing {
+  z-index: 1;
+}
+
+.office-file-presentation-transition--uncover
+  .office-file-presentation-transition__slide--incoming {
+  z-index: 0;
+}
+
+.office-file-presentation-transition--fade
+  .office-file-presentation-transition__slide--incoming {
+  animation-name: office-file-presentation-fade-in;
+}
+
+.office-file-presentation-transition--push.office-file-presentation-transition--left
+  .office-file-presentation-transition__slide--incoming,
+.office-file-presentation-transition--cover.office-file-presentation-transition--left
+  .office-file-presentation-transition__slide--incoming {
+  animation-name: office-file-presentation-enter-right;
+}
+
+.office-file-presentation-transition--push.office-file-presentation-transition--right
+  .office-file-presentation-transition__slide--incoming,
+.office-file-presentation-transition--cover.office-file-presentation-transition--right
+  .office-file-presentation-transition__slide--incoming {
+  animation-name: office-file-presentation-enter-left;
+}
+
+.office-file-presentation-transition--push.office-file-presentation-transition--up
+  .office-file-presentation-transition__slide--incoming,
+.office-file-presentation-transition--cover.office-file-presentation-transition--up
+  .office-file-presentation-transition__slide--incoming {
+  animation-name: office-file-presentation-enter-bottom;
+}
+
+.office-file-presentation-transition--push.office-file-presentation-transition--down
+  .office-file-presentation-transition__slide--incoming,
+.office-file-presentation-transition--cover.office-file-presentation-transition--down
+  .office-file-presentation-transition__slide--incoming {
+  animation-name: office-file-presentation-enter-top;
+}
+
+.office-file-presentation-transition--push.office-file-presentation-transition--left
+  .office-file-presentation-transition__slide--outgoing,
+.office-file-presentation-transition--uncover.office-file-presentation-transition--left
+  .office-file-presentation-transition__slide--outgoing {
+  animation-name: office-file-presentation-exit-left;
+}
+
+.office-file-presentation-transition--push.office-file-presentation-transition--right
+  .office-file-presentation-transition__slide--outgoing,
+.office-file-presentation-transition--uncover.office-file-presentation-transition--right
+  .office-file-presentation-transition__slide--outgoing {
+  animation-name: office-file-presentation-exit-right;
+}
+
+.office-file-presentation-transition--push.office-file-presentation-transition--up
+  .office-file-presentation-transition__slide--outgoing,
+.office-file-presentation-transition--uncover.office-file-presentation-transition--up
+  .office-file-presentation-transition__slide--outgoing {
+  animation-name: office-file-presentation-exit-up;
+}
+
+.office-file-presentation-transition--push.office-file-presentation-transition--down
+  .office-file-presentation-transition__slide--outgoing,
+.office-file-presentation-transition--uncover.office-file-presentation-transition--down
+  .office-file-presentation-transition__slide--outgoing {
+  animation-name: office-file-presentation-exit-down;
+}
+
+.office-file-presentation-transition--wipe.office-file-presentation-transition--left
+  .office-file-presentation-transition__slide--incoming {
+  animation-name: office-file-presentation-wipe-left;
+}
+
+.office-file-presentation-transition--wipe.office-file-presentation-transition--right
+  .office-file-presentation-transition__slide--incoming {
+  animation-name: office-file-presentation-wipe-right;
+}
+
+.office-file-presentation-transition--wipe.office-file-presentation-transition--up
+  .office-file-presentation-transition__slide--incoming {
+  animation-name: office-file-presentation-wipe-up;
+}
+
+.office-file-presentation-transition--wipe.office-file-presentation-transition--down
+  .office-file-presentation-transition__slide--incoming {
+  animation-name: office-file-presentation-wipe-down;
+}
+
+.office-file-presentation-transition--split.office-file-presentation-transition--horizontal-in
+  .office-file-presentation-transition__slide--incoming,
+.office-file-presentation-transition--split.office-file-presentation-transition--horizontal-out
+  .office-file-presentation-transition__slide--incoming {
+  animation-name: office-file-presentation-split-horizontal;
+}
+
+.office-file-presentation-transition--split.office-file-presentation-transition--vertical-in
+  .office-file-presentation-transition__slide--incoming,
+.office-file-presentation-transition--split.office-file-presentation-transition--vertical-out
+  .office-file-presentation-transition__slide--incoming {
+  animation-name: office-file-presentation-split-vertical;
+}
+
+@keyframes office-file-presentation-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes office-file-presentation-enter-right {
+  from {
+    transform: translateX(100%);
+  }
+
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes office-file-presentation-enter-left {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes office-file-presentation-enter-bottom {
+  from {
+    transform: translateY(100%);
+  }
+
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes office-file-presentation-enter-top {
+  from {
+    transform: translateY(-100%);
+  }
+
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes office-file-presentation-exit-left {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes office-file-presentation-exit-right {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes office-file-presentation-exit-up {
+  from {
+    transform: translateY(0);
+  }
+
+  to {
+    transform: translateY(-100%);
+  }
+}
+
+@keyframes office-file-presentation-exit-down {
+  from {
+    transform: translateY(0);
+  }
+
+  to {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes office-file-presentation-wipe-left {
+  from {
+    clip-path: inset(0 0 0 100%);
+  }
+
+  to {
+    clip-path: inset(0);
+  }
+}
+
+@keyframes office-file-presentation-wipe-right {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+
+  to {
+    clip-path: inset(0);
+  }
+}
+
+@keyframes office-file-presentation-wipe-up {
+  from {
+    clip-path: inset(100% 0 0);
+  }
+
+  to {
+    clip-path: inset(0);
+  }
+}
+
+@keyframes office-file-presentation-wipe-down {
+  from {
+    clip-path: inset(0 0 100%);
+  }
+
+  to {
+    clip-path: inset(0);
+  }
+}
+
+@keyframes office-file-presentation-split-horizontal {
+  from {
+    clip-path: inset(50% 0);
+  }
+
+  to {
+    clip-path: inset(0);
+  }
+}
+
+@keyframes office-file-presentation-split-vertical {
+  from {
+    clip-path: inset(0 50%);
+  }
+
+  to {
+    clip-path: inset(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .office-file-presentation-transition__slide {
+    animation: none !important;
+  }
 }
 
 .office-file-pptx-chart-frame {

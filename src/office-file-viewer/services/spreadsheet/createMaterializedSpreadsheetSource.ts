@@ -103,6 +103,7 @@ export function createMaterializedSpreadsheetSource(
       width: column.width,
       hidden: Boolean(column.hidden),
     })),
+    pane: sheet.pane,
   });
 
   let searchProvider: SpreadsheetSearchProvider;
@@ -123,6 +124,10 @@ export function createMaterializedSpreadsheetSource(
       return getProfile(sheetId).gridMode === 'table'
         ? getSheet(sheetId)
         : undefined;
+    },
+    async getAnnotations(sheetId, signal) {
+      throwIfSpreadsheetAborted(signal);
+      return getSheet(sheetId).annotations ?? [];
     },
     async getRange(sheetId, requestedRange, signal) {
       throwIfSpreadsheetAborted(signal);
@@ -172,6 +177,18 @@ export function createMaterializedSpreadsheetSource(
           }
         }
       });
+      const intersects = (candidate: SpreadsheetRange) =>
+        candidate.endRow >= range.startRow &&
+        candidate.startRow <= range.endRow &&
+        candidate.endColumn >= range.startColumn &&
+        candidate.startColumn <= range.endColumn;
+      const annotations = (sheet.annotations ?? []).filter(
+        (annotation) =>
+          annotation.row >= range.startRow &&
+          annotation.row <= range.endRow &&
+          annotation.column >= range.startColumn &&
+          annotation.column <= range.endColumn,
+      );
       const data: SpreadsheetRangeData = {
         revision: 1,
         range,
@@ -199,6 +216,13 @@ export function createMaterializedSpreadsheetSource(
         ),
         charts: sheet.charts.filter((chart) =>
           rangeIntersectsObject(range, chart),
+        ),
+        pane: sheet.pane,
+        tables: (sheet.tables ?? []).filter((table) => intersects(table.range)),
+        autoFilter: sheet.autoFilter,
+        annotations,
+        conditionalFormatting: (sheet.conditionalFormatting ?? []).filter(
+          (rule) => rule.ranges.some(intersects),
         ),
       };
       return data;

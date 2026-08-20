@@ -1,5 +1,8 @@
 import type { OfficeHyperlink } from '../../shared/hyperlink';
+import type { OfficeAnnotation } from '../annotations/types';
 import type { OfficeResourceSource } from '../resource-store';
+import type { PresentationMediaSource } from './mediaTypes';
+import type { PresentationTransition } from './transitionTypes';
 
 /** 描述演示文稿标准模型过程中可继续处理的警告。 */
 export type PresentationWarning = {
@@ -79,6 +82,15 @@ export type SpeakerNotesModel = {
   plainText: string;
 };
 
+/** 带有幻灯片坐标的演示文稿只读批注。 */
+export type PresentationAnnotation = OfficeAnnotation &
+  Readonly<{
+    /** 批注标签相对幻灯片左侧的横坐标。 */
+    x?: number;
+    /** 批注标签相对幻灯片顶部的纵坐标。 */
+    y?: number;
+  }>;
+
 /** 描述演示文稿标准模型使用的标准化模型。 */
 export type SlideModel = {
   /** 在所属集合中的唯一标识。 */
@@ -95,6 +107,12 @@ export type SlideModel = {
   background?: SlideBackground;
   /** 当前幻灯片关联的演讲者备注正文；未提供表示没有可展示备注。 */
   speakerNotes?: SpeakerNotesModel;
+  /** 当前幻灯片包含的只读批注。 */
+  annotations?: PresentationAnnotation[];
+  /** 从源文件恢复且可由调用方选择启用的页级切换。 */
+  transition?: PresentationTransition;
+  /** 当前页局部解析产生但不阻断主体预览的警告。 */
+  warnings?: PresentationWarning[];
   /** 按绘制顺序排列的演示文稿元素。 */
   elements: SlideElement[];
 };
@@ -213,6 +231,8 @@ export type TextParagraph = {
 export type BaseElement = {
   /** 在所属集合中的唯一标识。 */
   id: string;
+  /** 源文件中的绘制对象标识，用于批注定位。 */
+  sourceObjectId?: string;
   /** 用于区分联合类型分支的类型标识。 */
   type: string;
   /** 相对定位区域左侧的横坐标，单位为标准化渲染像素。 */
@@ -315,6 +335,18 @@ export type ImageElement = BaseElement & {
   alt?: string;
   /** 图片裁剪边界。 */
   crop?: ImageCrop;
+};
+
+/** 包含浏览器原生音视频来源和可选海报帧的媒体元素。 */
+export type MediaElement = BaseElement & {
+  /** 用于区分联合类型分支的类型标识。 */
+  type: 'media';
+  /** 内嵌或外部媒体来源及播放类别。 */
+  media: PresentationMediaSource;
+  /** 视频或音频对象在未播放时使用的海报图片。 */
+  posterSrc?: string | OfficeResourceSource;
+  /** 控件无法播放时使用的可读名称。 */
+  alt?: string;
 };
 
 /** 包含行列尺寸和单元格内容的表格元素。 */
@@ -427,6 +459,7 @@ export type SlideElement =
   | TextElement
   | ShapeElement
   | ImageElement
+  | MediaElement
   | ChartElement
   | TableElement
   | GroupElement

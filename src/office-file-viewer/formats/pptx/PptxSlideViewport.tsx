@@ -1,8 +1,13 @@
 // PptxSlideViewport 渲染当前幻灯片的滚动视口，并在翻页或缩放时复位滚动位置。
 import React, { memo, useEffect, useRef } from 'react';
 import type { SlideModel } from '../../services/pptx/types';
-import { PptxSlide } from './PptxSlide';
+import type { OfficeFileViewerPresentationMediaOptions } from '../../services/presentation/mediaTypes';
+import type {
+  OfficeFileViewerPresentationTransitions,
+  PresentationNavigationIntent,
+} from '../../services/presentation/transitionTypes';
 import { PresentationSlideState } from './PresentationSlideState';
+import { PresentationTransitionLayer } from './PresentationTransitionLayer';
 
 /** PPTX幻灯片视口组件属性。 */
 type PptxSlideViewportProps = {
@@ -22,6 +27,12 @@ type PptxSlideViewportProps = {
   error?: Error;
   /** 重试当前页读取。 */
   onRetry?: () => void;
+  /** 演示文稿媒体读取配置。 */
+  mediaOptions?: false | OfficeFileViewerPresentationMediaOptions;
+  /** 是否按源文件播放页级切换。 */
+  transitions: OfficeFileViewerPresentationTransitions;
+  /** 最近一次工具栏翻页产生的切换意图。 */
+  transitionIntent?: PresentationNavigationIntent;
 };
 
 /** 在可缩放视口中居中展示当前幻灯片。 */
@@ -34,6 +45,9 @@ function PptxSlideViewportComponent({
   loading = false,
   error,
   onRetry = () => undefined,
+  mediaOptions,
+  transitions,
+  transitionIntent,
 }: PptxSlideViewportProps) {
   const viewportRef = useRef<HTMLElement | null>(null);
 
@@ -44,21 +58,32 @@ function PptxSlideViewportComponent({
   return (
     <section ref={viewportRef} className="office-file-pptx-viewer__viewport">
       <div className="office-file-pptx-viewer__slide-wrap">
-        {slide ? (
-          <PptxSlide
-            slide={slide}
-            zoom={zoom}
-            renderKey={`slide-${slide.id}`}
-            searchSlideIndex={activeIndex}
-          />
-        ) : loading || error ? (
+        {error ? (
           <PresentationSlideState
             width={width}
             height={height}
             error={error}
             onRetry={onRetry}
           />
-        ) : null}
+        ) : (
+          <PresentationTransitionLayer
+            slide={slide}
+            activeIndex={activeIndex}
+            zoom={zoom}
+            intent={transitionIntent}
+            transitions={transitions}
+            mediaOptions={mediaOptions}
+            fallback={
+              loading ? (
+                <PresentationSlideState
+                  width={width}
+                  height={height}
+                  onRetry={onRetry}
+                />
+              ) : null
+            }
+          />
+        )}
       </div>
     </section>
   );

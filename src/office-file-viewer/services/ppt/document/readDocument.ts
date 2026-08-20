@@ -2,6 +2,7 @@ import type { SpeakerNotesModel, ThemeModel } from '../../presentation/types';
 import { PPT_RECORD } from '../binary/constants';
 import { PptRecordReader } from '../binary/PptRecordReader';
 import { PptParseError } from '../errors';
+import { readPptMedia } from '../parsePptMedia';
 import type {
   PptBinaryDocument,
   PptEditChain,
@@ -123,6 +124,7 @@ export function readPptDocumentBaseStructure(
   );
   // 文档级链接表只在读取根结构时扫描一次，按页 Source 后续直接复用解析上下文。
   readPptHyperlinks(documentRecord, descriptors.slides, context);
+  readPptMedia(documentRecord, context);
   return { width, height, theme, fonts, descriptors };
 }
 

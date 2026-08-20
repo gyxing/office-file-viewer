@@ -17,9 +17,15 @@ import type { DocBlockBuildOptions } from './docParseTypes';
 import { extractDocImages } from './extractDocImages';
 import { extractDocObjectPreviews } from './extractDocObjectPreviews';
 import {
+  attachDocCommentMarkers,
+  buildDocReviewDocument,
+  parseDocComments,
+} from './parseDocComments';
+import {
   extractDocDrawingCanvases,
   type DocDrawingTextBox,
 } from './parseDocDrawingCanvas';
+import { attachDocNoteReferences, parseDocNotes } from './parseDocNotes';
 import {
   DEFAULT_DOC_PAGE,
   readDocBinaryContent,
@@ -291,6 +297,23 @@ export async function parseDocCore(
       : undefined;
   warnings.push(...outlineCatalog.warnings);
   warnings.push(...bookmarkWarnings);
+  if (binaryContent.hasUnsupportedPropertyRevisions) {
+    warnings.push(
+      '[DOC_REVISION_PROPERTY_UNSUPPORTED] 检测到 DOC/WPS 属性级修订；已保留最终格式，原始格式无法可靠恢复。',
+    );
+  }
+  const noteResult = await parseDocNotes({
+    wordDocument,
+    tableStream,
+    content: binaryContent,
+    checkpoint: () => context.checkpoint(),
+  });
+  const commentResult = parseDocComments({
+    wordDocument,
+    tableStream,
+    content: binaryContent,
+  });
+  warnings.push(...noteResult.warnings, ...commentResult.warnings);
   await context.checkpoint({
     stage: 'resources',
     percent: 0.5,
@@ -375,9 +398,15 @@ export async function parseDocCore(
       (block): block is DocParagraphBlock => block.type === 'paragraph',
     );
   }
-  const segments = attachDocBookmarkMarkers(
-    readDocStorySegments(wordDocument, binaryContent, 0, fib.ccpText),
-    bookmarks,
+  const segments = attachDocCommentMarkers(
+    attachDocNoteReferences(
+      attachDocBookmarkMarkers(
+        readDocStorySegments(wordDocument, binaryContent, 0, fib.ccpText),
+        bookmarks,
+      ),
+      noteResult.references,
+    ),
+    commentResult.comments,
   );
   const drawingCanvases = extractDocDrawingCanvases(
     tableStream,
@@ -406,6 +435,7 @@ export async function parseDocCore(
   ];
   metadataDocument.headerImage = headerImage;
   metadataDocument.footerPageNumbers = footerPageNumbers;
+  metadataDocument.notes = noteResult.notes;
   await context.output?.documentMetadata(
     documentMetadataFromDoc(metadataDocument),
   );
@@ -468,6 +498,14 @@ export async function parseDocCore(
   document.images = [...drawingImages, ...images, ...objectPreviewImages];
   document.headerImage = headerImage;
   document.footerPageNumbers = footerPageNumbers;
+  document.notes = noteResult.notes;
+  document.review = buildDocReviewDocument(
+    blocks,
+    commentResult.comments,
+    (noteResult.notes?.footnotes.length ?? 0) +
+      (noteResult.notes?.endnotes.length ?? 0),
+    [...noteResult.warnings, ...commentResult.warnings],
+  );
   await context.output?.documentMetadata(documentMetadataFromDoc(document));
   return { document, resources };
 }

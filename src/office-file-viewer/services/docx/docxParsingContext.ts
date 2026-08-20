@@ -21,6 +21,11 @@ import {
 import type { OfficeResourceSource } from '../resource-store/types';
 import type { WordBookmarkTarget } from '../word/types';
 import {
+  createDocxReviewParseState,
+  type DocxReviewParseState,
+} from './parseDocxComments';
+import { readDocxNoteLabelMap } from './parseDocxFootnotes';
+import {
   readDocxNumbering,
   readDocxNumberingReference,
   type DocxNumberingCatalog,
@@ -79,6 +84,12 @@ export type DocxParseContext = {
   images: DocxImage[];
   /** 解析过程中按源名称收集的书签定位信息。 */
   bookmarks: Record<string, WordBookmarkTarget>;
+  /** 解析正文期间持续收集的批注范围和修订记录。 */
+  review: DocxReviewParseState;
+  /** 按脚注源标识索引的页面连续编号。 */
+  footnoteLabels: Record<string, string>;
+  /** 按尾注源标识索引的页面连续编号。 */
+  endnoteLabels: Record<string, string>;
   /** 下一张图片使用的零基索引。 */
   imageIndex: number;
   /** 图表在所属图表集合中的索引。 */
@@ -1394,6 +1405,9 @@ export function createDocxParseContext(
     styles,
     images: [],
     bookmarks: {},
+    review: createDocxReviewParseState(entries),
+    footnoteLabels: readDocxNoteLabelMap(entries, 'footnote'),
+    endnoteLabels: readDocxNoteLabelMap(entries, 'endnote'),
     imageIndex: 0,
     chartIndex: 0,
     shapeIndex: 0,

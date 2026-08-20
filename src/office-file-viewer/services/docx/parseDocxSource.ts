@@ -10,17 +10,24 @@ import type { OfficeSourcePreviewFactory } from '../parsing/formatParserRegistry
 import { WorkerWordPageSource } from '../parsing/runtime/source/WorkerWordPageSource';
 import { yieldToMainThread } from '../performance/mainThreadScheduler';
 import { disposeDocumentSession } from '../session';
+import { WordRevisionRecordCollector } from '../word/review/WordRevisionRecordCollector';
 import type { WordBookmarkTarget } from '../word/types';
+import { collectDocxPageRevisionRecords } from './collectDocxRevisionRecords';
 import { profileDocxArchive } from './docxArchiveProfile';
+import { attachDocxFootnotesToPage } from './docxNoteReferences';
 import { loadDocxPackageContext } from './DocxPackageContext';
 import { DocxWordPageSource } from './DocxWordPageSource';
 import { parseDocxBlock, type DocxBlockParseResult } from './parseDocxBlock';
+import { buildDocxReviewDocument } from './parseDocxComments';
 import {
   docxBlockParseOperations,
   markDocxTitle,
   normalizeDocxPageContents,
+  readDocxBlockChildren,
   readDocxBodyPage,
 } from './parseDocxContent';
+import { parseDocxEndnotes } from './parseDocxEndnotes';
+import { parseDocxFootnotes } from './parseDocxFootnotes';
 import type {
   DocxBlock,
   DocxCharacterSpacingControl,
@@ -53,6 +60,10 @@ export type DocxSourceOutput = {
     images: DocxImage[];
     /** 按源名称索引的文档内部书签。 */
     bookmarks: Record<string, WordBookmarkTarget>;
+    /** 当前文档中可恢复的批注、修订、脚注和尾注。 */
+    review: ReturnType<typeof buildDocxReviewDocument>;
+    /** 可按正文引用呈现的脚注和尾注正文。 */
+    notes: import('./types').DocxNotes | undefined;
   }): void | Promise<void>;
 };
 
@@ -172,6 +183,17 @@ export async function parseDocxSource(
     signal,
   );
   const context = packageContext.parseContext;
+  const readNoteBlocks = (
+    container: Element,
+    idPrefix: string,
+    noteContext: typeof context,
+  ) =>
+    readDocxBlockChildren(container, idPrefix, noteContext, {
+      insidePageRegion: true,
+    });
+  const entries = context.packageState.entries;
+  const footnotes = parseDocxFootnotes(entries, context, readNoteBlocks);
+  const endnotes = parseDocxEndnotes(entries, context, readNoteBlocks);
   const defaultPage = readDocxBodyPage(profile.bodyNode);
   const defaultSection = childByLocalName(profile.bodyNode, 'sectPr');
   const defaultRegions = defaultSection
@@ -188,6 +210,7 @@ export async function parseDocxSource(
   let bodyIndex = 0;
   let pageIndex = 0;
   const titleCandidates: DocxBlock[] = [];
+  const revisionCollector = new WordRevisionRecordCollector();
   const publishPage = async (page: DocxPage, regions = defaultRegions) => {
     if (!currentBlocks.length) return;
     const rawPage: DocxPageContent = {
@@ -198,9 +221,14 @@ export async function parseDocxSource(
     };
     currentBlocks = [];
     for (const normalized of normalizeDocxPageContents([rawPage])) {
+      collectDocxPageRevisionRecords(
+        [normalized],
+        revisionCollector,
+        pageIndex,
+      );
       pageIndex += 1;
       await output.page({
-        ...normalized,
+        ...attachDocxFootnotesToPage(normalized, footnotes),
         id: `docx-page-${pageIndex}`,
       });
     }
@@ -236,6 +264,13 @@ export async function parseDocxSource(
     title: markDocxTitle(titleCandidates),
     images: context.images,
     bookmarks: context.bookmarks,
+    review: buildDocxReviewDocument(
+      context.review,
+      footnotes.length + endnotes.length,
+      revisionCollector.toArray(),
+    ),
+    notes:
+      footnotes.length || endnotes.length ? { footnotes, endnotes } : undefined,
   });
 }
 
@@ -350,6 +385,8 @@ export const tryCreateDocxSourcePreview: OfficeSourcePreviewFactory = async (
           title: summary.title,
           images: summary.images,
           bookmarks: summary.bookmarks ?? {},
+          review: summary.review,
+          notes: summary.notes,
         });
       } catch {
         // 已完成或已取消的 Source 保留当前可渲染快照即可。

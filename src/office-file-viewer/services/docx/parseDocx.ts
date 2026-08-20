@@ -8,16 +8,22 @@ import type { OfficeArchiveResourcePolicy } from '../../shared/resource/OfficeRe
 import type { OfficeFormatParser } from '../parsing/formatParserRegistry';
 import { throwIfParseAborted } from '../parsing/runtime/types';
 import { loadDocxEntries } from './archive';
+import { collectDocxPageRevisionRecords } from './collectDocxRevisionRecords';
+import { attachDocxFootnotesToPage } from './docxNoteReferences';
 import { createDocxParseContext } from './docxParsingContext';
 import { parseDocxBlock, type DocxBlockParseResult } from './parseDocxBlock';
+import { buildDocxReviewDocument } from './parseDocxComments';
 import {
   applyDocxCoverTitleSpacing,
   docxBlockParseOperations,
   markDocxTitle,
   normalizeDocxPageContents,
+  readDocxBlockChildren,
   readDocxBodyPage,
   readDocxSectionPageRegions,
 } from './parseDocxContent';
+import { parseDocxEndnotes } from './parseDocxEndnotes';
+import { parseDocxFootnotes } from './parseDocxFootnotes';
 import type {
   DocxBlock,
   DocxDocument,
@@ -111,7 +117,7 @@ export async function parseDocx(
   }
 
   applyDocxCoverTitleSpacing(blocks);
-  const normalizedPages = normalizeDocxPageContents(pages);
+  let normalizedPages: DocxPageContent[] = normalizeDocxPageContents(pages);
   const outline = blocks.flatMap((block) =>
     block.type === 'paragraph' && block.outlineLevel !== undefined && block.text
       ? [
@@ -123,6 +129,26 @@ export async function parseDocx(
           },
         ]
       : [],
+  );
+  const readNoteBlocks = (
+    container: Element,
+    idPrefix: string,
+    noteContext: typeof context,
+  ) =>
+    readDocxBlockChildren(container, idPrefix, noteContext, {
+      insidePageRegion: true,
+    });
+  const footnotes = parseDocxFootnotes(entries, context, readNoteBlocks);
+  const endnotes = parseDocxEndnotes(entries, context, readNoteBlocks);
+  normalizedPages = normalizedPages.map((page) =>
+    attachDocxFootnotesToPage(page, footnotes),
+  );
+  const notes =
+    footnotes.length || endnotes.length ? { footnotes, endnotes } : undefined;
+  const review = buildDocxReviewDocument(
+    context.review,
+    footnotes.length + endnotes.length,
+    collectDocxPageRevisionRecords(normalizedPages).toArray(),
   );
 
   throwIfDocxParseAborted(signal);
@@ -136,6 +162,8 @@ export async function parseDocx(
     bookmarks: context.bookmarks,
     preserveSectionPagination,
     characterSpacingControl: context.characterSpacingControl,
+    review,
+    notes,
   };
 }
 

@@ -1,5 +1,18 @@
 import { createContentStore } from '../content-store';
 import type { OfficeContentStore } from '../content-store/types';
+import {
+  applyConditionalFormatting,
+  applySpreadsheetTableSemantics,
+  conditionalRuleNeedsFullRangeStats,
+  createConditionalFormattingStatsAccumulator,
+  type ConditionalFormattingStats,
+} from './semantics';
+import type {
+  SpreadsheetAnnotation,
+  SpreadsheetAutoFilter,
+  SpreadsheetConditionalFormattingRule,
+  SpreadsheetTable,
+} from './semantics/types';
 import { createSpreadsheetAxisIndex } from './SpreadsheetAxisIndex';
 import { SpreadsheetMergeIndex } from './SpreadsheetMergeIndex';
 import { SpreadsheetObjectIndex } from './SpreadsheetObjectIndex';
@@ -48,6 +61,14 @@ export type SpreadsheetSheetStructure = SpreadsheetSheetLayout & {
   charts: readonly SpreadsheetChart[];
   /** 工作表声明的稀疏超链接范围。 */
   hyperlinks?: readonly SpreadsheetHyperlinkRange[];
+  /** 工作表声明的 Excel Table。 */
+  tables?: readonly SpreadsheetTable[];
+  /** 工作表级静态筛选范围。 */
+  autoFilter?: SpreadsheetAutoFilter;
+  /** 按单元格定位的批注。 */
+  annotations?: readonly SpreadsheetAnnotation[];
+  /** 工作表声明的条件格式规则。 */
+  conditionalFormatting?: readonly SpreadsheetConditionalFormattingRule[];
 };
 
 /** Sheet Store 对 Source 暴露的范围读取协议。 */
@@ -58,6 +79,8 @@ export interface SpreadsheetSheetStore {
   putStructure(structure: SpreadsheetSheetStructure): void;
   /** 读取指定工作表的布局信息。 */
   getLayout(): SpreadsheetSheetLayout;
+  /** 返回当前工作表全部批注的轻量只读数组。 */
+  getAnnotations(): readonly SpreadsheetAnnotation[];
   /** 读取指定工作表范围内的单元格与对象。 */
   getRange(
     range: SpreadsheetRange,
@@ -177,9 +200,62 @@ export function createSpreadsheetSheetStore(
     columnAxis,
   );
   let disposed = false;
+  const conditionalStats = new Map<string, ConditionalFormattingStats>();
+  const conditionalStatsRequests = new Map<
+    string,
+    Promise<ConditionalFormattingStats>
+  >();
 
   const ensureAvailable = () => {
     if (disposed) throw new Error('工作表 Store 已释放');
+  };
+
+  const getConditionalStats = async (
+    rules: readonly SpreadsheetConditionalFormattingRule[],
+    signal?: AbortSignal,
+  ) => {
+    const result = new Map<string, ConditionalFormattingStats>();
+    const statsRowCount = structure.rowCount;
+    const statsColumnCount = structure.columnCount;
+    for (const rule of rules) {
+      if (!conditionalRuleNeedsFullRangeStats(rule)) continue;
+      let stats = conditionalStats.get(rule.id);
+      if (!stats) {
+        let request = conditionalStatsRequests.get(rule.id);
+        if (!request) {
+          request = (async () => {
+            const accumulator =
+              createConditionalFormattingStatsAccumulator(rule);
+            const keys = new Set(
+              rule.ranges.flatMap((ruleRange) =>
+                enumerateTileKeys(
+                  sheetId,
+                  normalizeRange(ruleRange, statsRowCount, statsColumnCount),
+                ),
+              ),
+            );
+            for (const key of keys) {
+              ensureAvailable();
+              const record = await tiles.get(key);
+              accumulator.add(record?.value?.cells ?? []);
+            }
+            const value = accumulator.finish();
+            conditionalStats.set(rule.id, value);
+            return value;
+          })();
+          conditionalStatsRequests.set(rule.id, request);
+          void request.then(
+            () => conditionalStatsRequests.delete(rule.id),
+            () => conditionalStatsRequests.delete(rule.id),
+          );
+        }
+        throwIfSpreadsheetAborted(signal);
+        stats = await request;
+        throwIfSpreadsheetAborted(signal);
+      }
+      result.set(rule.id, stats);
+    }
+    return result;
   };
 
   return {
@@ -200,6 +276,7 @@ export function createSpreadsheetSheetStore(
       ensureAvailable();
       if (nextStructure.revision < structure.revision) return;
       structure = nextStructure;
+      conditionalStats.clear();
       rowAxis = createSpreadsheetAxisIndex(
         structure.rowCount,
         structure.defaultRowHeight,
@@ -232,7 +309,12 @@ export function createSpreadsheetSheetStore(
         defaultColumnWidth: structure.defaultColumnWidth,
         rows: structure.rows,
         columns: structure.columns,
+        pane: structure.pane,
       };
+    },
+    getAnnotations() {
+      ensureAvailable();
+      return structure.annotations ?? [];
     },
     async getRange(requestedRange, signal) {
       ensureAvailable();
@@ -289,6 +371,51 @@ export function createSpreadsheetSheetStore(
           }
         }
       });
+      const annotations = (structure.annotations ?? []).filter(
+        (annotation) =>
+          annotation.row >= range.startRow &&
+          annotation.row <= range.endRow &&
+          annotation.column >= range.startColumn &&
+          annotation.column <= range.endColumn,
+      );
+      annotations.forEach((annotation) => {
+        const existing = cellByRef.get(annotation.ref);
+        if (existing) {
+          existing.annotation = annotation;
+        } else {
+          const annotatedCell: SpreadsheetCell = {
+            ref: annotation.ref,
+            rowIndex: annotation.row,
+            columnIndex: annotation.column,
+            value: '',
+            annotation,
+          };
+          cells.push(annotatedCell);
+          cellByRef.set(annotation.ref, annotatedCell);
+        }
+      });
+      const intersects = (candidate: SpreadsheetRange) =>
+        candidate.endRow >= range.startRow &&
+        candidate.startRow <= range.endRow &&
+        candidate.endColumn >= range.startColumn &&
+        candidate.startColumn <= range.endColumn;
+      const tables = (structure.tables ?? []).filter((table) =>
+        intersects(table.range),
+      );
+      const conditionalFormatting = (
+        structure.conditionalFormatting ?? []
+      ).filter((rule) => rule.ranges.some(intersects));
+      const fullRangeStats = await getConditionalStats(
+        conditionalFormatting,
+        signal,
+      );
+      applySpreadsheetTableSemantics(
+        cells,
+        range,
+        tables,
+        structure.autoFilter,
+      );
+      applyConditionalFormatting(cells, conditionalFormatting, fullRangeStats);
       const rowsByIndex = metricMap(structure.rows);
       const columnsByIndex = metricMap(structure.columns);
       const rows = Array.from(
@@ -329,6 +456,11 @@ export function createSpreadsheetSheetStore(
         merges: mergeIndex.query(range),
         images: imageIndex.query(range),
         charts: chartIndex.query(range),
+        pane: structure.pane,
+        tables,
+        autoFilter: structure.autoFilter,
+        annotations,
+        conditionalFormatting,
       };
     },
     retainRange(range) {
@@ -343,6 +475,8 @@ export function createSpreadsheetSheetStore(
     async dispose() {
       if (disposed) return;
       disposed = true;
+      conditionalStats.clear();
+      conditionalStatsRequests.clear();
       await tiles.dispose();
     },
   };

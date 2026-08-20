@@ -66,6 +66,7 @@ function ShapeRendererComponent({
   return (
     <div
       {...hyperlinkProps}
+      data-office-presentation-element-id={element.id}
       style={{
         position: 'absolute',
         left: element.x,

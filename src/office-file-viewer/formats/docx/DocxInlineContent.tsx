@@ -408,6 +408,36 @@ function DocxInlineContentComponent({
         aria-hidden="true"
       />
     );
+  if (inline.type === 'note-reference') {
+    const targetId = `${inline.noteKind}:${inline.noteId}`;
+    return (
+      <sup className="office-file-docx-note-reference">
+        <button
+          type="button"
+          data-office-word-note-reference={targetId}
+          onClick={(event) => {
+            const viewer = event.currentTarget.closest(
+              '.office-file-docx-viewer',
+            );
+            const target = Array.from(
+              viewer?.querySelectorAll<HTMLElement>(
+                '[data-office-word-note-id]',
+              ) ?? [],
+            ).find((element) => element.dataset.officeWordNoteId === targetId);
+            target?.scrollIntoView({
+              block: 'center',
+              behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)')
+                .matches
+                ? 'auto'
+                : 'smooth',
+            });
+          }}
+        >
+          {inline.label}
+        </button>
+      </sup>
+    );
+  }
   if (inline.type === 'image') return <DocxImage inline={inline} />;
   if (inline.type === 'chart') return <DocxInlineChart inline={inline} />;
   if (inline.type === 'shape') {

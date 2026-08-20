@@ -203,6 +203,26 @@ export function CloseIcon(props: OfficeIconProps) {
   );
 }
 
+/** 渲染文档审阅与批注图标。 */
+export function ReviewIcon(props: OfficeIconProps) {
+  return (
+    <OfficeIconBase {...props}>
+      <path d="M4 4.5h16v12H9l-5 4v-16Z" />
+      <path d="M8 8.5h8M8 12h5" />
+    </OfficeIconBase>
+  );
+}
+
+/** 渲染批注作者头像图标。 */
+export function UserIcon(props: OfficeIconProps) {
+  return (
+    <OfficeIconBase {...props}>
+      <circle cx="12" cy="8" r="3.5" />
+      <path d="M5.5 20a6.5 6.5 0 0 1 13 0" />
+    </OfficeIconBase>
+  );
+}
+
 /** 渲染演讲者备注图标。 */
 export function NotesIcon(props: OfficeIconProps) {
   return (

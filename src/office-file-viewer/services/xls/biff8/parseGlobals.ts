@@ -175,11 +175,13 @@ function parsePalette(data: Uint8Array) {
 
 function parseDefinedName(data: Uint8Array, id: number) {
   const header = new Biff8Reader(data);
-  header.readUint16();
+  const flags = header.readUint16();
   header.readUint8();
   const characterCount = header.readUint8();
   const tokenLength = header.readUint16();
-  header.readBytes(8);
+  header.readUint16();
+  const sheetIndex = header.readUint16();
+  header.readBytes(4);
   const isWide = Boolean(header.readUint8() & 0x01);
   const nameBytes = header.readBytes(characterCount * (isWide ? 2 : 1));
   let name = '';
@@ -195,10 +197,18 @@ function parseDefinedName(data: Uint8Array, id: number) {
   } else {
     for (const value of nameBytes) name += String.fromCharCode(value);
   }
+  const builtInId = flags & 0x0020 ? nameBytes[0] : undefined;
   return {
     id,
-    name,
+    name:
+      builtInId === 0x0d
+        ? '_FilterDatabase'
+        : builtInId === undefined
+        ? name
+        : `_Builtin_${builtInId}`,
     tokens: header.readBytes(tokenLength),
+    builtInId,
+    sheetIndex: sheetIndex || undefined,
   };
 }
 

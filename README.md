@@ -6,7 +6,7 @@ English | [简体中文](./README.zh-CN.md) | <a href="https://gyxing.github.io/
 
 `office-file-viewer` downloads, parses, and renders Office files entirely in the browser. It requires no companion document-conversion service and does not actively upload local files.
 
-The package provides a unified viewer for Word documents, Excel spreadsheets, and PowerPoint presentations, including file selection, remote loading, parsing progress, full-document search, zoom, fullscreen mode, content-image preview and download, document outlines, spreadsheet display modes, worksheet tabs, slide navigation, and speaker notes.
+The package provides a unified viewer for Word documents, Excel spreadsheets, and PowerPoint presentations, including full-document search, read-only review, footnotes/endnotes, spreadsheet business semantics, secure media playback, slide transitions, zoom, fullscreen mode, and speaker notes.
 
 > This is an independent parsing and rendering implementation, not the native Microsoft Office or WPS Office layout engine. Complex documents can render differently from desktop applications. Review the [complete limitations](https://gyxing.github.io/office-file-viewer/docs#limitations) before use.
 
@@ -21,6 +21,10 @@ The package provides a unified viewer for Word documents, Excel spreadsheets, an
 - **Controlled view state**: Hosts can control zoom, active pages, worksheets, sidebars, and display modes per field.
 - **Content-image actions**: DOC/DOCX/WPS and XLS/XLSX support double-click preview plus preview and download actions from a custom context menu.
 - **Source hyperlinks**: Text, cell, image, shape, and action-button links use safe `Ctrl`/`Command` modifier activation and can be intercepted by the host.
+- **Read-only review**: Word comments and revisions use a native-style page-side markup rail with dashed leaders connected directly to the body, without a fixed review list. DOCX supports final, markup, and original views, while DOC/WPS restores recoverable review semantics. Excel and PowerPoint comments continue to use the shared review panel.
+- **Word notes**: DOC/DOCX/WPS support footnotes, endnotes, reference navigation, and continuation pages for long footnotes.
+- **Spreadsheet semantics**: Frozen panes, Table/AutoFilter, cell comments, and a common conditional-formatting subset are restored without modifying workbook data.
+- **Presentation media and transitions**: Embedded audio/video is loaded only for the active slide and never autoplayed. External media is blocked by default, and common source transitions are opt-in.
 - **Adaptive Workers**: All seven formats support Workers. The default mode selects a complete model or an on-demand source from the file profile and safely falls back if Worker startup fails.
 - **Font fallback**: Source fonts, aliases, and fallback chains are resolved consistently, with optional structured warnings for fonts missing in the current browser.
 - **Resource management**: The component handles cancellation, subscriptions, Workers, and Blob URLs, with optional host-configured parse limits.
@@ -71,11 +75,11 @@ See the [complete quick start](https://gyxing.github.io/office-file-viewer/docs#
 
 ## Supported formats
 
-| Category   | Extensions              | Main capabilities                                                                                                       |
-| ---------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Word       | `.doc`, `.docx`, `.wps` | Text, formatting, lists, tables, images, charts, shapes, links, and document outlines                                   |
-| Excel      | `.xls`, `.xlsx`         | Worksheets, values, styles, merged cells, dimensions, images, charts, links, worksheet tabs, and original/reading modes |
-| PowerPoint | `.ppt`, `.pptx`         | Slides, masters, text, shapes, images, tables, charts, links, navigation, and speaker notes                             |
+| Category   | Extensions              | Main capabilities                                                                                              |
+| ---------- | ----------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Word       | `.doc`, `.docx`, `.wps` | Body content, tables, graphics, links, outlines, comments, revisions, footnotes, and endnotes                  |
+| Excel      | `.xls`, `.xlsx`         | Worksheets, styles, graphics, links, frozen panes, tables/filters, comments, and common conditional formatting |
+| PowerPoint | `.ppt`, `.pptx`         | Slides, masters, graphics, links, comments, notes, audio/video, and common slide transitions                   |
 
 Coverage does not guarantee complete restoration of every Office version, vendor extension, macro, embedded object, animation, or complex layout.
 
@@ -85,6 +89,7 @@ Coverage does not guarantee complete restoration of every Office version, vendor
 - Remote files remain subject to browser CORS, authentication, and Content Security Policy rules.
 - Internal optimization thresholds never reject large files. Very large or complex files automatically use on-demand reads and virtual rendering, but can still consume significant memory or briefly reduce responsiveness.
 - The package does not bundle Office fonts; final layout depends on fonts available to the browser or fallback fonts configured by the host.
+- Review, filtering, media, and transition support is read-only. The viewer does not write comments, execute filters, macros, ActiveX, OLE, or object-level animations.
 
 Read the [full performance, security, and rendering boundaries](https://gyxing.github.io/office-file-viewer/docs#limitations).
 

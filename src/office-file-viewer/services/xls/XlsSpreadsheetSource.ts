@@ -515,6 +515,9 @@ export class XlsSpreadsheetSource implements SpreadsheetSource {
           images: [...objects.images, ...cellImages],
           charts: objects.charts,
           hyperlinks: sparse.hyperlinks,
+          pane: sparse.pane,
+          annotations: sparse.annotations,
+          conditionalFormatting: sparse.conditionalFormatting,
         });
         await Promise.all(
           groupTiles(sheetId, revision, sparse.cells).map((tile) =>
@@ -647,8 +650,20 @@ export class XlsSpreadsheetSource implements SpreadsheetSource {
       merges: [...data.merges],
       images: [...data.images],
       charts: [...data.charts],
+      pane: layout.pane,
+      tables: data.tables ? [...data.tables] : undefined,
+      autoFilter: data.autoFilter,
+      annotations: data.annotations ? [...data.annotations] : undefined,
+      conditionalFormatting: data.conditionalFormatting
+        ? [...data.conditionalFormatting]
+        : undefined,
     };
     return sheet;
+  }
+
+  async getAnnotations(sheetId: string, signal?: AbortSignal) {
+    await this.ensureSheet(sheetId, signal);
+    return this.stores.get(sheetId)!.getAnnotations();
   }
 
   async getRange(
