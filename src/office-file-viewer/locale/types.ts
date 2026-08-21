@@ -47,6 +47,10 @@ export type OfficeFileViewerMessages = {
     speakerNotes: string;
     /** 缩放比例输入框的无障碍名称。 */
     zoomLevel: string;
+    /** 适应可用宽度选项文案。 */
+    fitWidth: string;
+    /** 完整显示当前页面选项文案。 */
+    fitPage: string;
     /** 缩小预览按钮文案。 */
     zoomOut: string;
     /** 放大预览按钮文案。 */

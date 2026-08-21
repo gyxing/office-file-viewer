@@ -1,3 +1,4 @@
+import { OfficeFileViewerError } from '../errors/OfficeFileViewerError';
 import type {
   DocBinaryContent,
   DocCharacterRun,
@@ -103,6 +104,13 @@ export function readDocFib(wordDocument: Uint8Array): DocFib {
     wordDocument.byteLength,
   );
   const flags = readUint16(view, 10);
+  if (flags & 0x0100) {
+    throw new OfficeFileViewerError(
+      'ENCRYPTED_FILE',
+      '暂不支持密码加密的 DOC/WPS 文件',
+      { stage: 'format', previewKind: 'doc' },
+    );
+  }
 
   return {
     tableStreamName: flags & 0x0200 ? '1Table' : '0Table',

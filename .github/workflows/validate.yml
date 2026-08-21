@@ -31,3 +31,6 @@ jobs:
 
       - name: Validate source and builds
         run: yarn run check
+
+      - name: Validate React peer compatibility
+        run: yarn run check:react-compatibility

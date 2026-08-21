@@ -51,7 +51,7 @@
   position: absolute;
   width: 3px;
   height: 44px;
-  background: #b8c2cf;
+  background: var(--office-file-disabled-text-color);
   border-radius: 999px;
   opacity: 0;
   transition: opacity 160ms ease;
@@ -61,7 +61,7 @@
 .office-file-navigation-panel__resize-handle:focus-visible::before,
 .office-file-navigation-panel[data-resizing='true']
   .office-file-navigation-panel__resize-handle::before {
-  background: #1677ff;
+  background: var(--office-file-primary-color);
 }
 
 .office-file-navigation-panel__resize-handle:hover > span,
@@ -73,7 +73,7 @@
 }
 
 .office-file-navigation-panel__resize-handle:focus-visible {
-  outline: 2px solid #1677ff;
+  outline: 2px solid var(--office-file-primary-color);
   outline-offset: -2px;
 }
 
@@ -91,7 +91,7 @@
 .office-file-navigation-tabs__tab {
   min-width: 52px;
   padding: 0 10px;
-  color: #64748b;
+  color: var(--office-file-muted-text-color);
   font: inherit;
   font-size: 13px;
   background: transparent;
@@ -101,19 +101,19 @@
 }
 
 .office-file-navigation-tabs__tab[aria-selected='true'] {
-  color: #0958d9;
+  color: var(--office-file-primary-active-color);
   font-weight: 600;
-  background: #fff;
+  background: var(--office-file-surface-color);
   box-shadow: 0 1px 2px rgb(15 23 42 / 12%);
 }
 
 .office-file-navigation-tabs__tab:hover:not([aria-selected='true']) {
-  color: #1f2937;
+  color: var(--office-file-text-color);
   background: rgb(255 255 255 / 65%);
 }
 
 .office-file-navigation-tabs__tab:focus-visible {
-  outline: 2px solid #1677ff;
+  outline: 2px solid var(--office-file-primary-color);
   outline-offset: -1px;
 }
 

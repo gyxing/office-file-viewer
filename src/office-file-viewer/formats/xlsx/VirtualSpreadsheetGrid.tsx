@@ -580,9 +580,13 @@ function VirtualSpreadsheetGridComponent({
       ref={viewportRef}
       className="office-file-xlsx-sheet-grid office-file-xlsx-virtual-grid"
       data-office-spreadsheet-sheet-id={sheetId}
+      data-office-fit-viewport="true"
     >
       <div
         className="office-file-xlsx-sheet-grid__canvas office-file-xlsx-virtual-grid__canvas"
+        data-office-fit-target="true"
+        data-office-fit-base-width={canvasWidth}
+        data-office-fit-base-height={canvasHeight}
         style={{
           width: canvasWidth,
           minWidth: canvasWidth,

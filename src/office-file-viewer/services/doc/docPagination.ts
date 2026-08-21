@@ -556,26 +556,44 @@ function estimateListHeight(
   const fontSize = block.style?.fontSize ?? 14;
   const lineHeight = block.style?.lineHeight ?? 1.7;
   const itemSpacingAfter = block.style?.spacingAfter ?? 8;
+  const indentLeft = Math.max(20, block.style?.indentLeft ?? 0);
   const listContentWidth = Math.max(
     fontSize * 4,
     contentWidth -
-      24 -
-      (block.style?.indentLeft ?? 0) -
-      (block.style?.indentRight ?? 0),
+      indentLeft -
+      (block.style?.indentRight ?? 0) +
+      fontSize * 0.5,
   );
-  const itemHeight = block.items.reduce(
-    (sum, item) =>
-      sum +
-      estimateLineCount(
-        renderedTextFromInlines(item.text, item.inlines) || ' ',
-        listContentWidth,
-        fontSize,
-      ) *
-        resolveLineHeightPx(fontSize, lineHeight) +
-      itemSpacingAfter,
-    0,
+  const itemHeight = block.items.reduce((sum, item) => {
+    const lines = estimateLineCount(
+      renderedTextFromInlines(item.text, item.inlines) || ' ',
+      listContentWidth,
+      fontSize,
+    );
+    return (
+      sum + lines * resolveLineHeightPx(fontSize, lineHeight) + itemSpacingAfter
+    );
+  }, 0);
+  return (
+    itemHeight +
+    (!block.continuesOnNext && block.style?.spacingAfter === undefined ? 16 : 0)
   );
-  return itemHeight + 16;
+}
+
+/** 估算列表单项高度，供列表在页尾按项目边界拆分。 */
+function estimateListItemHeight(
+  block: Extract<DocBlock, { type: 'list' }>,
+  item: Extract<DocBlock, { type: 'list' }>['items'][number],
+  contentWidth: number,
+) {
+  return estimateListHeight(
+    {
+      ...block,
+      items: [item],
+      continuesOnNext: true,
+    },
+    contentWidth,
+  );
 }
 
 function estimateBlockHeight(block: DocBlock, contentWidth: number) {
@@ -920,8 +938,8 @@ export class DocPaginationState {
         index += 1;
         continue;
       }
-      const followingTable = blocks[index + 1];
-      const isTableCaption =
+      const followingFlowBlock = blocks[index + 1];
+      const isFlowCaption =
         currentBlock.type === 'paragraph' &&
         !currentBlock.pageBreakBefore &&
         currentBlock.text.trim().length > 0 &&
@@ -929,31 +947,39 @@ export class DocPaginationState {
           (inline) => inline.type === 'image',
         ) &&
         currentBlock.text.replace(/\s+/g, '').length <= 40 &&
-        followingTable?.type === 'table';
-      if (isTableCaption) {
+        (followingFlowBlock?.type === 'table' ||
+          followingFlowBlock?.type === 'list');
+      if (isFlowCaption && followingFlowBlock) {
         const captionHeight = estimateBlockHeight(
           currentBlock,
           this.contentWidth,
         );
-        const fullTableHeight = estimateBlockHeight(
-          followingTable,
+        let followingKeepHeight = estimateLeadingBlockHeight(
+          followingFlowBlock,
           this.contentWidth,
         );
-        const availableTableHeight = Math.max(
-          0,
-          this.contentHeight - this.currentHeight - captionHeight,
-        );
-        const canUseCurrentPageForTable =
-          fullTableHeight > this.contentHeight ||
-          availableTableHeight / Math.max(1, fullTableHeight) >=
-            DOC_TABLE_SPLIT_MIN_VISIBLE_RATIO;
-        // 页尾可承载足够比例时按行拆表；若只能留下表头和孤立首行，
-        // 则把可单页容纳的整表移至下一页，兼顾 Word 的连续表格行为。
-        const keepHeight =
-          captionHeight +
-          (fullTableHeight <= this.contentHeight && !canUseCurrentPageForTable
-            ? fullTableHeight
-            : estimateLeadingBlockHeight(followingTable, this.contentWidth));
+        if (followingFlowBlock.type === 'table') {
+          const fullTableHeight = estimateBlockHeight(
+            followingFlowBlock,
+            this.contentWidth,
+          );
+          const availableTableHeight = Math.max(
+            0,
+            this.contentHeight - this.currentHeight - captionHeight,
+          );
+          const canUseCurrentPageForTable =
+            fullTableHeight > this.contentHeight ||
+            availableTableHeight / Math.max(1, fullTableHeight) >=
+              DOC_TABLE_SPLIT_MIN_VISIBLE_RATIO;
+          // 页尾只能留下表头和孤立首行时，把可单页容纳的整表移至下一页。
+          if (
+            fullTableHeight <= this.contentHeight &&
+            !canUseCurrentPageForTable
+          ) {
+            followingKeepHeight = fullTableHeight;
+          }
+        }
+        const keepHeight = captionHeight + followingKeepHeight;
         if (
           this.currentBlocks.length &&
           this.currentHeight + keepHeight > this.contentHeight
@@ -1017,6 +1043,20 @@ export class DocPaginationState {
         index += 1;
         continue;
       }
+      const currentListHeight =
+        currentBlock.type === 'list'
+          ? estimateListHeight(currentBlock, this.contentWidth)
+          : 0;
+      if (
+        currentBlock.type === 'list' &&
+        (currentListHeight > this.contentHeight ||
+          (this.currentBlocks.length > 0 &&
+            this.currentHeight + currentListHeight > this.contentHeight))
+      ) {
+        this.appendListParts(currentBlock);
+        index += 1;
+        continue;
+      }
       const imageOnlyParagraphImages =
         imagesFromImageOnlyParagraph(currentBlock);
       if (imageOnlyParagraphImages.length) {
@@ -1046,6 +1086,67 @@ export class DocPaginationState {
         estimateBlockHeight(currentBlock, this.contentWidth),
       );
       index += 1;
+    }
+  }
+
+  /** 在列表项边界拆分页尾内容，避免整组列表被推到下一页。 */
+  private appendListParts(currentBlock: Extract<DocBlock, { type: 'list' }>) {
+    let itemIndex = 0;
+    let partIndex = 0;
+    while (itemIndex < currentBlock.items.length) {
+      let availableHeight = this.contentHeight - this.currentHeight;
+      const firstItemHeight = estimateListItemHeight(
+        currentBlock,
+        currentBlock.items[itemIndex],
+        this.contentWidth,
+      );
+      if (this.currentBlocks.length && firstItemHeight > availableHeight) {
+        this.flushPage();
+        availableHeight = this.contentHeight;
+      }
+      const startItemIndex = itemIndex;
+      let itemsHeight = 0;
+      while (itemIndex < currentBlock.items.length) {
+        const itemHeight = estimateListItemHeight(
+          currentBlock,
+          currentBlock.items[itemIndex],
+          this.contentWidth,
+        );
+        const candidateFinal = itemIndex + 1 >= currentBlock.items.length;
+        const outerSpacing =
+          candidateFinal && currentBlock.style?.spacingAfter === undefined
+            ? 16
+            : 0;
+        if (
+          itemIndex > startItemIndex &&
+          itemsHeight + itemHeight + outerSpacing > availableHeight
+        ) {
+          break;
+        }
+        itemsHeight += itemHeight;
+        itemIndex += 1;
+        if (itemsHeight + outerSpacing > availableHeight) break;
+      }
+      if (itemIndex === startItemIndex) {
+        itemsHeight = firstItemHeight;
+        itemIndex += 1;
+      }
+      partIndex += 1;
+      const isFinalPart = itemIndex >= currentBlock.items.length;
+      const partOuterSpacing =
+        isFinalPart && currentBlock.style?.spacingAfter === undefined ? 16 : 0;
+      this.appendBlock(
+        {
+          ...currentBlock,
+          id: `${currentBlock.id}-part-${partIndex}`,
+          sourceBlockId: currentBlock.sourceBlockId ?? currentBlock.id,
+          items: currentBlock.items.slice(startItemIndex, itemIndex),
+          continuesOnNext: !isFinalPart,
+          estimatedHeight: undefined,
+        },
+        itemsHeight + partOuterSpacing,
+      );
+      if (!isFinalPart) this.flushPage();
     }
   }
 

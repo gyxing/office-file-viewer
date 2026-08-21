@@ -186,6 +186,8 @@ export type DocListBlock = {
   items: DocListItem[];
   /** 当前内容使用的渲染样式。 */
   style?: DocTextStyle;
+  /** 当前列表块后续仍有分页片段，页尾不重复追加列表外间距。 */
+  continuesOnNext?: boolean;
   /** 分页器估算的块高度；仅用于在浏览器布局后校准旧 DOC 分页。 */
   estimatedHeight?: number;
 };
@@ -194,6 +196,8 @@ export type DocListBlock = {
 export type DocListItem = {
   /** 在所属集合中的唯一标识。 */
   id: string;
+  /** 源列表显示的编号或项目符号；保留原值才能还原多级编号格式。 */
+  marker?: string;
   /** 文本内容。 */
   text: string;
   /** 按源文档顺序排列的行内内容。 */

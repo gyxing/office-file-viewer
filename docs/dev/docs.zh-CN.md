@@ -6,7 +6,7 @@ toc: content
 
 # Office File Viewer 使用文档
 
-`office-file-viewer` 是一个面向 React 的纯浏览器 Office 文件预览组件，支持 DOC、DOCX、WPS、XLS、XLSX、PPT 和 PPTX。文件下载、解析与渲染均在浏览器中完成，不需要配套的文档转换服务。
+`office-file-viewer` 是一个面向 React 的纯浏览器 Office 文件预览组件，支持 DOC/DOCX/DOCM/DOTX/WPS、XLS/XLSX/XLSM/XLTX 和 PPT/PPTX/PPTM/POTX。文件下载、解析与渲染均在浏览器中完成，不需要配套的文档转换服务。
 
 <nav className="office-viewer-docs__quick-links" aria-label="文档快捷入口">
   <a href="#quick-start">快速接入</a>
@@ -33,11 +33,12 @@ yarn add office-file-viewer
 
 ## 版本兼容
 
-| 项目     | 要求       | 说明                          |
-| -------- | ---------- | ----------------------------- |
-| React    | `>=16.9.0` | 支持 Hooks 的 React 版本      |
-| ReactDOM | `>=16.9.0` | 建议与 React 保持相同主版本   |
-| 模块格式 | 仅 ESM     | 使用支持 ESM 的浏览器构建工具 |
+| 项目     | 要求       | 说明                                           |
+| -------- | ---------- | ---------------------------------------------- |
+| React    | `>=16.9.0` | 支持 Hooks 的 React 版本                       |
+| ReactDOM | `>=16.9.0` | 建议与 React 保持相同主版本                    |
+| 模块格式 | 仅 ESM     | 使用支持 ESM 的浏览器构建工具                  |
+| 浏览器   | 现代浏览器 | 建议 Chromium 100+、Firefox 115+、Safari 16.4+ |
 
 当前 peer dependency 范围：
 
@@ -155,39 +156,57 @@ type OfficeFileViewerUri = File | string | OfficeFileViewerUriLoader;
 
 ## `OfficeFileViewer` API
 
-| 属性                             | 类型                                                 | 默认值     | 说明                                   |
-| -------------------------------- | ---------------------------------------------------- | ---------- | -------------------------------------- |
-| `locale`                         | `'zh-CN' \| 'en-US'`                                 | `'zh-CN'`  | 预览器内置界面语言                     |
-| `uri`                            | `OfficeFileViewerUri`                                | -          | 预加载文件来源；未传时显示文件选择器   |
-| `defaultFileName`                | `string`                                             | 本地化文案 | 来源无法提供有效文件名时使用的备用名称 |
-| `defaultZoom`                    | `number`                                             | `100`      | 初始缩放百分比，限制在 `25` 到 `300`   |
-| `defaultViewState`               | `Partial<OfficeFileViewerViewState>`                 | -          | 非受控视图字段的统一初始值             |
-| `viewState`                      | `Partial<OfficeFileViewerViewState>`                 | -          | 按字段控制缩放、页面、侧栏等视图状态   |
-| `onViewStateChange`              | `(state, change) => void`                            | -          | 用户请求改变任一视图字段时触发         |
-| `defaultShowSpeakerNotes`        | `boolean`                                            | `false`    | 非受控模式下演讲者备注的初始状态       |
-| `showSpeakerNotes`               | `boolean`                                            | -          | 受控模式下演讲者备注是否显示           |
-| `onSpeakerNotesVisibilityChange` | `(visible: boolean) => void`                         | -          | 演讲者备注显示状态变化时触发           |
-| `className`                      | `string`                                             | -          | 预览器根节点附加类名                   |
-| `height`                         | `CSSProperties['height']`                            | 跟随父容器 | 预览器高度；优先级高于 `style.height`  |
-| `style`                          | `CSSProperties`                                      | -          | 预览器根节点内联样式                   |
-| `onFileParsed`                   | `(parsed: ParsedOfficeFile, file: File) => void`     | -          | 完整实体化解析结果可用时触发一次       |
-| `onPreviewReady`                 | `(info: OfficePreviewReadyInfo, file: File) => void` | -          | 首个可用预览就绪时触发一次             |
-| `onError`                        | `(error: Error, file?: File) => void`                | -          | 加载、解析或预览器操作失败时触发       |
-| `onWarning`                      | `(warning, file) => void`                            | -          | 非致命解析降级、部分预览或字体回退警告 |
-| `parseOptions`                   | `OfficeParseOptions`                                 | `{}`       | Worker 策略与可选资源限制              |
-| `imagePreview`                   | `boolean \| OfficeFileViewerImagePreviewOptions`     | `true`     | 内容图片预览、下载与右键菜单配置       |
-| `hyperlink`                      | `boolean`                                            | `true`     | 是否启用源文档明确声明的超链接         |
-| `search`                         | `false \| OfficeFileViewerSearchOptions`             | `{}`       | 全文查找入口、运行时与初始匹配选项     |
-| `review`                         | `false \| OfficeFileViewerReviewOptions`             | `{}`       | 批注、修订、脚注和尾注的只读审阅配置   |
-| `presentationMedia`              | `false \| OfficeFileViewerPresentationMediaOptions`  | `{}`       | 演示文稿音视频、外部媒体与下载配置     |
-| `transitions`                    | `false \| 'source'`                                  | `false`    | 是否按源文稿播放支持的页级切换         |
-| `fontOptions`                    | `OfficeFileViewerFontOptions`                        | `{}`       | 字体别名、回退字体和缺失字体诊断       |
-| `onHyperlinkActivate`            | `(event: OfficeHyperlinkActivateEvent) => void`      | -          | 链接有效激活时触发，可阻止默认导航     |
-| `onParseProgress`                | `(progress: ParseProgress) => void`                  | -          | 解析阶段或完成度变化时触发             |
+| 属性                             | 类型                                                  | 默认值     | 说明                                         |
+| -------------------------------- | ----------------------------------------------------- | ---------- | -------------------------------------------- |
+| `locale`                         | `'zh-CN' \| 'en-US'`                                  | `'zh-CN'`  | 预览器内置界面语言                           |
+| `uri`                            | `OfficeFileViewerUri`                                 | -          | 预加载文件来源；未传时显示文件选择器         |
+| `defaultFileName`                | `string`                                              | 本地化文案 | 来源无法提供有效文件名时使用的备用名称       |
+| `defaultZoom`                    | `number`                                              | `100`      | 兼容属性；新接入使用 `defaultViewState.zoom` |
+| `defaultViewState`               | `Partial<OfficeFileViewerViewState>`                  | -          | 非受控视图字段的统一初始值                   |
+| `viewState`                      | `Partial<OfficeFileViewerViewState>`                  | -          | 按字段控制缩放、页面、侧栏等视图状态         |
+| `onViewStateChange`              | `(state, change) => void`                             | -          | 用户请求改变任一视图字段时触发               |
+| `defaultShowSpeakerNotes`        | `boolean`                                             | `false`    | 非受控模式下演讲者备注的初始状态             |
+| `showSpeakerNotes`               | `boolean`                                             | -          | 受控模式下演讲者备注是否显示                 |
+| `onSpeakerNotesVisibilityChange` | `(visible: boolean) => void`                          | -          | 演讲者备注显示状态变化时触发                 |
+| `className`                      | `string`                                              | -          | 预览器根节点附加类名                         |
+| `height`                         | `CSSProperties['height']`                             | 跟随父容器 | 预览器高度；优先级高于 `style.height`        |
+| `toolbar`                        | `false \| OfficeFileViewerToolbarOptions`             | `{}`       | 隐藏工具栏或文件名、打开、缩放、全屏区域     |
+| `toolbarExtra`                   | `ReactNode`                                           | -          | 在全部内置操作后追加宿主工具栏内容           |
+| `onFileSelect`                   | `(file: File) => void`                                | -          | 内置入口选择本地文件、解析开始前触发         |
+| `style`                          | `CSSProperties`                                       | -          | 预览器根节点内联样式                         |
+| `onFileParsed`                   | `(parsed: ParsedOfficeFile, file: File) => void`      | -          | 完整实体化解析结果可用时触发一次             |
+| `onPreviewReady`                 | `(info: OfficePreviewReadyInfo, file: File) => void`  | -          | 首个可用预览就绪时触发一次                   |
+| `onError`                        | `(error: OfficeFileViewerError, file?: File) => void` | -          | 加载、解析或预览器操作失败时触发             |
+| `onWarning`                      | `(warning, file) => void`                             | -          | 非致命解析降级、部分预览或字体回退警告       |
+| `parseOptions`                   | `OfficeParseOptions`                                  | `{}`       | Worker 策略与可选资源限制                    |
+| `imagePreview`                   | `boolean \| OfficeFileViewerImagePreviewOptions`      | `true`     | 内容图片预览、下载与右键菜单配置             |
+| `hyperlink`                      | `boolean`                                             | `true`     | 是否启用源文档明确声明的超链接               |
+| `search`                         | `false \| OfficeFileViewerSearchOptions`              | `{}`       | 全文查找入口、运行时与初始匹配选项           |
+| `review`                         | `false \| OfficeFileViewerReviewOptions`              | `{}`       | 批注、修订、脚注和尾注的只读审阅配置         |
+| `presentationMedia`              | `false \| OfficeFileViewerPresentationMediaOptions`   | `{}`       | 演示文稿音视频、外部媒体与下载配置           |
+| `transitions`                    | `false \| 'source'`                                   | `false`    | 是否按源文稿播放支持的页级切换               |
+| `fontOptions`                    | `OfficeFileViewerFontOptions`                         | `{}`       | 字体别名、回退字体和缺失字体诊断             |
+| `onHyperlinkActivate`            | `(event: OfficeHyperlinkActivateEvent) => void`       | -          | 链接有效激活时触发，可阻止默认导航           |
+| `onParseProgress`                | `(progress: ParseProgress) => void`                   | -          | 解析阶段或完成度变化时触发                   |
+
+### 工具栏与主题
+
+`toolbar={false}` 会完全隐藏内置工具栏；对象配置可以分别隐藏文件名、打开文件、缩放和全屏区域。`toolbarExtra` 会在全部内置操作后渲染宿主 React 节点，`onFileSelect` 在内置入口选择文件后、解析启动前触发。隐藏工具栏且没有传入 `uri` 时，宿主需要提供自己的文件入口。
+
+```tsx | pure
+<OfficeFileViewer
+  uri={file}
+  toolbar={{ openFile: false, fullscreen: false }}
+  toolbarExtra={<button type="button">下载原文件</button>}
+  onFileSelect={(nextFile) => console.log(nextFile.name)}
+/>
+```
+
+预览器根元素提供稳定的 Shell CSS 变量。常用变量包括 `--office-file-primary-color`、`--office-file-primary-hover-color`、`--office-file-primary-active-color`、`--office-file-text-color`、`--office-file-muted-text-color`、`--office-file-surface-color`、`--office-file-workspace-color`、`--office-file-border-color`、`--office-file-focus-ring-color`、`--office-file-radius` 和 `--office-file-toolbar-min-height`。这些变量只影响预览器界面，不覆盖源文档自身的字体、颜色和边框。
 
 ### 内容图片预览
 
-DOC、DOCX、WPS、XLS 和 XLSX 中的可见内容图片默认支持双击、`Enter` 或空格键打开预览层。预览层支持适应窗口、`10%` 到 `500%` 缩放、拖拽、顺时针旋转、复位和下载；图片右键菜单只提供“预览”和“下载”。
+全部 Word 与 Excel 格式中的可见内容图片默认支持双击、`Enter` 或空格键打开预览层。预览层支持适应窗口、`10%` 到 `500%` 缩放、拖拽、顺时针旋转、复位和下载；图片右键菜单只提供“预览”和“下载”。
 
 ```ts | pure
 type OfficeFileViewerImagePreviewOptions = {
@@ -209,7 +228,7 @@ type OfficeFileViewerImagePreviewConfig =
 />
 ```
 
-关闭 `contextMenu` 后保留双击和键盘预览，并恢复浏览器原生右键菜单。页眉装饰图、背景、水印、页面绘图层、图表以及 PPT/PPTX 图片不属于该交互范围。
+关闭 `contextMenu` 后保留双击和键盘预览，并恢复浏览器原生右键菜单。页眉装饰图、背景、水印、页面绘图层、图表以及 演示文稿图片不属于该交互范围。
 
 ### Office 超链接
 
@@ -253,7 +272,7 @@ export default function OfficePreview({ file }: { file: File }) {
 
 ### 全文查找
 
-DOC、DOCX、WPS、XLS、XLSX、PPT 和 PPTX 均支持工具栏查找入口与 `Ctrl + F`（macOS 为 `Command + F`）。查询采用可取消的增量扫描，结果生成后即可导航，不需要等待整个大文件扫描完成。`Esc` 关闭查找侧栏；切换文件会清空上一文件的查询和结果。
+全部支持格式均提供工具栏查找入口与 `Ctrl + F`（macOS 为 `Command + F`）。查询采用可取消的增量扫描，结果生成后即可导航，不需要等待整个大文件扫描完成。`Esc` 关闭查找侧栏；切换文件会清空上一文件的查询和结果。
 
 ```ts | pure
 type OfficeFileViewerSearchOptions = {
@@ -289,7 +308,7 @@ type OfficeFileViewerReviewOptions = {
 
 ### Excel 业务语义
 
-XLS/XLSX 会只读还原冻结窗格、Table/AutoFilter、单元格批注和常用条件格式。支持的条件格式首期包含 `cellIs`、两色/三色色阶、数据条、常用图标集、重复值、唯一值、Top10 和高于/低于平均值。需要全范围统计的规则由 Source 分片扫描并按规则缓存；滚动不会用当前可见窗口重新计算。公式规则无法安全求值时只保留摘要并发送警告，不执行完整 Excel 公式重算，也不会重新筛选或排序数据。
+Excel 格式会只读还原冻结窗格、Table/AutoFilter、单元格批注和常用条件格式。支持的条件格式首期包含 `cellIs`、两色/三色色阶、数据条、常用图标集、重复值、唯一值、Top10 和高于/低于平均值。需要全范围统计的规则由 Source 分片扫描并按规则缓存；滚动不会用当前可见窗口重新计算。公式规则无法安全求值时只保留摘要并发送警告，不执行完整 Excel 公式重算，也不会重新筛选或排序数据。
 
 ### PowerPoint 媒体与页级切换
 
@@ -337,6 +356,7 @@ type OfficeFileViewerPresentationTransitions = false | 'source';
 ```ts | pure
 type OfficeFileViewerViewState = {
   zoom: number;
+  zoomMode?: 'percentage' | 'fit-width' | 'fit-page';
   activeSlideIndex: number;
   activeSheetId?: string;
   wordOutlineVisible: boolean;
@@ -348,7 +368,7 @@ type OfficeFileViewerViewState = {
 };
 ```
 
-`onViewStateChange` 的第一个参数是应用本次请求后的完整视图状态，第二个参数是 `{ key, value }` 形式的单字段变化。无效缩放值会回退并限制在 `25` 到 `300`，页面索引和工作表标识会按当前文件校验。
+`onViewStateChange` 的第一个参数是应用本次请求后的完整视图状态，第二个参数是 `{ key, value }` 形式的单字段变化。无效缩放值会回退并限制在 `25` 到 `300`。`fit-width` 会随容器、侧栏和全屏尺寸重新计算；Word、PowerPoint 还支持 `fit-page`，Excel 工具栏只提供适应宽度。页面索引和工作表标识会按当前文件校验。
 
 旧版 `defaultZoom`、`defaultShowSpeakerNotes`、`showSpeakerNotes` 和 `onSpeakerNotesVisibilityChange` 继续兼容。若同时传入，`defaultViewState` 中对应字段优先于旧版默认值，`viewState.speakerNotesVisible` 优先于 `showSpeakerNotes`。
 
@@ -358,7 +378,22 @@ type OfficeFileViewerViewState = {
 - `onFileParsed` 在完整实体化结果就绪后触发；渐进解析的中间结果不会触发它。
 - `onParseProgress` 可以多次触发，且可能不包含精确数量或 `percent`。
 - `onWarning` 用稳定的 `code`、`previewKind` 和 `source` 区分解析器、保留部分预览、链接与字体警告；它不会代替 `onError`。
-- 错误发生在有效文件解析出来之前时，`onError` 可能收不到 `file`。资源策略错误可以通过 `OfficeResourceLimitError.code` 进一步判断。
+- 错误发生在有效文件解析出来之前时，`onError` 可能收不到 `file`。`OfficeFileViewerError` 提供稳定的 `code`、`stage`、`previewKind`、`fileName`、`originalCode`、`recoverable` 和 `cause`；`OfficeResourceLimitError` 继续作为其子类提供 `limit`、`actual` 与 `path`。
+
+### 结构化错误
+
+`OfficeFileViewerError` 使用 `code` 和 `stage` 提供稳定判断，并保留 `previewKind`、`fileName`、`originalCode`、`recoverable` 与底层 `cause`。常用代码包括 `UNSUPPORTED_FILE_TYPE`、`FILE_DOWNLOAD_FAILED`、`ENCRYPTED_FILE`、`INVALID_FILE`、`WORKER_FAILED`、`PARSE_FAILED` 和各类资源限制代码。取消操作仍使用 `AbortError`，不会伪装成解析失败。
+
+```tsx | pure
+<OfficeFileViewer
+  uri={file}
+  onError={(error) => {
+    if (error.code === 'ENCRYPTED_FILE') {
+      console.warn('当前文件需要密码，暂时无法预览');
+    }
+  }}
+/>
+```
 
 ## 解析配置与进度
 
@@ -381,10 +416,10 @@ type OfficeParseOptions = {
 };
 ```
 
-| 模式       | 七种格式的行为                                                                                                                    |
+| 模式       | 全部支持格式的行为                                                                                                                |
 | ---------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | `'auto'`   | 默认模式。旧格式优先使用 Worker；小型 OOXML 使用完整模型，大型 OOXML 使用 Worker 持有的按需数据源；仅 Worker 启动失败时回退主线程 |
-| `'always'` | 强制七种格式使用 Worker；Worker 不可用、加载失败或协议不兼容时直接报错，不进行主线程降级                                          |
+| `'always'` | 强制全部支持格式使用 Worker；Worker 不可用、加载失败或协议不兼容时直接报错，不进行主线程降级                                      |
 | `'never'`  | 禁用 Worker；解析在主线程执行，大文件仍可采用按需数据源与虚拟渲染                                                                 |
 
 每个活动解析会话只持有自己的 Worker 与资源读取器。来源切换、取消解析或组件卸载时，预览器会取消请求并释放对应 Worker、归档读取器和 Blob URL。大文件的查找和按需页、工作表或幻灯片读取会继续在 Worker 中执行，主线程只接收当前需要的结构化数据和惰性资源。`workerFactory` 主要用于需要特殊资源路径或内容安全策略的宿主；大多数应用应使用内置工厂。
@@ -535,31 +570,31 @@ try {
 
 ## 支持格式与交互
 
-| 文档类型           | 扩展名  | 主要解析范围                                                                        |
-| ------------------ | ------- | ----------------------------------------------------------------------------------- |
-| Word OOXML         | `.docx` | 正文排版、图形、链接、大纲、批注、修订、脚注和尾注                                  |
-| Word 97-2003       | `.doc`  | 二进制正文、表格、图形、链接、大纲，以及可恢复的批注、修订、脚注和尾注              |
-| WPS Writer         | `.wps`  | 复用 DOC 二进制管线，优先还原正文、文档资源和可识别审阅语义                         |
-| Excel OOXML        | `.xlsx` | 工作表、图形、链接、冻结窗格、Table/筛选、批注和常用条件格式                        |
-| Excel 97-2003      | `.xls`  | BIFF8 单元格、OfficeArt、图表、链接、窗格、批注，以及可恢复的筛选、Table 和条件格式 |
-| PowerPoint OOXML   | `.pptx` | 母版/版式、图形、链接、批注、备注、内嵌/外部媒体和六种常用页级切换                  |
-| PowerPoint 97-2003 | `.ppt`  | 二进制母版、图形、链接、批注、备注、可恢复媒体、常用切换和静态回退                  |
+| 文档类型           | 扩展名                    | 主要解析范围                                                                        |
+| ------------------ | ------------------------- | ----------------------------------------------------------------------------------- |
+| Word OOXML         | `.docx`、`.docm`、`.dotx` | 正文排版、图形、链接、大纲、批注、修订、脚注和尾注                                  |
+| Word 97-2003       | `.doc`                    | 二进制正文、表格、图形、链接、大纲，以及可恢复的批注、修订、脚注和尾注              |
+| WPS Writer         | `.wps`                    | 复用 DOC 二进制管线，优先还原正文、文档资源和可识别审阅语义                         |
+| Excel OOXML        | `.xlsx`、`.xlsm`、`.xltx` | 工作表、图形、链接、冻结窗格、Table/筛选、批注和常用条件格式                        |
+| Excel 97-2003      | `.xls`                    | BIFF8 单元格、OfficeArt、图表、链接、窗格、批注，以及可恢复的筛选、Table 和条件格式 |
+| PowerPoint OOXML   | `.pptx`、`.pptm`、`.potx` | 母版/版式、图形、链接、批注、备注、内嵌/外部媒体和六种常用页级切换                  |
+| PowerPoint 97-2003 | `.ppt`                    | 二进制母版、图形、链接、批注、备注、可恢复媒体、常用切换和静态回退                  |
 
 常见图表覆盖折线图、柱状图、饼图、圆环图、面积图、散点图、气泡图、雷达图和地图。无法解析或损坏的图表内容会尽可能使用文档内嵌快照。
 
 预览器交互能力包括：
 
-- 支持 `25%` 到 `300%` 缩放、手动输入数值、常用档位，以及每次 `10%` 的放大/缩小操作。
-- DOC/DOCX/WPS 与 XLS/XLSX 的可见内容图片支持双击预览、缩放、旋转、下载和自定义右键菜单。
-- DOC/DOCX/WPS 大纲默认隐藏，仅在存在可用标题时提供开关，展开后可以左右调整宽度。
-- XLS/XLSX 支持工作表标签，以及原始版式与阅读模式切换。
-- PPT/PPTX 支持幻灯片与缩略图导航；只有一页时隐藏上一页/下一页。
+- 支持 `25%` 到 `300%` 缩放、手动输入数值、常用档位、每次 `10%` 的放大/缩小，以及按格式提供的适应宽度/页面。
+- Word 与 Excel 格式的可见内容图片支持双击预览、缩放、旋转、下载和自定义右键菜单。
+- Word 格式大纲默认隐藏，仅在存在可用标题时提供开关，展开后可以左右调整宽度。
+- Excel 格式支持工作表标签，以及原始版式与阅读模式切换。
+- PowerPoint 格式支持幻灯片与缩略图导航；只有一页时隐藏上一页/下一页。
 - 演示文档存在备注时，可以开关演讲者备注并上下调整备注区域高度。
 - 支持浏览器全屏，按 `Esc` 退出后会自动同步状态。
 
 ### 电子表格显示模式
 
-显示模式选择器仅在 XLS/XLSX 预览中出现：
+显示模式选择器仅在 Excel 格式预览中出现：
 
 - **原始版式**为默认模式，保留源文件的行高、列宽、换行、缩小字体填充、合并单元格和内容裁切规则。
 - **阅读模式**保留列宽，对长文本自动换行并按需增大行高，以便完整阅读单元格内容。页面版式可能与源文件不同，但不会修改值、公式、工作簿结构或源文件。
@@ -576,7 +611,7 @@ try {
 
 - 旧格式 DOC/WPS、XLS 和 PPT 优先保证内容可读。复杂分页、锚点、文字环绕、OfficeArt 效果和动画可能与桌面应用不同。
 - DOC/WPS 的页面级 OfficeArt 画布当前以单张 SVG 图片显示，无法精确保留画布内每个子形状的独立链接点击区；这类链接会产生非阻断降级提示，字段链接和正文书签不受影响。
-- OOXML 文件可能包含尚未支持的宏、ActiveX 控件、OLE 对象、SmartArt、厂商扩展或复杂动画。这些内容可能被忽略、降级，或使用内嵌静态快照显示。
+- `.docm`、`.xlsm` 和 `.pptm` 只读取可见内容，不加载或执行宏，并报告 `MACRO_CONTENT_IGNORED`；ActiveX、OLE、SmartArt、厂商扩展或复杂动画可能被忽略、降级，或使用内嵌静态快照显示。
 - 审阅能力只读，不支持新增、回复、删除、解决或写回批注；DOC/WPS 无法可靠恢复的属性级修订只保留最终格式。
 - Excel 不重新执行筛选、排序或完整公式重算；不支持的条件格式公式只保留规则摘要。
 - PowerPoint 不实现对象级动画、触发器、动画时间轴或媒体同步，也不转码浏览器不支持的媒体编码。
@@ -585,9 +620,9 @@ try {
 
 ### 浏览器与性能边界
 
-组件面向现代浏览器，依赖 `File`、`fetch`、`DOMParser`、`AbortController`、`IntersectionObserver`、`ResizeObserver`、Blob URL、Canvas、Web Worker 和 Fullscreen API 等能力。
+建议以 Chromium 100+、Firefox 115+、Safari 16.4+ 为兼容基线。组件依赖 `File`、`fetch`、`DOMParser`、`AbortController`、`IntersectionObserver`、`ResizeObserver`、Blob URL、Canvas、Web Worker 和 Fullscreen API 等能力。
 
-七种格式均可把解析工作移入 Worker；大型 DOCX、XLSX 和 PPTX 还会由 Worker 长期持有归档读取器，并按当前视口加载页面、区域、幻灯片和资源。Worker 与虚拟渲染能减少主线程长任务和一次性模型成本，但不会消除源文件、已加载内容或浏览器图形资源占用的内存。
+全部支持扩展名均可复用对应解析类型的 Worker；大型 DOCX、XLSX 和 PPTX 还会由 Worker 长期持有归档读取器，并按当前视口加载页面、区域、幻灯片和资源。Worker 与虚拟渲染能减少主线程长任务和一次性模型成本，但不会消除源文件、已加载内容或浏览器图形资源占用的内存。
 
 组件默认不限制源文件大小、ZIP 条目数量、单条目大小或解压后总量，且内部大文件阈值不会拒绝文件。处理不可信文件时，宿主应通过 `parseOptions.resourcePolicy` 按目标设备和安全模型显式设置限制。
 

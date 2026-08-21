@@ -1,5 +1,5 @@
 .office-file-word-outline {
-  color: #1f2937;
+  color: var(--office-file-text-color);
 }
 
 .office-file-word-outline__viewport {
@@ -7,8 +7,8 @@
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #fff;
-  border-right: 1px solid #d9e0e8;
+  background: var(--office-file-surface-color);
+  border-right: 1px solid var(--office-file-border-color);
 }
 
 .office-file-word-outline__surface {
@@ -36,7 +36,7 @@
   gap: 8px;
   height: 48px;
   padding: 0 8px 0 14px;
-  border-bottom: 1px solid #e5eaf0;
+  border-bottom: 1px solid var(--office-file-border-color);
 }
 
 .office-file-word-outline__title {
@@ -51,7 +51,7 @@
 .office-file-word-outline__count {
   min-width: 24px;
   margin-left: auto;
-  color: #64748b;
+  color: var(--office-file-muted-text-color);
   font-size: 12px;
   text-align: center;
 }
@@ -71,12 +71,12 @@
 }
 
 .office-file-word-outline__toggle:hover {
-  color: #1677ff;
+  color: var(--office-file-primary-color);
   background: #f0f5ff;
 }
 
 .office-file-word-outline__toggle:focus-visible {
-  outline: 2px solid #1677ff;
+  outline: 2px solid var(--office-file-primary-color);
   outline-offset: 1px;
 }
 
@@ -117,7 +117,7 @@
   min-width: 0;
   padding-right: 4px;
   align-items: center;
-  color: #1f2937;
+  color: var(--office-file-text-color);
   cursor: pointer;
   outline: none;
   border-radius: 4px;
@@ -128,8 +128,8 @@
 }
 
 .office-file-outline-tree__row[aria-selected='true'] {
-  color: #0958d9;
-  background: #eaf4ff;
+  color: var(--office-file-primary-active-color);
+  background: var(--office-file-selected-surface-color);
 }
 
 .office-file-outline-tree__row[data-focused='true']:focus-visible {
@@ -208,7 +208,7 @@
   box-sizing: border-box;
   width: 12px;
   height: 12px;
-  background: #fff;
+  background: var(--office-file-surface-color);
   border: 1px solid currentcolor;
 }
 
@@ -234,7 +234,7 @@
 
 .office-file-outline-tree__switcher:hover,
 .office-file-outline-tree__switcher:focus-visible {
-  color: #1677ff;
+  color: var(--office-file-primary-color);
 }
 
 .office-file-outline-tree__switcher[data-loading='true'] > span {

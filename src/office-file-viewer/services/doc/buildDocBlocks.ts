@@ -27,6 +27,8 @@ const DOC_FONT_FAMILY =
 type ParsedListLine = {
   /** 列表是否使用有序编号。 */
   ordered: boolean;
+  /** 源列表显示的编号或项目符号。 */
+  marker: string;
   /** 文本内容。 */
   text: string;
   /** 按源文档顺序排列的行内内容。 */
@@ -655,6 +657,7 @@ function parseListLine(line: DocLine): ParsedListLine | undefined {
     const contentStart = orderedMatch[0].length - orderedMatch[1].length;
     return {
       ordered: true,
+      marker: normalizeBlockText(line.text.slice(0, contentStart)),
       text: normalizeBlockText(orderedMatch[1]),
       inlines: sliceLineInlines(line, contentStart),
       style: line.style,
@@ -665,8 +668,10 @@ function parseListLine(line: DocLine): ParsedListLine | undefined {
     /^\s*(?:[\u2022\u25cf\u25cb\u25a0\u25c6]|[-*])\s+(.+)$/,
   );
   if (unorderedMatch?.[1]) {
+    const contentStart = unorderedMatch[0].length - unorderedMatch[1].length;
     return {
       ordered: false,
+      marker: normalizeBlockText(line.text.slice(0, contentStart)),
       text: normalizeBlockText(unorderedMatch[1]),
       style: line.style,
     };
@@ -1043,6 +1048,7 @@ function createListBlock(items: ParsedListLine[], index: number): DocListBlock {
     ),
     items: items.map((item, itemIndex) => ({
       id: `doc-list-${index + 1}-item-${itemIndex + 1}`,
+      marker: item.marker,
       text: item.text,
       inlines: item.inlines,
     })),
@@ -1369,22 +1375,31 @@ export async function buildDocBlocksFromSegments(
       line.listLevel,
     );
     if (!prefix?.text) return line;
+    // 列表级别的悬挂缩进只补给列表项；大纲标题已有自身制表定位，不能重复缩进。
+    const shouldApplyListStyle = line.outlineLevel === undefined;
+    const numberedStyle = shouldApplyListStyle
+      ? mergeTextStyle(prefix.style, line.style)
+      : line.style;
+    const numberedLine =
+      prefix.style && shouldApplyListStyle
+        ? { ...line, style: numberedStyle }
+        : line;
     const normalized = normalizeBlockText(line.text);
     if (
       normalized === prefix.text ||
       normalized.startsWith(`${prefix.text} `) ||
       normalized.startsWith(`${prefix.text}\t`)
     ) {
-      return line;
+      return numberedLine;
     }
     const separator =
       prefix.suffix === 'space' ? ' ' : prefix.suffix === 'tab' ? '\t' : '';
     const prefixText = `${prefix.text}${separator}`;
     return {
-      ...line,
+      ...numberedLine,
       text: `${prefixText}${line.text}`,
       inlines: [
-        { type: 'text', text: prefixText, style: line.style },
+        { type: 'text', text: prefixText, style: numberedStyle },
         ...line.inlines,
       ],
     };

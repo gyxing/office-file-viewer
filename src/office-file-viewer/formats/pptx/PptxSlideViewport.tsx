@@ -56,7 +56,11 @@ function PptxSlideViewportComponent({
   }, [activeIndex, zoom]);
 
   return (
-    <section ref={viewportRef} className="office-file-pptx-viewer__viewport">
+    <section
+      ref={viewportRef}
+      className="office-file-pptx-viewer__viewport"
+      data-office-fit-viewport="true"
+    >
       <div className="office-file-pptx-viewer__slide-wrap">
         {error ? (
           <PresentationSlideState

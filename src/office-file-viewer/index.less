@@ -1,18 +1,36 @@
 .office-file-viewer {
-  --office-file-notice-text: #1f2937;
+  --office-file-primary-color: #1677ff;
+  --office-file-primary-hover-color: #4096ff;
+  --office-file-primary-active-color: #0958d9;
+  --office-file-text-color: #1f2937;
+  --office-file-muted-text-color: #64748b;
+  --office-file-disabled-text-color: #b8bec8;
+  --office-file-surface-color: #fff;
+  --office-file-subtle-surface-color: #f8fafc;
+  --office-file-workspace-color: #eef1f6;
+  --office-file-selected-surface-color: #eaf4ff;
+  --office-file-border-color: #dde3ec;
+  --office-file-control-border-color: #d9d9d9;
+  --office-file-disabled-surface-color: #f5f5f5;
+  --office-file-focus-ring-color: rgb(22 119 255 / 24%);
+  --office-file-overlay-shadow: 0 8px 24px rgb(15 23 42 / 22%);
+  --office-file-overlay-z-index: 40;
+  --office-file-radius: 6px;
+  --office-file-toolbar-min-height: 56px;
+  --office-file-notice-text: var(--office-file-text-color);
   --office-file-notice-error-color: #cf1322;
   --office-file-notice-error-bg: #fff2f0;
   --office-file-notice-error-border: #ffccc7;
   --office-file-notice-warning-color: #d46b08;
   --office-file-notice-warning-bg: #fffbe6;
   --office-file-notice-warning-border: #ffe58f;
-  --office-file-progress-color: #1677ff;
+  --office-file-progress-color: var(--office-file-primary-color);
   --office-file-progress-track: rgb(148 163 184 / 28%);
 
   position: relative;
   height: 100%;
   min-height: 0;
-  background: #eef1f6;
+  background: var(--office-file-workspace-color);
   font-size: 14px;
 }
 
@@ -22,7 +40,7 @@
   height: 100%;
   min-height: 0;
   flex-direction: column;
-  background: #eef1f6;
+  background: var(--office-file-workspace-color);
 }
 
 .office-file-viewer__content {
@@ -30,7 +48,7 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
-  background: #eef1f6;
+  background: var(--office-file-workspace-color);
 }
 
 .office-file-viewer__workspace {
@@ -55,20 +73,21 @@
   top: 0;
   z-index: 20;
   display: flex;
+  box-sizing: border-box;
   align-items: center;
   justify-content: space-between;
   flex-shrink: 0;
   flex-wrap: wrap;
   gap: 8px 16px;
-  min-height: 56px;
+  min-height: var(--office-file-toolbar-min-height);
   padding: 10px 16px;
-  background: #fff;
-  border-bottom: 1px solid #dde3ec;
+  background: var(--office-file-surface-color);
+  border-bottom: 1px solid var(--office-file-border-color);
 }
 
 .office-file-toolbar__file-info {
   display: flex;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   align-items: center;
   min-width: 0;
   gap: 8px;
@@ -96,9 +115,17 @@
   display: flex;
   flex: 0 1 auto;
   min-width: 0;
+  margin-left: auto;
   align-items: center;
   justify-content: flex-end;
   flex-wrap: wrap;
+  gap: 8px;
+}
+
+.office-file-toolbar__extra {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
   gap: 8px;
 }
 
@@ -120,11 +147,11 @@
   box-sizing: border-box;
   height: 32px;
   padding: 0 8px;
-  color: #1f2937;
+  color: var(--office-file-text-color);
   font: inherit;
-  background: #fff;
+  background: var(--office-file-surface-color);
   border: 1px solid var(--office-file-control-border);
-  border-radius: 6px;
+  border-radius: var(--office-file-radius);
   outline: 0;
   cursor: pointer;
   transition: border-color 160ms ease, box-shadow 160ms ease;
@@ -143,8 +170,8 @@
 
 .office-file-spreadsheet-view-mode:disabled,
 .office-file-word-revision-mode:disabled {
-  color: #94a3b8;
-  background: #f8fafc;
+  color: var(--office-file-disabled-text-color);
+  background: var(--office-file-subtle-surface-color);
   cursor: not-allowed;
 }
 
@@ -169,9 +196,9 @@
   height: 32px;
   align-items: center;
   overflow: hidden;
-  background: #fff;
+  background: var(--office-file-surface-color);
   border: 1px solid var(--office-file-control-border);
-  border-radius: 6px;
+  border-radius: var(--office-file-radius);
   transition: border-color 160ms ease, box-shadow 160ms ease;
 }
 
@@ -190,7 +217,7 @@
   min-width: 0;
   height: 100%;
   padding: 0 22px 0 8px;
-  color: #1f2937;
+  color: var(--office-file-text-color);
   font: inherit;
   line-height: 30px;
   text-align: center;
@@ -202,7 +229,7 @@
 .office-file-zoom-input__suffix {
   position: absolute;
   right: 8px;
-  color: #475569;
+  color: var(--office-file-muted-text-color);
   line-height: 1;
   pointer-events: none;
 }
@@ -211,13 +238,14 @@
   position: absolute;
   z-index: var(--office-file-overlay-z-index);
   top: calc(100% + 4px);
-  left: 0;
+  right: 0;
   box-sizing: border-box;
-  width: 100%;
+  width: max-content;
+  min-width: 96px;
   padding: 4px;
-  background: #fff;
+  background: var(--office-file-surface-color);
   border: 1px solid #e5e7eb;
-  border-radius: 6px;
+  border-radius: var(--office-file-radius);
   box-shadow: 0 6px 18px rgb(15 23 42 / 18%);
 }
 
@@ -226,10 +254,11 @@
   width: 100%;
   height: 28px;
   padding: 0 6px;
-  color: #1f2937;
+  color: var(--office-file-text-color);
   font: inherit;
   font-size: 13px;
   text-align: left;
+  white-space: nowrap;
   background: transparent;
   border: 0;
   border-radius: 4px;
@@ -238,12 +267,12 @@
 
 .office-file-zoom-option:hover,
 .office-file-zoom-option[aria-selected='true'] {
-  color: #0958d9;
-  background: #eaf4ff;
+  color: var(--office-file-primary-active-color);
+  background: var(--office-file-selected-surface-color);
 }
 
 .office-file-zoom-option:focus-visible {
-  outline: 2px solid rgb(22 119 255 / 24%);
+  outline: 2px solid var(--office-file-focus-ring-color);
   outline-offset: -2px;
 }
 
@@ -332,7 +361,7 @@
   padding: 12px 16px;
   color: var(--office-file-notice-text);
   border: 1px solid;
-  border-radius: 6px;
+  border-radius: var(--office-file-radius);
 }
 
 .office-file-notice--error {

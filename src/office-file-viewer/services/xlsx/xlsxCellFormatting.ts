@@ -566,16 +566,21 @@ export function excelWidthToPx(
   );
 }
 
-// Excel 使用 Normal 字体的最大数字宽度换算字符列宽，CJK 字体的数字通常比西文字体估值更宽。
-/** 识别中日韩字体族名称的正则表达式。 */
+// Excel 使用 Normal 字体的最大数字宽度换算字符列宽。
+/** 宋体、仿宋等字体沿用 Excel 11pt 下常见的 7px 数字宽度。 */
+const COMPACT_CJK_DIGIT_FONT_FAMILY_PATTERN =
+  /宋体|新宋体|仿宋|simsun|nsimsun|fangsong|ms mincho|mingliu/i;
+/** 黑体、微软雅黑等较宽中日韩字体保留更宽的数字估值。 */
 const CJK_FONT_FAMILY_PATTERN =
-  /宋体|新宋体|仿宋|黑体|微软雅黑|simsun|nsimsun|fangsong|simhei|microsoft yahei|ms mincho|mingliu|meiryo|malgun gothic/i;
+  /黑体|微软雅黑|simhei|microsoft yahei|meiryo|malgun gothic/i;
 
 /** 按 Normal 字体估算 Excel 列宽算法使用的最大数字宽度。 */
 export function resolveXlsxMaxDigitWidth(font: XlsxCellStyle | undefined) {
   const fontSize = font?.fontSize ?? 11 * (96 / 72);
   const family = font?.fontFamily?.toLowerCase() ?? '';
-  const ratio = CJK_FONT_FAMILY_PATTERN.test(family)
+  const ratio = COMPACT_CJK_DIGIT_FONT_FAMILY_PATTERN.test(family)
+    ? 0.5
+    : CJK_FONT_FAMILY_PATTERN.test(family)
     ? 0.55
     : /arial narrow/.test(family)
     ? 0.45

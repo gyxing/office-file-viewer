@@ -1,4 +1,4 @@
-import type { ReactNode, RefObject } from 'react';
+import type { ReactElement, ReactNode, RefObject } from 'react';
 import React, {
   useCallback,
   useEffect,
@@ -134,7 +134,7 @@ export function OfficeHyperlinkProvider({
   sessionKey,
   onActivate,
   onWarning,
-}: OfficeHyperlinkProviderProps) {
+}: OfficeHyperlinkProviderProps): ReactElement {
   const messages = useOfficeFileViewerMessages();
   const commandModifier = usesCommandModifier();
   const modifierLabel = commandModifier ? 'Command' : 'Ctrl';

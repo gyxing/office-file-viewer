@@ -1,3 +1,5 @@
+import { OfficeFileViewerError } from '../../services/errors/OfficeFileViewerError';
+
 /** 解析资源策略可以识别的稳定错误代码。 */
 export type OfficeResourceLimitCode =
   | 'INVALID_RESOURCE_POLICY'
@@ -19,9 +21,9 @@ export type OfficeResourceLimitDetails = {
 };
 
 /** 表示文件解析因调用方配置的资源策略而停止。 */
-export class OfficeResourceLimitError extends Error {
+export class OfficeResourceLimitError extends OfficeFileViewerError {
   /** 供宿主稳定区分资源限制原因的错误代码。 */
-  readonly code: OfficeResourceLimitCode;
+  declare readonly code: OfficeResourceLimitCode;
 
   /** 当前策略配置的上限值。 */
   readonly limit?: number;
@@ -37,9 +39,8 @@ export class OfficeResourceLimitError extends Error {
     message: string,
     details: OfficeResourceLimitDetails = {},
   ) {
-    super(message);
+    super(code, message, { stage: 'resource' });
     this.name = 'OfficeResourceLimitError';
-    this.code = code;
     this.limit = details.limit;
     this.actual = details.actual;
     this.path = details.path;

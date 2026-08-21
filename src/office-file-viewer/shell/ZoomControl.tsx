@@ -1,4 +1,9 @@
-import type { ChangeEvent, KeyboardEvent, MouseEvent } from 'react';
+import type {
+  ChangeEvent,
+  KeyboardEvent,
+  MouseEvent,
+  ReactElement,
+} from 'react';
 import React, { useEffect, useRef, useState } from 'react';
 import { useOfficeFileViewerMessages } from '../locale';
 import { OfficeButton } from '../shared/ui/OfficeButton';
@@ -10,11 +15,16 @@ import {
   OFFICE_ZOOM_LEVELS,
 } from './constants';
 import { normalizeOfficeZoom } from './normalizeOfficeZoom';
+import type { OfficeFileViewerZoomMode } from './viewState';
 
 /** 工具栏通用缩放能力。 */
 export type ZoomControls = {
   /** 当前预览缩放比例。 */
   value: number;
+  /** 当前固定比例或自适应缩放模式。 */
+  mode: OfficeFileViewerZoomMode;
+  /** 当前格式允许选择的自适应缩放模式。 */
+  fitModes: readonly Exclude<OfficeFileViewerZoomMode, 'percentage'>[];
   /** 当前是否已有可执行增减操作的文档。 */
   hasDocument: boolean;
   /** 减小预览比例。 */
@@ -23,6 +33,8 @@ export type ZoomControls = {
   zoomIn(): void;
   /** 设置指定预览比例。 */
   change(value: number): void;
+  /** 切换固定比例或自适应缩放模式。 */
+  changeMode(mode: OfficeFileViewerZoomMode): void;
 };
 
 /** 缩放操作组件属性。 */
@@ -51,13 +63,15 @@ function normalizeZoomInput(value: string): number | undefined {
 }
 
 /** 提供可输入、可选择并带固定百分号后缀的缩放操作。 */
-export function ZoomControl({ controls }: ZoomControlProps) {
+export function ZoomControl({ controls }: ZoomControlProps): ReactElement {
   const messages = useOfficeFileViewerMessages();
   const inputRef = useRef<HTMLInputElement>(null);
   const [listId] = useState(createZoomListId);
   const [inputValue, setInputValue] = useState(String(controls.value));
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
+  const fitOptionCount = controls.fitModes.length;
+  const optionCount = fitOptionCount + OFFICE_ZOOM_LEVELS.length;
 
   useEffect(() => {
     setInputValue(String(controls.value));
@@ -91,16 +105,20 @@ export function ZoomControl({ controls }: ZoomControlProps) {
     setActiveIndex((currentIndex) => {
       if (currentIndex < 0) {
         const matchingIndex = OFFICE_ZOOM_LEVELS.indexOf(Number(inputValue));
-        if (matchingIndex >= 0) return matchingIndex;
-        return direction > 0 ? 0 : OFFICE_ZOOM_LEVELS.length - 1;
+        if (matchingIndex >= 0) return fitOptionCount + matchingIndex;
+        return direction > 0 ? 0 : optionCount - 1;
       }
-      return (
-        (currentIndex + direction + OFFICE_ZOOM_LEVELS.length) %
-        OFFICE_ZOOM_LEVELS.length
-      );
+      return (currentIndex + direction + optionCount) % optionCount;
     });
   };
 
+  const selectFitMode = (
+    mode: Exclude<OfficeFileViewerZoomMode, 'percentage'>,
+  ) => {
+    controls.changeMode(mode);
+    closeOptions();
+    inputRef.current?.focus();
+  };
   const handleInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
@@ -115,8 +133,14 @@ export function ZoomControl({ controls }: ZoomControlProps) {
     }
     if (event.key === 'Enter') {
       event.preventDefault();
+      if (activeIndex >= 0 && activeIndex < fitOptionCount) {
+        selectFitMode(controls.fitModes[activeIndex]);
+        return;
+      }
       const selectedValue =
-        activeIndex >= 0 ? OFFICE_ZOOM_LEVELS[activeIndex] : undefined;
+        activeIndex >= fitOptionCount
+          ? OFFICE_ZOOM_LEVELS[activeIndex - fitOptionCount]
+          : undefined;
       commitZoom(
         selectedValue === undefined ? inputValue : String(selectedValue),
       );
@@ -167,6 +191,7 @@ export function ZoomControl({ controls }: ZoomControlProps) {
             role="combobox"
             onBlur={handleInputBlur}
             onChange={handleInputChange}
+            onClick={() => setOpen(true)}
             onFocus={() => setOpen(true)}
             onKeyDown={handleInputKeyDown}
           />
@@ -176,20 +201,40 @@ export function ZoomControl({ controls }: ZoomControlProps) {
         </div>
         {open ? (
           <div id={listId} className="office-file-zoom-options" role="listbox">
-            {OFFICE_ZOOM_LEVELS.map((value, index) => (
+            {controls.fitModes.map((mode, index) => (
               <button
                 id={`${listId}-option-${index}`}
+                key={mode}
+                className="office-file-zoom-option office-file-zoom-option--fit"
+                type="button"
+                aria-selected={controls.mode === mode}
+                role="option"
+                tabIndex={-1}
+                onClick={() => selectFitMode(mode)}
+                onMouseDown={handleOptionMouseDown}
+                onMouseEnter={() => setActiveIndex(index)}
+              >
+                {mode === 'fit-width'
+                  ? messages.toolbar.fitWidth
+                  : messages.toolbar.fitPage}
+              </button>
+            ))}
+            {OFFICE_ZOOM_LEVELS.map((value, index) => (
+              <button
+                id={`${listId}-option-${fitOptionCount + index}`}
                 key={value}
                 className="office-file-zoom-option"
                 type="button"
                 aria-selected={
-                  activeIndex === index || Number(inputValue) === value
+                  activeIndex === fitOptionCount + index ||
+                  (controls.mode === 'percentage' &&
+                    Number(inputValue) === value)
                 }
                 role="option"
                 tabIndex={-1}
                 onClick={() => selectPreset(value)}
                 onMouseDown={handleOptionMouseDown}
-                onMouseEnter={() => setActiveIndex(index)}
+                onMouseEnter={() => setActiveIndex(fitOptionCount + index)}
               >
                 {value}%
               </button>

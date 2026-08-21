@@ -139,6 +139,9 @@ export function PresentationTransitionLayer({
         .filter(Boolean)
         .join(' ')}
       style={style}
+      data-office-fit-target="true"
+      data-office-fit-base-width={displayed.width}
+      data-office-fit-base-height={displayed.height}
       data-transition-active={activeTransition ? 'true' : 'false'}
       data-transition-type={displayed.transition?.type}
       data-transition-intent={

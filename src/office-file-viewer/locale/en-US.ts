@@ -6,7 +6,7 @@ export const enUS: OfficeFileViewerMessages = {
     unloaded: 'No file loaded',
     selectToPreview: 'Please select a file to start previewing',
     unsupported:
-      'This file type is not supported. Select a PPTX, PPT, XLSX, XLS, DOCX, DOC, or WPS file.',
+      'This file type is not supported. Select a PPTX/PPTM/POTX, PPT, XLSX/XLSM/XLTX, XLS, DOCX/DOCM/DOTX, DOC, or WPS file.',
     unrecognized:
       'The Office file type could not be identified. Provide a PPTX, PPT, XLSX, XLS, DOCX, DOC, or WPS file.',
     invalidUri:
@@ -27,6 +27,8 @@ export const enUS: OfficeFileViewerMessages = {
     hideSpeakerNotes: 'Hide speaker notes',
     speakerNotes: 'Notes',
     zoomLevel: 'Zoom level',
+    fitWidth: 'Fit width',
+    fitPage: 'Fit page',
     zoomOut: 'Zoom out',
     zoomIn: 'Zoom in',
     fullscreen: 'Fullscreen',
