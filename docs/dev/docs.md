@@ -6,7 +6,7 @@ toc: content
 
 # Office File Viewer Documentation
 
-`office-file-viewer` is a browser-only React component for previewing DOC, DOCX, WPS, XLS, XLSX, PPT, and PPTX files. Downloading, parsing, and rendering happen in the browser, without a companion document-conversion service.
+`office-file-viewer` is a browser-only React component for previewing Word, Excel, and PowerPoint files across 13 supported extensions. Downloading, parsing, and rendering happen in the browser, without a companion document-conversion service.
 
 <nav className="office-viewer-docs__quick-links" aria-label="Documentation shortcuts">
   <a href="#quick-start">Quick start</a>
@@ -33,11 +33,12 @@ Import public APIs only from `office-file-viewer`. Undocumented `dist` or source
 
 ## Version compatibility
 
-| Item          | Requirement | Notes                                 |
-| ------------- | ----------- | ------------------------------------- |
-| React         | `>=16.9.0`  | Hooks-capable React versions          |
-| ReactDOM      | `>=16.9.0`  | Keep the same major version as React  |
-| Module format | ESM-only    | Use an ESM-capable browser build tool |
+| Item          | Requirement | Notes                                                  |
+| ------------- | ----------- | ------------------------------------------------------ |
+| React         | `>=16.9.0`  | Hooks-capable React versions                           |
+| ReactDOM      | `>=16.9.0`  | Keep the same major version as React                   |
+| Module format | ESM-only    | Use an ESM-capable browser build tool                  |
+| Browsers      | Modern      | Recommended: Chromium 100+, Firefox 115+, Safari 16.4+ |
 
 Current peer dependency ranges:
 
@@ -155,39 +156,57 @@ Remote source rules:
 
 ## `OfficeFileViewer` API
 
-| Prop                             | Type                                                 | Default           | Description                                                      |
-| -------------------------------- | ---------------------------------------------------- | ----------------- | ---------------------------------------------------------------- |
-| `locale`                         | `'zh-CN' \| 'en-US'`                                 | `'zh-CN'`         | Built-in viewer UI language                                      |
-| `uri`                            | `OfficeFileViewerUri`                                | -                 | File source to preload; the file picker is shown when omitted    |
-| `defaultFileName`                | `string`                                             | Localized message | Fallback name when the source does not provide a usable filename |
-| `defaultZoom`                    | `number`                                             | `100`             | Initial zoom percentage, clamped from `25` to `300`              |
-| `defaultViewState`               | `Partial<OfficeFileViewerViewState>`                 | -                 | Initial values for uncontrolled view fields                      |
-| `viewState`                      | `Partial<OfficeFileViewerViewState>`                 | -                 | Per-field control of zoom, page, sidebars, and display mode      |
-| `onViewStateChange`              | `(state, change) => void`                            | -                 | Called when the user requests a view-state change                |
-| `defaultShowSpeakerNotes`        | `boolean`                                            | `false`           | Initial speaker-notes state in uncontrolled mode                 |
-| `showSpeakerNotes`               | `boolean`                                            | -                 | Controlled speaker-notes visibility                              |
-| `onSpeakerNotesVisibilityChange` | `(visible: boolean) => void`                         | -                 | Called when the presentation notes visibility changes            |
-| `className`                      | `string`                                             | -                 | Additional class name for the viewer root                        |
-| `height`                         | `CSSProperties['height']`                            | Parent height     | Viewer height; takes precedence over `style.height`              |
-| `style`                          | `CSSProperties`                                      | -                 | Inline styles for the viewer root                                |
-| `onFileParsed`                   | `(parsed: ParsedOfficeFile, file: File) => void`     | -                 | Called once when the complete materialized result is available   |
-| `onPreviewReady`                 | `(info: OfficePreviewReadyInfo, file: File) => void` | -                 | Called once when the first usable preview is ready               |
-| `onError`                        | `(error: Error, file?: File) => void`                | -                 | Called when loading, parsing, or a viewer operation fails        |
-| `onWarning`                      | `(warning, file) => void`                            | -                 | Called for non-fatal parse, partial-preview, or font warnings    |
-| `parseOptions`                   | `OfficeParseOptions`                                 | `{}`              | Worker strategy and optional resource limits                     |
-| `imagePreview`                   | `boolean \| OfficeFileViewerImagePreviewOptions`     | `true`            | Content-image preview, download, and context-menu configuration  |
-| `hyperlink`                      | `boolean`                                            | `true`            | Enables hyperlinks explicitly declared by the source document    |
-| `search`                         | `false \| OfficeFileViewerSearchOptions`             | `{}`              | Full-document search runtime and initial matching options        |
-| `review`                         | `false \| OfficeFileViewerReviewOptions`             | `{}`              | Read-only comments, revisions, footnotes, and endnotes           |
-| `presentationMedia`              | `false \| OfficeFileViewerPresentationMediaOptions`  | `{}`              | Presentation media, external-source, and download policy         |
-| `transitions`                    | `false \| 'source'`                                  | `false`           | Play supported source slide transitions                          |
-| `fontOptions`                    | `OfficeFileViewerFontOptions`                        | `{}`              | Font aliases, fallback families, and missing-font diagnostics    |
-| `onHyperlinkActivate`            | `(event: OfficeHyperlinkActivateEvent) => void`      | -                 | Called on valid activation and can prevent default navigation    |
-| `onParseProgress`                | `(progress: ParseProgress) => void`                  | -                 | Called when the current parse stage or progress changes          |
+| Prop                             | Type                                                  | Default           | Description                                                      |
+| -------------------------------- | ----------------------------------------------------- | ----------------- | ---------------------------------------------------------------- |
+| `locale`                         | `'zh-CN' \| 'en-US'`                                  | `'zh-CN'`         | Built-in viewer UI language                                      |
+| `uri`                            | `OfficeFileViewerUri`                                 | -                 | File source to preload; the file picker is shown when omitted    |
+| `defaultFileName`                | `string`                                              | Localized message | Fallback name when the source does not provide a usable filename |
+| `defaultZoom`                    | `number`                                              | `100`             | Compatibility prop; use `defaultViewState.zoom` for new code     |
+| `defaultViewState`               | `Partial<OfficeFileViewerViewState>`                  | -                 | Initial values for uncontrolled view fields                      |
+| `viewState`                      | `Partial<OfficeFileViewerViewState>`                  | -                 | Per-field control of zoom, page, sidebars, and display mode      |
+| `onViewStateChange`              | `(state, change) => void`                             | -                 | Called when the user requests a view-state change                |
+| `defaultShowSpeakerNotes`        | `boolean`                                             | `false`           | Initial speaker-notes state in uncontrolled mode                 |
+| `showSpeakerNotes`               | `boolean`                                             | -                 | Controlled speaker-notes visibility                              |
+| `onSpeakerNotesVisibilityChange` | `(visible: boolean) => void`                          | -                 | Called when the presentation notes visibility changes            |
+| `className`                      | `string`                                              | -                 | Additional class name for the viewer root                        |
+| `height`                         | `CSSProperties['height']`                             | Parent height     | Viewer height; takes precedence over `style.height`              |
+| `toolbar`                        | `false \| OfficeFileViewerToolbarOptions`             | `{}`              | Hide the toolbar or file name, open, zoom, and fullscreen areas  |
+| `toolbarExtra`                   | `ReactNode`                                           | -                 | Host content appended after all built-in actions                 |
+| `onFileSelect`                   | `(file: File) => void`                                | -                 | Fires after built-in local selection and before parsing          |
+| `style`                          | `CSSProperties`                                       | -                 | Inline styles for the viewer root                                |
+| `onFileParsed`                   | `(parsed: ParsedOfficeFile, file: File) => void`      | -                 | Called once when the complete materialized result is available   |
+| `onPreviewReady`                 | `(info: OfficePreviewReadyInfo, file: File) => void`  | -                 | Called once when the first usable preview is ready               |
+| `onError`                        | `(error: OfficeFileViewerError, file?: File) => void` | -                 | Called when loading, parsing, or a viewer operation fails        |
+| `onWarning`                      | `(warning, file) => void`                             | -                 | Called for non-fatal parse, partial-preview, or font warnings    |
+| `parseOptions`                   | `OfficeParseOptions`                                  | `{}`              | Worker strategy and optional resource limits                     |
+| `imagePreview`                   | `boolean \| OfficeFileViewerImagePreviewOptions`      | `true`            | Content-image preview, download, and context-menu configuration  |
+| `hyperlink`                      | `boolean`                                             | `true`            | Enables hyperlinks explicitly declared by the source document    |
+| `search`                         | `false \| OfficeFileViewerSearchOptions`              | `{}`              | Full-document search runtime and initial matching options        |
+| `review`                         | `false \| OfficeFileViewerReviewOptions`              | `{}`              | Read-only comments, revisions, footnotes, and endnotes           |
+| `presentationMedia`              | `false \| OfficeFileViewerPresentationMediaOptions`   | `{}`              | Presentation media, external-source, and download policy         |
+| `transitions`                    | `false \| 'source'`                                   | `false`           | Play supported source slide transitions                          |
+| `fontOptions`                    | `OfficeFileViewerFontOptions`                         | `{}`              | Font aliases, fallback families, and missing-font diagnostics    |
+| `onHyperlinkActivate`            | `(event: OfficeHyperlinkActivateEvent) => void`       | -                 | Called on valid activation and can prevent default navigation    |
+| `onParseProgress`                | `(progress: ParseProgress) => void`                   | -                 | Called when the current parse stage or progress changes          |
+
+### Toolbar and theme
+
+Pass `toolbar={false}` to hide the built-in toolbar. Object values independently hide the file name, open-file action, zoom, or fullscreen area. `toolbarExtra` renders a host React node after all built-in actions, and `onFileSelect` fires after built-in selection but before parsing starts. When the toolbar is hidden and `uri` is omitted, the host must provide its own file entry point.
+
+```tsx | pure
+<OfficeFileViewer
+  uri={file}
+  toolbar={{ openFile: false, fullscreen: false }}
+  toolbarExtra={<button type="button">Download original</button>}
+  onFileSelect={(nextFile) => console.log(nextFile.name)}
+/>
+```
+
+The viewer root exposes stable Shell CSS variables, including `--office-file-primary-color`, `--office-file-primary-hover-color`, `--office-file-primary-active-color`, `--office-file-text-color`, `--office-file-muted-text-color`, `--office-file-surface-color`, `--office-file-workspace-color`, `--office-file-border-color`, `--office-file-focus-ring-color`, `--office-file-radius`, and `--office-file-toolbar-min-height`. They customize viewer chrome without overriding source-document fonts, colors, or borders.
 
 ### Content-image preview
 
-Visible content images in DOC, DOCX, WPS, XLS, and XLSX support double-click, `Enter`, or Space to open the preview layer by default. The layer provides fit-to-window display, `10%` to `500%` zoom, panning, clockwise rotation, reset, and download. The custom image context menu contains only Preview and Download.
+Visible content images in every Word and Excel format support double-click, `Enter`, or Space to open the preview layer by default. The layer provides fit-to-window display, `10%` to `500%` zoom, panning, clockwise rotation, reset, and download. The custom image context menu contains only Preview and Download.
 
 ```ts | pure
 type OfficeFileViewerImagePreviewOptions = {
@@ -209,7 +228,7 @@ Omit the prop or pass `true` to enable every capability. Pass `false` to disable
 />
 ```
 
-When `contextMenu` is disabled, double-click and keyboard preview remain available and the browser-native context menu is restored. Decorative header images, backgrounds, watermarks, page drawing layers, charts, and PPT/PPTX images are outside this interaction scope.
+When `contextMenu` is disabled, double-click and keyboard preview remain available and the browser-native context menu is restored. Decorative header images, backgrounds, watermarks, page drawing layers, charts, and presentation images are outside this interaction scope.
 
 ### Office hyperlinks
 
@@ -253,7 +272,7 @@ Set `hyperlink={false}` to remove link focus, hints, and activation behavior wit
 
 ### Full-document search
 
-DOC, DOCX, WPS, XLS, XLSX, PPT, and PPTX expose the toolbar search action and `Ctrl + F` (`Command + F` on macOS). Queries use cancellable incremental scanning, so generated results are navigable before a large document has been scanned completely. `Esc` closes the sidebar, and switching files clears the previous query and results.
+Every supported extension exposes the toolbar search action and `Ctrl + F` (`Command + F` on macOS). Queries use cancellable incremental scanning, so generated results are navigable before a large document has been scanned completely. `Esc` closes the sidebar, and switching files clears the previous query and results.
 
 ```ts | pure
 type OfficeFileViewerSearchOptions = {
@@ -289,7 +308,7 @@ type OfficeFileViewerReviewOptions = {
 
 ### Spreadsheet business semantics
 
-XLS/XLSX restore frozen panes, Table/AutoFilter metadata, cell comments, and a safe conditional-formatting subset: `cellIs`, two/three-color scales, data bars, common icon sets, duplicate/unique values, Top10, and above/below average. Rules that require range-wide statistics are scanned in Source tiles and cached per rule, so scrolling does not recalculate against only the visible window. Unsupported formula rules are retained as summaries and emit warnings. The viewer never re-filters, re-sorts, or fully recalculates the workbook.
+Excel formats restore frozen panes, Table/AutoFilter metadata, cell comments, and a safe conditional-formatting subset: `cellIs`, two/three-color scales, data bars, common icon sets, duplicate/unique values, Top10, and above/below average. Rules that require range-wide statistics are scanned in Source tiles and cached per rule, so scrolling does not recalculate against only the visible window. Unsupported formula rules are retained as summaries and emit warnings. The viewer never re-filters, re-sorts, or fully recalculates the workbook.
 
 ### Presentation media and slide transitions
 
@@ -337,6 +356,7 @@ Use `defaultViewState` for uncontrolled initial values. `viewState` controls onl
 ```ts | pure
 type OfficeFileViewerViewState = {
   zoom: number;
+  zoomMode?: 'percentage' | 'fit-width' | 'fit-page';
   activeSlideIndex: number;
   activeSheetId?: string;
   wordOutlineVisible: boolean;
@@ -348,7 +368,7 @@ type OfficeFileViewerViewState = {
 };
 ```
 
-The first `onViewStateChange` argument is the complete view state after applying the request. The second is a single-field `{ key, value }` change. Invalid zoom values fall back and are clamped from `25` to `300`; slide indices and worksheet IDs are validated against the current file.
+The first `onViewStateChange` argument is the complete view state after applying the request. The second is a single-field `{ key, value }` change. Invalid zoom values fall back and are clamped from `25` to `300`. `fit-width` tracks container, sidebar, and fullscreen changes. Word and PowerPoint also expose `fit-page`; the Excel toolbar exposes fit width only. Slide indices and worksheet IDs are validated against the current file.
 
 The legacy `defaultZoom`, `defaultShowSpeakerNotes`, `showSpeakerNotes`, and `onSpeakerNotesVisibilityChange` props remain compatible. When both APIs are provided, matching fields in `defaultViewState` override legacy defaults, and `viewState.speakerNotesVisible` overrides `showSpeakerNotes`.
 
@@ -358,7 +378,22 @@ The legacy `defaultZoom`, `defaultShowSpeakerNotes`, `showSpeakerNotes`, and `on
 - `onFileParsed` fires after the complete materialized result is ready; progressive intermediate results do not trigger it.
 - `onParseProgress` can fire many times and may omit exact counts or `percent`.
 - `onWarning` uses stable `code`, `previewKind`, and `source` fields to distinguish parser, retained-partial-preview, hyperlink, and font warnings; it does not replace `onError`.
-- `onError` can receive no `file` when an error occurs before a usable file has been resolved. Resource-policy failures can be inspected through `OfficeResourceLimitError.code`.
+- `onError` can receive no `file` before a usable file has been resolved. `OfficeFileViewerError` exposes stable `code`, `stage`, `previewKind`, `fileName`, `originalCode`, `recoverable`, and `cause` fields. `OfficeResourceLimitError` remains a subclass with `limit`, `actual`, and `path`.
+
+### Structured errors
+
+`OfficeFileViewerError` exposes stable `code` and `stage` fields plus `previewKind`, `fileName`, `originalCode`, `recoverable`, and the underlying `cause`. Common codes include `UNSUPPORTED_FILE_TYPE`, `FILE_DOWNLOAD_FAILED`, `ENCRYPTED_FILE`, `INVALID_FILE`, `WORKER_FAILED`, `PARSE_FAILED`, and resource-limit codes. Cancellation remains an `AbortError` instead of being reported as a parse failure.
+
+```tsx | pure
+<OfficeFileViewer
+  uri={file}
+  onError={(error) => {
+    if (error.code === 'ENCRYPTED_FILE') {
+      console.warn('This password-protected file cannot be previewed yet');
+    }
+  }}
+/>
+```
 
 ## Parsing configuration and progress
 
@@ -381,7 +416,7 @@ type OfficeParseOptions = {
 };
 ```
 
-| Mode       | Behavior for all seven formats                                                                                                                                                                  |
+| Mode       | Behavior for every supported format                                                                                                                                                             |
 | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `'auto'`   | Default. Legacy formats prefer a Worker; small OOXML files use complete models, large OOXML files use Worker-owned on-demand sources; only Worker startup failures fall back to the main thread |
 | `'always'` | Forces a Worker for every format. An unavailable Worker, load failure, or protocol mismatch fails instead of falling back                                                                       |
@@ -535,31 +570,31 @@ try {
 
 ## Supported formats and interactions
 
-| Document type      | Extension | Main parser coverage                                                                                                   |
-| ------------------ | --------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Word OOXML         | `.docx`   | Body layout, graphics, links, outlines, comments, revisions, footnotes, and endnotes                                   |
-| Word 97-2003       | `.doc`    | Binary body, tables, graphics, links, outlines, and recoverable comments, revisions, footnotes, and endnotes           |
-| WPS Writer         | `.wps`    | Reuses the DOC binary pipeline, prioritizing body content, resources, and recoverable review semantics                 |
-| Excel OOXML        | `.xlsx`   | Worksheets, graphics, links, frozen panes, tables/filters, comments, and common conditional formatting                 |
-| Excel 97-2003      | `.xls`    | BIFF8 cells, OfficeArt, charts, links, panes, comments, and recoverable filter, table, and conditional-format metadata |
-| PowerPoint OOXML   | `.pptx`   | Masters/layouts, graphics, links, comments, notes, embedded/external media, and six common slide transitions           |
-| PowerPoint 97-2003 | `.ppt`    | Binary masters, graphics, links, comments, notes, recoverable media, common transitions, and static fallbacks          |
+| Document type      | Extension                 | Main parser coverage                                                                                                   |
+| ------------------ | ------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Word OOXML         | `.docx`, `.docm`, `.dotx` | Body layout, graphics, links, outlines, comments, revisions, footnotes, and endnotes                                   |
+| Word 97-2003       | `.doc`                    | Binary body, tables, graphics, links, outlines, and recoverable comments, revisions, footnotes, and endnotes           |
+| WPS Writer         | `.wps`                    | Reuses the DOC binary pipeline, prioritizing body content, resources, and recoverable review semantics                 |
+| Excel OOXML        | `.xlsx`, `.xlsm`, `.xltx` | Worksheets, graphics, links, frozen panes, tables/filters, comments, and common conditional formatting                 |
+| Excel 97-2003      | `.xls`                    | BIFF8 cells, OfficeArt, charts, links, panes, comments, and recoverable filter, table, and conditional-format metadata |
+| PowerPoint OOXML   | `.pptx`, `.pptm`, `.potx` | Masters/layouts, graphics, links, comments, notes, embedded/external media, and six common slide transitions           |
+| PowerPoint 97-2003 | `.ppt`                    | Binary masters, graphics, links, comments, notes, recoverable media, common transitions, and static fallbacks          |
 
 Common chart coverage includes line, column, pie, doughnut, area, scatter, bubble, radar, and map charts. Embedded document snapshots are used when possible for unsupported or damaged chart content.
 
 Viewer interactions include:
 
-- Zoom from `25%` to `300%` using manual numeric input, common presets, and `10%` step controls.
-- Visible content images in DOC/DOCX/WPS and XLS/XLSX support preview, zoom, rotation, download, and a custom context menu.
-- The DOC/DOCX/WPS outline is hidden by default, appears only when usable headings exist, and can be resized horizontally when opened.
-- Worksheet tabs plus Original layout and Reading mode for XLS/XLSX.
-- Slide and thumbnail navigation for PPT/PPTX; previous/next controls are hidden for a single-slide deck.
+- Zoom from `25%` to `300%` using numeric input, presets, `10%` steps, and format-aware fit-width/fit-page modes.
+- Visible content images in Word and Excel formats support preview, zoom, rotation, download, and a custom context menu.
+- The Word-format outline is hidden by default, appears only when usable headings exist, and can be resized horizontally when opened.
+- Worksheet tabs plus Original layout and Reading mode for Excel formats.
+- Slide and thumbnail navigation for PowerPoint formats; previous/next controls are hidden for a single-slide deck.
 - Toggleable and vertically resizable speaker notes when a presentation contains notes.
 - Browser fullscreen with automatic state synchronization after leaving through `Esc`.
 
 ### Spreadsheet display modes
 
-The display-mode selector appears only for XLS/XLSX previews:
+The display-mode selector appears only for Excel-format previews:
 
 - **Original layout** is the default. It preserves source row heights, column widths, wrapping, shrink-to-fit, merged cells, and clipping behavior.
 - **Reading mode** keeps column widths but wraps long text and expands row heights as needed so cell content is easier to read. The resulting layout can differ from the source, but values, formulas, workbook structure, and the source file remain unchanged.
@@ -576,7 +611,7 @@ The display-mode selector appears only for XLS/XLSX previews:
 
 - Legacy DOC/WPS, XLS, and PPT parsing prioritizes readable content. Complex pagination, anchors, text wrapping, OfficeArt effects, and animations may differ from desktop applications.
 - Page-level DOC/WPS OfficeArt canvases are currently displayed as a single SVG image, so independent link hit areas for child shapes cannot be retained precisely. These links emit a non-fatal degradation warning; field links and body bookmarks are unaffected.
-- OOXML files can contain unsupported macros, ActiveX controls, OLE objects, SmartArt, vendor extensions, or complex animations. Such content may be ignored, degraded, or represented by an embedded static snapshot.
+- `.docm`, `.xlsm`, and `.pptm` expose visible content only. Macros are never loaded or executed and emit `MACRO_CONTENT_IGNORED`; ActiveX, OLE, SmartArt, vendor extensions, or complex animations can be ignored, degraded, or represented by an embedded snapshot.
 - Review is read-only: comments cannot be added, replied to, deleted, resolved, or written back. DOC/WPS property-level revisions that cannot restore original values keep final formatting.
 - Excel does not re-run filters, sorting, or a complete formula engine. Unsupported conditional-format formulas are retained only as rule summaries.
 - PowerPoint object animations, triggers, timelines, media synchronization, and codec transcoding are outside the current scope.
@@ -585,9 +620,9 @@ The display-mode selector appears only for XLS/XLSX previews:
 
 ### Browser and performance boundaries
 
-The component targets modern browsers and depends on APIs such as `File`, `fetch`, `DOMParser`, `AbortController`, `IntersectionObserver`, `ResizeObserver`, Blob URLs, Canvas, Web Workers, and the Fullscreen API.
+The recommended compatibility baseline is Chromium 100+, Firefox 115+, and Safari 16.4+. The component depends on APIs such as `File`, `fetch`, `DOMParser`, `AbortController`, `IntersectionObserver`, `ResizeObserver`, Blob URLs, Canvas, Web Workers, and the Fullscreen API.
 
-All seven formats can move parsing work into a Worker. Large DOCX, XLSX, and PPTX files additionally keep their archive reader in the Worker and load pages, ranges, slides, and resources on demand. Workers and virtual rendering reduce main-thread long tasks and one-time model cost, but they do not eliminate memory used by the source file, loaded content, or browser graphics resources.
+Every supported extension can reuse its parser type in a Worker. Large DOCX, XLSX, and PPTX files additionally keep their archive reader in the Worker and load pages, ranges, slides, and resources on demand. Workers and virtual rendering reduce main-thread long tasks and one-time model cost, but they do not eliminate memory used by the source file, loaded content, or browser graphics resources.
 
 The library does not enable a maximum source size, ZIP entry count, individual entry size, or total decompressed size by default, and internal large-file thresholds never reject a file. For untrusted files, hosts should explicitly configure `parseOptions.resourcePolicy` according to their devices and threat model.
 

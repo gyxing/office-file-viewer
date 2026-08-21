@@ -1,4 +1,9 @@
-import type { ImgHTMLAttributes, KeyboardEvent, MouseEvent } from 'react';
+import type {
+  ImgHTMLAttributes,
+  KeyboardEvent,
+  MouseEvent,
+  ReactElement,
+} from 'react';
 import React, { memo, useMemo } from 'react';
 import { useOfficeFileViewerMessages } from '../../locale';
 import type { OfficeResourceSource } from '../../services/resource-store';
@@ -40,7 +45,7 @@ function OfficePreviewableImageComponent({
   tabIndex,
   'data-office-hyperlink': hyperlinkData,
   ...imageProps
-}: OfficePreviewableImageProps) {
+}: OfficePreviewableImageProps): ReactElement {
   const messages = useOfficeFileViewerMessages();
   const previewContext = useOfficeImagePreviewContext();
   const target = useMemo<OfficeImagePreviewTarget>(

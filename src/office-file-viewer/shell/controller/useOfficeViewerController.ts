@@ -3,9 +3,12 @@ import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import type { OfficeFileViewerMessages } from '../../locale';
 import type { WordRevisionMode } from '../../services/annotations/types';
 import {
+  normalizeOfficeFileViewerError,
+  OfficeFileViewerError,
+} from '../../services/errors/OfficeFileViewerError';
+import {
   ensureSupportedOfficeFile,
   normalizeOfficeFileUri,
-  OfficeFileViewerInputError,
   type OfficeFileViewerUri,
 } from '../../services/input/normalizeOfficeFileUri';
 import type {
@@ -29,6 +32,7 @@ import {
   type PreviewKind,
 } from '../../services/preview';
 import {
+  collectOfficeFileWarnings,
   collectOfficePreviewWarnings,
   type OfficeFileViewerWarning,
 } from '../../services/previewWarnings';
@@ -55,6 +59,7 @@ import { normalizeOfficeZoom } from '../normalizeOfficeZoom';
 import type {
   OfficeFileViewerViewState,
   OfficeFileViewerViewStateChange,
+  OfficeFileViewerZoomMode,
 } from '../viewState';
 import {
   createInitialOfficeViewerState,
@@ -112,7 +117,7 @@ export type UseOfficeViewerControllerOptions = {
   /** 首屏预览可以使用后的回调。 */
   onPreviewReady?: (info: OfficePreviewReadyInfo, file: File) => void;
   /** 文件加载、解析或全屏失败后的回调。 */
-  onError?: (error: Error, file?: File) => void;
+  onError?: (error: OfficeFileViewerError, file?: File) => void;
   /** 解析降级或格式兼容警告回调。 */
   onWarning?: (warning: OfficeFileViewerWarning, file: File) => void;
   /** 底层解析会话配置。 */
@@ -141,8 +146,12 @@ export type OfficeViewerActions = {
   zoomOut(): void;
   /** 放大预览比例。 */
   zoomIn(): void;
-  /** 设置指定预览比例。 */
+  /** 设置指定预览比例，并切换回固定比例模式。 */
   changeZoom(zoom: number): void;
+  /** 切换固定比例或自适应缩放模式。 */
+  changeZoomMode(mode: OfficeFileViewerZoomMode): void;
+  /** 自适应测量完成后更新比例，但保持当前缩放模式。 */
+  applyFitZoom(zoom: number): void;
   /** 设置电子表格的显示模式。 */
   changeSpreadsheetViewMode(viewMode: SpreadsheetViewMode): void;
   /** 切换演讲者备注面板。 */
@@ -255,6 +264,12 @@ function normalizeSlideIndex(value: number, slideCount: number) {
   return Math.min(Math.max(0, Math.trunc(value)), slideCount - 1);
 }
 
+/** 忽略 JavaScript 调用方传入的无效自适应缩放模式。 */
+function normalizeOfficeZoomMode(
+  value: OfficeFileViewerZoomMode | undefined,
+): OfficeFileViewerZoomMode {
+  return value === 'fit-width' || value === 'fit-page' ? value : 'percentage';
+}
 /** 忽略 JavaScript 调用方传入的无效电子表格显示模式。 */
 function normalizeSpreadsheetViewMode(
   value: SpreadsheetViewMode | undefined,
@@ -278,6 +293,7 @@ function createDefaultViewState(
   const defaults = options.defaultViewState;
   return {
     zoom: normalizeOfficeZoom(defaults?.zoom ?? options.defaultZoom),
+    zoomMode: normalizeOfficeZoomMode(defaults?.zoomMode),
     activeSlideIndex: normalizeSlideIndex(
       defaults?.activeSlideIndex ?? 0,
       Number.MAX_SAFE_INTEGER,
@@ -307,6 +323,7 @@ function createPublicViewState(
 ): OfficeFileViewerViewState {
   return {
     zoom: view.zoom,
+    zoomMode: view.zoomMode,
     activeSlideIndex: view.activeSlideIndex,
     activeSheetId: view.activeSheetId,
     wordOutlineVisible: view.showWordOutline,
@@ -326,6 +343,8 @@ function applyPublicViewStateChange(
   switch (change.key) {
     case 'zoom':
       return { ...state, zoom: change.value };
+    case 'zoomMode':
+      return { ...state, zoomMode: change.value };
     case 'activeSlideIndex':
       return { ...state, activeSlideIndex: change.value };
     case 'activeSheetId':
@@ -575,6 +594,9 @@ export function useOfficeViewerController(
       controlledViewState?.zoom ?? state.view.zoom,
       state.view.zoom,
     ),
+    zoomMode: normalizeOfficeZoomMode(
+      controlledViewState?.zoomMode ?? state.view.zoomMode,
+    ),
     internalShowSpeakerNotes: speakerNotesVisible,
     showSearch:
       options.searchEnabled &&
@@ -796,7 +818,10 @@ export function useOfficeViewerController(
           previewKind: finalPreview.previewKind,
           mode: finalPreview.mode,
         };
-        collectOfficePreviewWarnings(finalPreview).forEach((warning) => {
+        [
+          ...collectOfficeFileWarnings(file.name, finalPreview.previewKind),
+          ...collectOfficePreviewWarnings(finalPreview),
+        ].forEach((warning) => {
           notifyObserver(optionsRef.current.onWarning, warning, file);
         });
         if (finalPreview.mode === 'materialized') {
@@ -812,10 +837,13 @@ export function useOfficeViewerController(
         }
 
         // 界面只展示可本地化的概述，原始错误仍交给调用方诊断。
-        const normalizedError =
-          nextError instanceof Error
-            ? nextError
-            : new Error(optionsRef.current.messages.file.parseFailed);
+        const normalizedError = normalizeOfficeFileViewerError(nextError, {
+          stage: 'parsing',
+          fileName: file.name,
+          previewKind: documentSession
+            ? detectPreviewKind(file.name)
+            : undefined,
+        });
         if (!retainedPartial) {
           if (documentSessionIdRef.current === documentSession?.id) {
             documentSessionIdRef.current = undefined;
@@ -824,7 +852,7 @@ export function useOfficeViewerController(
             type: 'failed',
             fileName: documentSession ? file.name : undefined,
             message:
-              normalizedError instanceof OfficeFileViewerInputError
+              normalizedError.code !== 'PARSE_FAILED'
                 ? normalizedError.message
                 : optionsRef.current.messages.file.parseFailed,
           });
@@ -889,14 +917,14 @@ export function useOfficeViewerController(
             return;
           }
 
-          const normalizedError =
-            nextError instanceof Error
-              ? nextError
-              : new Error(optionsRef.current.messages.file.loadFailed);
+          const normalizedError = normalizeOfficeFileViewerError(nextError, {
+            stage: 'input',
+            fileName: file?.name,
+          });
           dispatch({
             type: 'failed',
             message:
-              normalizedError instanceof OfficeFileViewerInputError
+              normalizedError.code !== 'PARSE_FAILED'
                 ? normalizedError.message
                 : optionsRef.current.messages.file.loadFailed,
           });
@@ -1020,32 +1048,92 @@ export function useOfficeViewerController(
     ],
   );
 
-  const commitZoom = useCallback(
+  const commitManualZoom = useCallback(
     (zoom: number) => {
-      const normalizedZoom = normalizeOfficeZoom(
-        zoom,
-        effectiveViewStateRef.current.zoom,
-      );
-      if (effectiveViewStateRef.current.zoom === normalizedZoom) return;
+      const currentView = effectiveViewStateRef.current;
+      const normalizedZoom = normalizeOfficeZoom(zoom, currentView.zoom);
+      const modeChanged = currentView.zoomMode !== 'percentage';
+      const zoomChanged = currentView.zoom !== normalizedZoom;
+      if (!modeChanged && !zoomChanged) return;
+
+      if (modeChanged && optionsRef.current.viewState?.zoomMode === undefined) {
+        dispatch({ type: 'zoom-mode-changed', mode: 'percentage' });
+      }
+      if (zoomChanged && optionsRef.current.viewState?.zoom === undefined) {
+        dispatch({ type: 'zoom-changed', zoom: normalizedZoom });
+      }
+      const nextState = {
+        ...createPublicViewState(currentView),
+        zoom: normalizedZoom,
+        zoomMode: 'percentage' as const,
+      };
+      if (modeChanged) {
+        notifyObserver(optionsRef.current.onViewStateChange, nextState, {
+          key: 'zoomMode',
+          value: 'percentage',
+        });
+      }
+      if (zoomChanged) {
+        notifyObserver(optionsRef.current.onViewStateChange, nextState, {
+          key: 'zoom',
+          value: normalizedZoom,
+        });
+      }
+    },
+    [effectiveViewStateRef, optionsRef],
+  );
+
+  const applyFitZoom = useCallback(
+    (zoom: number) => {
+      const currentView = effectiveViewStateRef.current;
+      const normalizedZoom = normalizeOfficeZoom(zoom, currentView.zoom);
+      if (currentView.zoom === normalizedZoom) return;
       if (optionsRef.current.viewState?.zoom === undefined) {
         dispatch({ type: 'zoom-changed', zoom: normalizedZoom });
       }
-      notifyViewStateChange({ key: 'zoom', value: normalizedZoom });
+      notifyObserver(
+        optionsRef.current.onViewStateChange,
+        {
+          ...createPublicViewState(currentView),
+          zoom: normalizedZoom,
+        },
+        { key: 'zoom', value: normalizedZoom },
+      );
     },
-    [effectiveViewStateRef, notifyViewStateChange, optionsRef],
+    [effectiveViewStateRef, optionsRef],
+  );
+
+  const changeZoomMode = useCallback(
+    (mode: OfficeFileViewerZoomMode) => {
+      const normalizedMode = normalizeOfficeZoomMode(mode);
+      const currentView = effectiveViewStateRef.current;
+      if (currentView.zoomMode === normalizedMode) return;
+      if (optionsRef.current.viewState?.zoomMode === undefined) {
+        dispatch({ type: 'zoom-mode-changed', mode: normalizedMode });
+      }
+      notifyObserver(
+        optionsRef.current.onViewStateChange,
+        {
+          ...createPublicViewState(currentView),
+          zoomMode: normalizedMode,
+        },
+        { key: 'zoomMode', value: normalizedMode },
+      );
+    },
+    [effectiveViewStateRef, optionsRef],
   );
 
   const zoomOut = useCallback(() => {
-    commitZoom(effectiveViewStateRef.current.zoom - OFFICE_ZOOM_STEP);
-  }, [commitZoom, effectiveViewStateRef]);
+    commitManualZoom(effectiveViewStateRef.current.zoom - OFFICE_ZOOM_STEP);
+  }, [commitManualZoom, effectiveViewStateRef]);
 
   const zoomIn = useCallback(() => {
-    commitZoom(effectiveViewStateRef.current.zoom + OFFICE_ZOOM_STEP);
-  }, [commitZoom, effectiveViewStateRef]);
+    commitManualZoom(effectiveViewStateRef.current.zoom + OFFICE_ZOOM_STEP);
+  }, [commitManualZoom, effectiveViewStateRef]);
 
   const changeZoom = useCallback(
-    (zoom: number) => commitZoom(zoom),
-    [commitZoom],
+    (zoom: number) => commitManualZoom(zoom),
+    [commitManualZoom],
   );
 
   const changeSpreadsheetViewMode = useCallback(
@@ -1207,7 +1295,11 @@ export function useOfficeViewerController(
           : optionsRef.current.messages.file.fullscreenRejected;
       notifyObserver(
         optionsRef.current.onError,
-        new Error(optionsRef.current.messages.file.fullscreenFailed(reason)),
+        new OfficeFileViewerError(
+          'FULLSCREEN_FAILED',
+          optionsRef.current.messages.file.fullscreenFailed(reason),
+          { stage: 'fullscreen', recoverable: true, cause: nextError },
+        ),
       );
     }
   }, [optionsRef]);
@@ -1262,6 +1354,8 @@ export function useOfficeViewerController(
       zoomOut,
       zoomIn,
       changeZoom,
+      changeZoomMode,
+      applyFitZoom,
       changeSpreadsheetViewMode,
       toggleSpeakerNotes,
       toggleWordOutline,
@@ -1277,6 +1371,8 @@ export function useOfficeViewerController(
     }),
     [
       changeZoom,
+      changeZoomMode,
+      applyFitZoom,
       changeSpreadsheetViewMode,
       changeWordRevisionMode,
       closeReviewPanel,

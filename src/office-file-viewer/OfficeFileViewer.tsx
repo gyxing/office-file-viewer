@@ -1,5 +1,5 @@
 // OfficeFileViewer 是组件库对外主入口，负责组合本地化、控制器、工具栏和格式预览舞台。
-import type { CSSProperties, ReactElement } from 'react';
+import type { CSSProperties, ReactElement, ReactNode } from 'react';
 import React, {
   memo,
   useCallback,
@@ -18,6 +18,7 @@ import {
   type OfficeFileViewerLocale,
 } from './locale';
 import type { OfficeFileViewerReviewOptions } from './services/annotations/types';
+import type { OfficeFileViewerError } from './services/errors/OfficeFileViewerError';
 import type { OfficeFileViewerFontOptions } from './services/fonts/types';
 import type { OfficeFileViewerUri } from './services/input/normalizeOfficeFileUri';
 import type {
@@ -60,13 +61,16 @@ import {
 import {
   OfficeToolbar,
   type FullscreenControls,
+  type OfficeFileViewerToolbarOptions,
   type OfficeToolbarFormatControls,
   type OfficeToolbarReviewControls,
   type OfficeToolbarSearchControls,
+  type ResolvedOfficeFileViewerToolbarOptions,
   type ZoomControls,
 } from './shell/Toolbar';
 import { OFFICE_DEFAULT_ZOOM } from './shell/constants';
 import { useOfficeViewerController } from './shell/controller/useOfficeViewerController';
+import { useOfficeFitZoom } from './shell/useOfficeFitZoom';
 import type {
   OfficeFileViewerViewState,
   OfficeFileViewerViewStateChange,
@@ -81,11 +85,26 @@ export type {
 export type { OfficeFileViewerPresentationMediaOptions } from './services/presentation/mediaTypes';
 export type { OfficeFileViewerPresentationTransitions } from './services/presentation/transitionTypes';
 export type { OfficeFileViewerSearchOptions } from './services/search/types';
+export type { OfficeFileViewerToolbarOptions } from './shell/Toolbar';
 
 /** 未声明搜索选项时复用稳定空对象，避免无关渲染重置查询。 */
 const DEFAULT_SEARCH_OPTIONS: OfficeFileViewerSearchOptions = {};
 /** 未声明审阅选项时复用稳定空对象，保持旧调用方默认行为。 */
 const DEFAULT_REVIEW_OPTIONS: OfficeFileViewerReviewOptions = {};
+/** 工具栏未声明时显示全部通用区域。 */
+const DEFAULT_TOOLBAR_OPTIONS: ResolvedOfficeFileViewerToolbarOptions = {
+  fileName: true,
+  openFile: true,
+  zoom: true,
+  fullscreen: true,
+};
+
+/** 合并工具栏局部配置，并保持默认界面向后兼容。 */
+function resolveToolbarOptions(
+  options: OfficeFileViewerToolbarOptions | undefined,
+): ResolvedOfficeFileViewerToolbarOptions {
+  return { ...DEFAULT_TOOLBAR_OPTIONS, ...options };
+}
 
 /** Office文件预览器组件属性。 */
 export type OfficeFileViewerProps = {
@@ -95,7 +114,7 @@ export type OfficeFileViewerProps = {
   uri?: OfficeFileViewerUri;
   /** 无法从文件来源推断名称时使用的默认文件名。 */
   defaultFileName?: string;
-  /** 组件首次渲染时采用的缩放比例。 */
+  /** @deprecated 请改用 defaultViewState.zoom。 */
   defaultZoom?: number;
   /** 非受控模式下各视图字段的统一初始值。 */
   defaultViewState?: Partial<OfficeFileViewerViewState>;
@@ -106,16 +125,22 @@ export type OfficeFileViewerProps = {
     state: OfficeFileViewerViewState,
     change: OfficeFileViewerViewStateChange,
   ) => void;
-  /** 非受控模式下演讲者备注是否默认展开。 */
+  /** @deprecated 请改用 defaultViewState.speakerNotesVisible。 */
   defaultShowSpeakerNotes?: boolean;
-  /** 受控模式下演讲者备注是否展开。 */
+  /** @deprecated 请改用 viewState.speakerNotesVisible。 */
   showSpeakerNotes?: boolean;
-  /** 演讲者备注展开状态变化时触发。 */
+  /** @deprecated 请改用 onViewStateChange。 */
   onSpeakerNotesVisibilityChange?: (visible: boolean) => void;
   /** 附加到预览器根元素的自定义类名。 */
   className?: string;
   /** 预览区域高度，支持任意 CSS 高度值；未提供时使用父容器高度。 */
   height?: CSSProperties['height'];
+  /** 控制内置工具栏及其通用区域；传 false 时完全隐藏。 */
+  toolbar?: false | OfficeFileViewerToolbarOptions;
+  /** 追加到全部内置操作之后的宿主工具栏内容。 */
+  toolbarExtra?: ReactNode;
+  /** 用户通过内置入口选择本地文件时触发。 */
+  onFileSelect?: (file: File) => void;
   /** 传递给预览器根元素的内联样式。 */
   style?: CSSProperties;
   /** 完整文件解析成功后触发一次；渐进解析结果不会触发该回调。 */
@@ -123,7 +148,7 @@ export type OfficeFileViewerProps = {
   /** 首屏预览就绪后触发一次，完整模型和按需数据源都会触发。 */
   onPreviewReady?: (info: OfficePreviewReadyInfo, file: File) => void;
   /** 文件加载或解析失败时触发的回调。 */
-  onError?: (error: Error, file?: File) => void;
+  onError?: (error: OfficeFileViewerError, file?: File) => void;
   /** 解析降级、格式兼容或运行时诊断警告产生时触发。 */
   onWarning?: (warning: OfficeFileViewerWarning, file: File) => void;
   /** 传递给底层解析会话的运行配置。 */
@@ -162,6 +187,9 @@ function OfficeFileViewerContent({
   className,
   height,
   style,
+  toolbar,
+  toolbarExtra,
+  onFileSelect,
   onFileParsed,
   onPreviewReady,
   onError,
@@ -178,6 +206,8 @@ function OfficeFileViewerContent({
   onParseProgress,
 }: Omit<OfficeFileViewerProps, 'locale'>) {
   const messages = useOfficeFileViewerMessages();
+  const toolbarOptions =
+    toolbar === false ? undefined : resolveToolbarOptions(toolbar);
   const searchEnabled = search !== false;
   const searchOptions = searchEnabled
     ? search ?? DEFAULT_SEARCH_OPTIONS
@@ -348,20 +378,50 @@ function OfficeFileViewerContent({
     view.spreadsheetViewMode,
     view.wordRevisionMode,
   ]);
+  const supportedFitModes = useMemo<ZoomControls['fitModes']>(
+    () =>
+      meta.format.kind === 'spreadsheet'
+        ? ['fit-width']
+        : meta.format.kind === 'empty'
+        ? []
+        : ['fit-width', 'fit-page'],
+    [meta.format.kind],
+  );
+  const fitActiveKey =
+    meta.format.kind === 'presentation'
+      ? view.activeSlideIndex
+      : meta.format.kind === 'spreadsheet'
+      ? view.activeSheetId
+      : undefined;
+  useOfficeFitZoom({
+    containerRef: viewerRef,
+    mode: view.zoomMode,
+    zoom: view.zoom,
+    previewKind: meta.previewKind,
+    sessionKey: preview?.sessionId,
+    activeKey: fitActiveKey,
+    onZoom: actions.applyFitZoom,
+  });
   const zoomControls = useMemo<ZoomControls>(
     () => ({
       value: view.zoom,
+      mode: view.zoomMode,
+      fitModes: supportedFitModes,
       hasDocument: meta.hasRenderableContent,
       zoomOut: actions.zoomOut,
       zoomIn: actions.zoomIn,
       change: actions.changeZoom,
+      changeMode: actions.changeZoomMode,
     }),
     [
       actions.changeZoom,
+      actions.changeZoomMode,
       actions.zoomIn,
       actions.zoomOut,
       meta.hasRenderableContent,
+      supportedFitModes,
       view.zoom,
+      view.zoomMode,
     ],
   );
   const fullscreenControls = useMemo<FullscreenControls>(
@@ -471,6 +531,19 @@ function OfficeFileViewerContent({
   }
   // 专用 height 配置优先于 style.height，避免两个入口同时传值时结果不确定。
   const viewerStyle = height === undefined ? style : { ...style, height };
+  const handleSelectFile = useCallback(
+    (file: File) => {
+      try {
+        onFileSelect?.(file);
+      } catch (observerError) {
+        setTimeout(() => {
+          throw observerError;
+        }, 0);
+      }
+      void actions.selectFile(file);
+    },
+    [actions.selectFile, onFileSelect],
+  );
 
   return (
     <div
@@ -516,16 +589,20 @@ function OfficeFileViewerContent({
                   controller={annotationController}
                 >
                   <div className="office-file-viewer__layout">
-                    <OfficeToolbar
-                      fileName={displayedFileName}
-                      previewKind={meta.previewKind}
-                      formatControls={formatControls}
-                      zoomControls={zoomControls}
-                      fullscreenControls={fullscreenControls}
-                      searchControls={searchControls}
-                      reviewControls={reviewControls}
-                      onSelectFile={actions.selectFile}
-                    />
+                    {toolbarOptions ? (
+                      <OfficeToolbar
+                        fileName={displayedFileName}
+                        previewKind={meta.previewKind}
+                        formatControls={formatControls}
+                        zoomControls={zoomControls}
+                        fullscreenControls={fullscreenControls}
+                        searchControls={searchControls}
+                        reviewControls={reviewControls}
+                        displayOptions={toolbarOptions}
+                        extra={toolbarExtra}
+                        onSelectFile={handleSelectFile}
+                      />
+                    ) : null}
                     <div className="office-file-viewer__content">
                       <div className="office-file-viewer__workspace">
                         {searchEnabled ? (

@@ -1,12 +1,15 @@
 import { OfficeResourceLimitError } from '../../shared/resource/OfficeResourceLimitError';
 import { validateOfficeResourcePolicy } from '../../shared/resource/OfficeResourcePolicy';
+import {
+  normalizeOfficeFileViewerError,
+  OfficeFileViewerError,
+} from '../errors/OfficeFileViewerError';
 import { OFFICE_LARGE_FILE_THRESHOLDS } from '../performance/officePerformanceThresholds';
 import type { ParsedOfficeFile } from '../preview';
 import {
   createOfficeDocumentSession,
   type OfficeDocumentSession,
 } from '../session';
-import { detectPreviewKind } from './detectPreviewKind';
 import { tryDetectPreviewKind, type PreviewKind } from './formatDefinitions';
 import {
   loadOfficeSessionAdapterFactory,
@@ -29,6 +32,30 @@ import type {
   ParseProgress,
 } from './types';
 
+/** 加密 OOXML 使用 CFB 外层封装，而普通 OOXML 必须以 ZIP 签名开头。 */
+const CFB_FILE_SIGNATURE = [
+  0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1,
+] as const;
+
+/** 在进入 ZIP 读取器前识别加密 OOXML，避免向调用方暴露模糊解压错误。 */
+async function assertOoxmlFileIsNotEncrypted(
+  file: File,
+  kind: PreviewKind,
+): Promise<void> {
+  if (kind !== 'docx' && kind !== 'xlsx' && kind !== 'pptx') return;
+  const signature = new Uint8Array(
+    await file.slice(0, CFB_FILE_SIGNATURE.length).arrayBuffer(),
+  );
+  const isCfb = CFB_FILE_SIGNATURE.every(
+    (value, index) => signature[index] === value,
+  );
+  if (!isCfb) return;
+  throw new OfficeFileViewerError(
+    'ENCRYPTED_FILE',
+    '暂不支持密码加密的 OOXML 文件',
+    { stage: 'format', previewKind: kind, fileName: file.name },
+  );
+}
 function createParseSession(
   file: File,
   kind: PreviewKind,
@@ -101,6 +128,7 @@ function createParseSession(
           { limit: resourcePolicy.maxFileBytes, actual: file.size },
         );
       }
+      await assertOoxmlFileIsNotEncrypted(file, kind);
       if (resourcePolicy?.timeoutMs !== undefined) {
         timeoutId = setTimeout(() => {
           documentSession.abort(
@@ -233,9 +261,13 @@ function createParseSession(
       ownershipTransferred = true;
       return handle;
     } catch (error) {
+      // 清理会触发内部 AbortSignal，必须先保存真实失败原因，避免资源回收覆盖解析错误。
+      const abortReason = documentSession.signal.aborted
+        ? documentSession.signal.reason
+        : undefined;
+      const failure = abortReason ?? error;
       const cancelled =
-        documentSession.signal.aborted ||
-        (error instanceof Error && error.name === 'AbortError');
+        failure instanceof Error && failure.name === 'AbortError';
       if (cancelled) {
         status = 'cancelled';
       } else {
@@ -251,12 +283,13 @@ function createParseSession(
           ownershipTransferred = true;
         }
       }
-      // 清理会触发内部 AbortSignal，必须先保存真实取消原因，避免覆盖原始解析错误。
-      const abortReason = documentSession.signal.aborted
-        ? documentSession.signal.reason
-        : undefined;
       if (!ownershipTransferred) await documentSession.dispose();
-      throw abortReason ?? error;
+      if (cancelled) throw failure;
+      throw normalizeOfficeFileViewerError(failure, {
+        stage: 'parsing',
+        previewKind: kind,
+        fileName: file.name,
+      });
     } finally {
       if (timeoutId !== undefined) clearTimeout(timeoutId);
       runtime?.dispose();
@@ -309,9 +342,17 @@ export function createOfficeParseSession(
   file: File,
   options: OfficeParseOptions = {},
 ): OfficeParseSession<ParsedOfficeFile> {
+  const kind = tryDetectPreviewKind(file.name);
+  if (!kind) {
+    throw new OfficeFileViewerError(
+      'UNSUPPORTED_FILE_TYPE',
+      '暂不支持该文件格式',
+      { stage: 'format', fileName: file.name },
+    );
+  }
   const internalSession = createParseSession(
     file,
-    detectPreviewKind(file.name),
+    kind,
     options,
     false,
     createOfficeDocumentSession(),
@@ -339,7 +380,13 @@ export function createOfficeFileViewerParseSession(
   documentSession?: OfficeDocumentSession,
 ): OfficeFileViewerParseSession {
   const kind = tryDetectPreviewKind(file.name);
-  if (!kind) throw new Error('暂不支持该文件格式');
+  if (!kind) {
+    throw new OfficeFileViewerError(
+      'UNSUPPORTED_FILE_TYPE',
+      '暂不支持该文件格式',
+      { stage: 'format', fileName: file.name },
+    );
+  }
   return createParseSession(
     file,
     kind,

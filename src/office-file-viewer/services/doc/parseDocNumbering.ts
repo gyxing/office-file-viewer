@@ -1,3 +1,5 @@
+import type { DocTextStyle } from './types';
+
 /** 二进制 DOC 的单级列表格式。 */
 type DocListLevel = {
   /** 当前范围的起始位置。 */
@@ -8,6 +10,8 @@ type DocListLevel = {
   text: string;
   /** 列表编号与正文之间使用的后缀类型。 */
   suffix: 'tab' | 'space' | 'nothing';
+  /** 列表级别声明的悬挂缩进等段落布局。 */
+  style?: DocTextStyle;
 };
 
 /** 二进制 DOC 列表定义、覆盖实例与当前计数状态。 */
@@ -56,6 +60,42 @@ function readInt32(bytes: Uint8Array, offset: number) {
   ).getInt32(offset, true);
 }
 
+function twipToPx(value: number) {
+  return (value / 1440) * 96;
+}
+
+/** 跳过列表级别 PAPX 中当前 SPRM 的操作数。 */
+function listSprmOperandSize(sprm: number, bytes: Uint8Array, offset: number) {
+  const sizeCode = (sprm >> 13) & 0x7;
+  if (sizeCode === 0 || sizeCode === 1) return 1;
+  if (sizeCode === 2 || sizeCode === 4 || sizeCode === 5) return 2;
+  if (sizeCode === 3) return 4;
+  if (sizeCode === 6) return 1 + (bytes[offset] ?? 0);
+  if (sizeCode === 7) return 3;
+  return 0;
+}
+
+/** 读取列表级别保存的悬挂缩进，避免 HTML 默认列表缩进改变源换行。 */
+function readListParagraphStyle(bytes: Uint8Array) {
+  const style: DocTextStyle = {};
+  let offset = 0;
+  while (offset + 2 <= bytes.length) {
+    const sprm = readUint16(bytes, offset);
+    if (sprm === undefined) break;
+    offset += 2;
+    const operandSize = listSprmOperandSize(sprm, bytes, offset);
+    if (!operandSize || offset + operandSize > bytes.length) break;
+    const value = readInt16(bytes, offset);
+    if (value !== undefined && (sprm === 0x840f || sprm === 0x845e)) {
+      style.indentLeft = twipToPx(value);
+    } else if (value !== undefined && (sprm === 0x8411 || sprm === 0x8460)) {
+      style.firstLineIndent = twipToPx(value);
+    }
+    offset += operandSize;
+  }
+  return Object.keys(style).length ? style : undefined;
+}
+
 function readListLevel(
   tableStream: Uint8Array,
   offset: number,
@@ -66,6 +106,10 @@ function readListLevel(
   const follow = tableStream[offset + 15] ?? 0;
   const characterPropertyLength = tableStream[offset + 24] ?? 0;
   const paragraphPropertyLength = tableStream[offset + 25] ?? 0;
+  const paragraphProperties = tableStream.slice(
+    offset + 28,
+    offset + 28 + paragraphPropertyLength,
+  );
   const textLengthOffset =
     offset + 28 + paragraphPropertyLength + characterPropertyLength;
   const textLength = readUint16(tableStream, textLengthOffset);
@@ -92,6 +136,7 @@ function readListLevel(
       format,
       text,
       suffix: follow === 1 ? 'space' : follow === 2 ? 'nothing' : 'tab',
+      style: readListParagraphStyle(paragraphProperties),
     },
     nextOffset: textLengthOffset + 2 + textLength * 2,
   };
@@ -225,7 +270,9 @@ export function nextDocNumberPrefix(
   const safeLevel = Math.max(0, Math.min(8, levelIndex));
   const level = levels?.[safeLevel] ?? levels?.[0];
   if (!level) return undefined;
-  if (level.format === 0x17) return { text: level.text, suffix: level.suffix };
+  if (level.format === 0x17) {
+    return { text: level.text, suffix: level.suffix, style: level.style };
+  }
 
   const counters = catalog.counters.get(listId) ?? [];
   counters[safeLevel] =
@@ -243,5 +290,5 @@ export function nextDocNumberPrefix(
       referencedLevel.format,
     );
   });
-  return { text, suffix: level.suffix };
+  return { text, suffix: level.suffix, style: level.style };
 }

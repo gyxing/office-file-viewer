@@ -1,4 +1,5 @@
 // office-file-viewer 模块的公共入口，业务侧通过这里使用 OfficeFileViewer 及相关类型。
+import { normalizeOfficeFileViewerError } from './services/errors/OfficeFileViewerError';
 import type { PresentationDocument } from './services/presentation/types';
 
 export type { OfficeFileViewerLocale } from './locale';
@@ -9,6 +10,7 @@ export type {
   OfficeFileViewerPresentationTransitions,
   OfficeFileViewerProps,
   OfficeFileViewerSearchOptions,
+  OfficeFileViewerToolbarOptions,
   OfficeFileViewerUri,
   OfficeFileViewerUriLoader,
 } from './OfficeFileViewer';
@@ -25,9 +27,14 @@ export { disposeDocDocument } from './services/doc/types';
 export type { DocDocument, DocResources } from './services/doc/types';
 export {
   createOfficeParseSession,
+  isOfficeFileViewerError,
+  OfficeFileViewerError,
   OfficeResourceLimitError,
 } from './services/parsing';
 export type {
+  OfficeFileViewerErrorCode,
+  OfficeFileViewerErrorContext,
+  OfficeFileViewerErrorStage,
   OfficeParseOptions,
   OfficeParseResourcePolicy,
   OfficeParseSession,
@@ -50,8 +57,16 @@ export type {
 } from './shared/image-preview';
 /** 按需加载 PPT 二进制解析器，避免仅使用预览组件时进入主包。 */
 export async function parsePpt(file: File): Promise<PresentationDocument> {
-  const { parsePpt: parsePptFile } = await import('./services/ppt/parsePpt');
-  return parsePptFile(file);
+  try {
+    const { parsePpt: parsePptFile } = await import('./services/ppt/parsePpt');
+    return await parsePptFile(file);
+  } catch (error) {
+    throw normalizeOfficeFileViewerError(error, {
+      stage: 'parsing',
+      previewKind: 'ppt',
+      fileName: file.name,
+    });
+  }
 }
 
 export { disposePresentationDocument } from './services/presentation/dispose';
@@ -88,4 +103,5 @@ export type { SpreadsheetViewMode } from './services/spreadsheet/viewMode';
 export type {
   OfficeFileViewerViewState,
   OfficeFileViewerViewStateChange,
+  OfficeFileViewerZoomMode,
 } from './shell/viewState';

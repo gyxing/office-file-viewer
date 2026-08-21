@@ -180,12 +180,27 @@
   margin: 0 0 16px 20px;
   padding: 0;
   color: #111827;
+  list-style: none;
 }
 
 .office-file-doc-list__item {
+  display: grid;
+  align-items: start;
   margin-bottom: 8px;
-  line-height: 1.7;
+  line-height: inherit;
   word-break: break-word;
+}
+
+.office-file-doc-list__marker {
+  box-sizing: border-box;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.office-file-doc-list__content {
+  min-width: 0;
+  // Word 允许行尾中文标点悬挂半个字格，避免临界长句被单独挤出一行。
+  width: calc(100% + 0.5em);
 }
 
 .office-file-doc-image-layout {

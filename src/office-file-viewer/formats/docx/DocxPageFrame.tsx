@@ -87,7 +87,14 @@ function DocxPageFrameComponent({
   );
 
   return (
-    <div className="office-file-docx-page-frame" style={shellStyle}>
+    <div
+      className="office-file-docx-page-frame"
+      style={shellStyle}
+      data-office-fit-target="true"
+      data-office-fit-base-width={page.width}
+      data-office-fit-base-height={page.minHeight}
+      data-office-fit-fixed-width={markupRailWidth || undefined}
+    >
       <div
         className="office-file-docx-page-frame__page-clip"
         style={pageClipStyle}

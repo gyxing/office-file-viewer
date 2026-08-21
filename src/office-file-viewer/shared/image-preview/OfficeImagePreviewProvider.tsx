@@ -1,4 +1,4 @@
-import type { ReactNode, RefObject } from 'react';
+import type { ReactElement, ReactNode, RefObject } from 'react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { resolveOfficeImagePreviewOptions } from './imagePreviewOptions';
 import './index.less';
@@ -64,7 +64,7 @@ export function OfficeImagePreviewProvider({
   config,
   sessionKey,
   containerRef,
-}: OfficeImagePreviewProviderProps) {
+}: OfficeImagePreviewProviderProps): ReactElement {
   const options = useMemo(
     () => resolveOfficeImagePreviewOptions(config),
     [config],

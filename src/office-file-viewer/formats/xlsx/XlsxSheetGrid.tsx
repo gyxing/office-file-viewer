@@ -202,8 +202,15 @@ function XlsxSheetGridComponent({
       ref={gridRef}
       className="office-file-xlsx-sheet-grid"
       data-office-spreadsheet-sheet-id={sheet.id}
+      data-office-fit-viewport="true"
     >
-      <div className="office-file-xlsx-sheet-grid__canvas" style={canvasStyle}>
+      <div
+        className="office-file-xlsx-sheet-grid__canvas"
+        style={canvasStyle}
+        data-office-fit-target="true"
+        data-office-fit-base-width={metrics.canvasWidth}
+        data-office-fit-base-height={metrics.canvasHeight}
+      >
         <XlsxSheetFiller
           sheet={sheet}
           metrics={metrics}

@@ -6,7 +6,7 @@ export const zhCN: OfficeFileViewerMessages = {
     unloaded: '未加载文件',
     selectToPreview: '请先选择文件开始预览',
     unsupported:
-      '暂不支持该文件类型，请选择 PPTX、PPT、XLSX、XLS、DOCX、DOC 或 WPS 文件',
+      '暂不支持该文件类型，请选择 PPTX/PPTM/POTX、PPT、XLSX/XLSM/XLTX、XLS、DOCX/DOCM/DOTX、DOC 或 WPS 文件',
     unrecognized:
       '无法识别 Office 文件类型，请提供 PPTX、PPT、XLSX、XLS、DOCX、DOC 或 WPS 文件',
     invalidUri:
@@ -27,6 +27,8 @@ export const zhCN: OfficeFileViewerMessages = {
     hideSpeakerNotes: '隐藏演讲者备注',
     speakerNotes: '备注',
     zoomLevel: '缩放比例',
+    fitWidth: '适应宽度',
+    fitPage: '适应页面',
     zoomOut: '缩小',
     zoomIn: '放大',
     fullscreen: '全屏',

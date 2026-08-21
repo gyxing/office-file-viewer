@@ -23,8 +23,8 @@
   width: 168px;
   padding: 4px;
   overflow: hidden;
-  color: #1f2937;
-  background: #fff;
+  color: var(--office-file-text-color);
+  background: var(--office-file-surface-color);
   border: 1px solid #dfe4ec;
   border-radius: 7px;
   box-shadow: 0 8px 24px rgb(15 23 42 / 22%);
@@ -49,8 +49,8 @@
 
 .office-file-image-context-menu__item:hover,
 .office-file-image-context-menu__item:focus-visible {
-  color: #0958d9;
-  background: #eaf4ff;
+  color: var(--office-file-primary-active-color);
+  background: var(--office-file-selected-surface-color);
   outline: 0;
 }
 
@@ -75,7 +75,7 @@
 
 .office-file-image-preview-layer {
   z-index: calc(var(--office-file-overlay-z-index) + 10);
-  color: #f8fafc;
+  color: var(--office-file-subtle-surface-color);
   background: rgb(8 15 29 / 78%);
   animation: office-file-image-preview-enter 160ms ease-out;
 }
@@ -124,7 +124,7 @@
 }
 
 .office-file-image-preview-dialog__toolbar .office-file-button {
-  color: #f8fafc;
+  color: var(--office-file-subtle-surface-color);
   background: rgb(255 255 255 / 9%);
   border-color: rgb(255 255 255 / 24%);
 }
@@ -144,7 +144,7 @@
 
 .office-file-image-preview-dialog__zoom {
   width: 48px;
-  color: #f8fafc;
+  color: var(--office-file-subtle-surface-color);
   font-size: 13px;
   text-align: center;
 }

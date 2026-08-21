@@ -314,14 +314,15 @@ const WEBSITE_CONTENT: Record<WebsiteLocale, WebsiteContent> = {
     },
     formats: {
       eyebrow: 'Supported formats',
-      title: 'Seven common Office extensions, grouped by how people use them.',
+      title:
+        'Thirteen common Office extensions, grouped by how people use them.',
       description:
         'The viewer provides a shared shell while adapting navigation and controls to each document family.',
       groups: [
         {
           category: 'Documents',
           title: 'Word and WPS documents',
-          formats: ['DOC', 'DOCX', 'WPS'],
+          formats: ['DOC', 'DOCX', 'DOCM', 'DOTX', 'WPS'],
           description:
             'Preview classic binary documents and modern Word packages in a paginated reading surface.',
           capabilities: [
@@ -334,7 +335,7 @@ const WEBSITE_CONTENT: Record<WebsiteLocale, WebsiteContent> = {
         {
           category: 'Spreadsheets',
           title: 'Excel workbooks',
-          formats: ['XLS', 'XLSX'],
+          formats: ['XLS', 'XLSX', 'XLSM', 'XLTX'],
           description:
             'Switch between a source-faithful layout and a reading mode that prioritizes complete cell text.',
           capabilities: [
@@ -347,7 +348,7 @@ const WEBSITE_CONTENT: Record<WebsiteLocale, WebsiteContent> = {
         {
           category: 'Presentations',
           title: 'PowerPoint presentations',
-          formats: ['PPT', 'PPTX'],
+          formats: ['PPT', 'PPTX', 'PPTM', 'POTX'],
           description:
             'Move through slides with controls suited to presentation review and playback.',
           capabilities: ['Slide navigation', 'Fullscreen', 'Speaker notes'],
@@ -548,14 +549,14 @@ export function Preview({ file }: { file: File }) {
     },
     formats: {
       eyebrow: '支持的文档格式',
-      title: '覆盖七种常见 Office 文件扩展名。',
+      title: '覆盖十三种常见 Office 文件扩展名。',
       description:
         '预览器复用统一外壳，同时根据文档、表格和演示文稿的特点调整导航与操作方式。',
       groups: [
         {
           category: '文本文档',
           title: 'Word 与 WPS 文档',
-          formats: ['DOC', 'DOCX', 'WPS'],
+          formats: ['DOC', 'DOCX', 'DOCM', 'DOTX', 'WPS'],
           description: '在分页阅读界面中预览传统二进制文档和现代 Word 文档包。',
           capabilities: ['分页阅读', '文档大纲', '缩放与全屏'],
           tone: 'document',
@@ -563,7 +564,7 @@ export function Preview({ file }: { file: File }) {
         {
           category: '电子表格',
           title: 'Excel 工作簿',
-          formats: ['XLS', 'XLSX'],
+          formats: ['XLS', 'XLSX', 'XLSM', 'XLTX'],
           description:
             '可在优先还原源文件的版式与完整显示单元格文本的阅读模式之间切换。',
           capabilities: ['工作表标签', '原始版式与阅读模式', '图表与绘图对象'],
@@ -572,7 +573,7 @@ export function Preview({ file }: { file: File }) {
         {
           category: '演示文稿',
           title: 'PowerPoint 演示文稿',
-          formats: ['PPT', 'PPTX'],
+          formats: ['PPT', 'PPTX', 'PPTM', 'POTX'],
           description: '使用适合演示文稿审阅和播放的操作方式浏览幻灯片。',
           capabilities: ['幻灯片导航', '全屏查看', '演讲者备注'],
           tone: 'presentation',

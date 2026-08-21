@@ -85,6 +85,8 @@ const DOCX_YAHEI_FONT_PATTERN = /微软雅黑|Microsoft\s+YaHei/i;
 const DOCX_COMPACT_SERIF_LINE_HEIGHT_MULTIPLIER = 1.3;
 /** Word/WPS 文本框兼容行距的默认行盒倍率，用于还原文本框内的网格吸附。 */
 const DOCX_SHAPE_LINE_HEIGHT_MULTIPLIER = 1.2;
+/** Word 空段落按单格自然行盒吸附网格，避免连续空段落被误扩为双格。 */
+const DOCX_EMPTY_PARAGRAPH_LINE_HEIGHT_MULTIPLIER = 1.2;
 /** 使用紧凑东亚衬线字形度量的常见 Office 字体。 */
 const DOCX_COMPACT_SERIF_FONT_PATTERN =
   /宋体|新宋体|ＭＳ 明朝|SimSun|NSimSun|MS Mincho|Songti|Noto Serif CJK/i;
@@ -880,14 +882,29 @@ function parseParagraph(
     containsOnlyPositionedInlines(inlines) &&
     Boolean(paragraphTextStyle?.bold) &&
     DOCX_YAHEI_FONT_PATTERN.test(paragraphTextStyle?.fontFamily ?? '');
+  // 宋体类纯浮动锚点只占单格，避免连续锚点段落产生累计下移。
+  const usesAnchorCompactSerifLineMetrics =
+    !visibleRunFontSize &&
+    !options?.insideShape &&
+    containsOnlyPositionedInlines(inlines) &&
+    DOCX_COMPACT_SERIF_FONT_PATTERN.test(paragraphTextStyle?.fontFamily ?? '');
   // 正文与文本框使用不同的默认行盒倍率，但都需按 Word 规则向上吸附文档网格。
   // 网格占用必须按实际可见 run 的字体度量判断；段落标记字体只作为空段落回退。
   const lineMetricFontFamily =
     visibleRunLineMetricStyle?.fontFamily ??
     paragraphTextStyle?.fontFamily ??
     '';
+  const usesEmptyBodyLineMetrics =
+    !options?.insideShape && !options?.insideTable && inlines.length === 0;
+  // 文本框编号沿用正文行盒；真正空段落只占单格，浮动对象锚点仍保留原高度。
   const defaultLineHeightMultiplier = options?.insideShape
-    ? DOCX_SHAPE_LINE_HEIGHT_MULTIPLIER
+    ? numberPrefix
+      ? DOCX_BODY_LINE_HEIGHT_MULTIPLIER
+      : DOCX_SHAPE_LINE_HEIGHT_MULTIPLIER
+    : usesEmptyBodyLineMetrics
+    ? DOCX_EMPTY_PARAGRAPH_LINE_HEIGHT_MULTIPLIER
+    : usesAnchorCompactSerifLineMetrics
+    ? DOCX_COMPACT_SERIF_LINE_HEIGHT_MULTIPLIER
     : usesAnchorYaHeiLineMetrics
     ? DOCX_ANCHOR_YAHEI_LINE_HEIGHT_MULTIPLIER
     : options?.insideTable &&
@@ -961,6 +978,14 @@ function parseParagraph(
         gridLineHeight
       : style.lineHeight;
 
+  // 文本框未显式声明时不沿用正文脚本自动间距，避免短行被额外空隙挤换行。
+  const autoSpaceLatin = options?.insideShape
+    ? style.autoSpaceLatin ?? false
+    : style.autoSpaceLatin;
+  const autoSpaceNumber = options?.insideShape
+    ? style.autoSpaceNumber ?? false
+    : style.autoSpaceNumber;
+
   return {
     id,
     type: 'paragraph',
@@ -975,8 +1000,8 @@ function parseParagraph(
     widowControl: style.widowControl !== false,
     paragraphStyleId: style.styleId,
     contextualSpacing: style.contextualSpacing || undefined,
-    autoSpaceLatin: style.autoSpaceLatin,
-    autoSpaceNumber: style.autoSpaceNumber,
+    autoSpaceLatin,
+    autoSpaceNumber,
     tabStops: style.tabStops,
     align: style.align,
     lineHeight,

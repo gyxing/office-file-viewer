@@ -7,7 +7,10 @@ import {
   type SpreadsheetViewMode,
 } from '../../services/spreadsheet/viewMode';
 import { normalizeOfficeZoom } from '../normalizeOfficeZoom';
-import type { OfficeFileViewerViewState } from '../viewState';
+import type {
+  OfficeFileViewerViewState,
+  OfficeFileViewerZoomMode,
+} from '../viewState';
 
 /** 查看器当前文档所处的加载与交付阶段。 */
 export type OfficeViewerDocumentState =
@@ -54,6 +57,8 @@ export type OfficeViewerViewState = {
   activeSheetId?: string;
   /** 当前预览缩放比例。 */
   zoom: number;
+  /** 当前固定比例或自适应缩放模式。 */
+  zoomMode: OfficeFileViewerZoomMode;
   /** 当前实例是否处于全屏状态。 */
   isFullscreen: boolean;
   /** 非受控模式下保存的演讲者备注展开状态。 */
@@ -137,6 +142,11 @@ export type OfficeViewerAction =
       zoom: number;
     }
   | {
+      type: 'zoom-mode-changed';
+      /** 目标固定比例或自适应缩放模式。 */
+      mode: OfficeFileViewerZoomMode;
+    }
+  | {
       type: 'fullscreen-changed';
       /** 浏览器确认后的全屏状态。 */
       fullscreen: boolean;
@@ -183,6 +193,7 @@ export function createInitialOfficeViewerState(options: {
       activeSlideIndex: options.defaultViewState.activeSlideIndex,
       activeSheetId: options.defaultViewState.activeSheetId,
       zoom: normalizeOfficeZoom(options.defaultViewState.zoom),
+      zoomMode: options.defaultViewState.zoomMode ?? 'percentage',
       isFullscreen: false,
       internalShowSpeakerNotes: options.defaultViewState.speakerNotesVisible,
       showWordOutline: options.defaultViewState.wordOutlineVisible,
@@ -278,6 +289,7 @@ export function officeViewerReducer(
           activeSlideIndex: action.viewState.activeSlideIndex,
           activeSheetId: action.viewState.activeSheetId,
           zoom: normalizeOfficeZoom(action.viewState.zoom),
+          zoomMode: action.viewState.zoomMode ?? 'percentage',
           internalShowSpeakerNotes: action.viewState.speakerNotesVisible,
           showWordOutline: action.viewState.wordOutlineVisible,
           showSearch: action.viewState.searchVisible,
@@ -354,6 +366,9 @@ export function officeViewerReducer(
       if (state.view.zoom === zoom) return state;
       return { ...state, view: { ...state.view, zoom } };
     }
+    case 'zoom-mode-changed':
+      if (state.view.zoomMode === action.mode) return state;
+      return { ...state, view: { ...state.view, zoomMode: action.mode } };
     case 'fullscreen-changed':
       if (state.view.isFullscreen === action.fullscreen) return state;
       return {

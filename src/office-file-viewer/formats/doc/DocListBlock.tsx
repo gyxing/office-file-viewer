@@ -16,12 +16,41 @@ type DocListBlockProps = {
 function DocListBlockComponent({ block }: DocListBlockProps) {
   const resolveFontFamily = useOfficeFontResolver();
   const searchBlockId = block.sourceBlockId ?? block.id;
-  const itemStyle = useMemo<CSSProperties>(
-    () => ({
-      ...docTextStyleToCss(block.style, resolveFontFamily),
-    }),
-    [block.style, resolveFontFamily],
-  );
+  const { itemStyle, listStyle, markerWidth } = useMemo(() => {
+    const sourceStyle = docTextStyleToCss(block.style, resolveFontFamily);
+    const indentLeft = Math.max(20, block.style?.indentLeft ?? 0);
+    const hangingIndent = Math.max(
+      20,
+      block.style?.firstLineIndent && block.style.firstLineIndent < 0
+        ? -block.style.firstLineIndent
+        : 0,
+    );
+    const markerStart = Math.max(0, indentLeft - hangingIndent);
+    return {
+      markerWidth: hangingIndent,
+      listStyle: {
+        ...sourceStyle,
+        marginLeft: markerStart,
+        marginBottom:
+          !block.continuesOnNext && block.style?.spacingAfter === undefined
+            ? 16
+            : 0,
+        paddingLeft: 0,
+        textIndent: 0,
+        listStyle: 'none',
+      } satisfies CSSProperties,
+      itemStyle: {
+        ...sourceStyle,
+        gridTemplateColumns: `${hangingIndent}px minmax(0, 1fr)`,
+        marginTop: 0,
+        marginRight: 0,
+        marginBottom: block.style?.spacingAfter ?? 8,
+        marginLeft: 0,
+        padding: 0,
+        textIndent: 0,
+      } satisfies CSSProperties,
+    };
+  }, [block.style, resolveFontFamily]);
   const Tag = block.ordered ? 'ol' : 'ul';
 
   return (
@@ -33,19 +62,29 @@ function DocListBlockComponent({ block }: DocListBlockProps) {
       data-office-doc-pagination-fragment={
         block.sourceBlockId ? 'true' : undefined
       }
+      style={listStyle}
     >
-      {block.items.map((item) => (
+      {block.items.map((item, itemIndex) => (
         <li
           key={item.id}
           className="office-file-doc-list__item"
           style={itemStyle}
         >
-          <DocInlineContent
-            inlines={item.inlines}
-            fallback={item.text}
-            sourceId={item.id}
-            searchBlockId={searchBlockId}
-          />
+          <span
+            className="office-file-doc-list__marker"
+            aria-hidden="true"
+            style={{ width: markerWidth }}
+          >
+            {item.marker ?? (block.ordered ? `${itemIndex + 1}.` : '•')}
+          </span>
+          <span className="office-file-doc-list__content">
+            <DocInlineContent
+              inlines={item.inlines}
+              fallback={item.text}
+              sourceId={item.id}
+              searchBlockId={searchBlockId}
+            />
+          </span>
         </li>
       ))}
     </Tag>

@@ -1,3 +1,4 @@
+import { isMacroEnabledOfficeFileName } from './parsing/formatDefinitions';
 import type { OfficeFileViewerPreviewState } from './parsing/internalTypes';
 import type { PreviewKind } from './preview';
 
@@ -41,6 +42,21 @@ export type OfficeFileViewerWarning =
   | OfficeFileViewerGenericWarning
   | OfficeFontFallbackWarning;
 
+/** 根据文件扩展名产生不依赖具体解析路径的只读安全警告。 */
+export function collectOfficeFileWarnings(
+  fileName: string,
+  previewKind: PreviewKind,
+): OfficeFileViewerWarning[] {
+  if (!isMacroEnabledOfficeFileName(fileName)) return [];
+  return [
+    {
+      code: 'MACRO_CONTENT_IGNORED',
+      message: '当前以只读方式预览文档内容，宏代码不会加载或执行。',
+      previewKind,
+      source: 'parser',
+    },
+  ];
+}
 /** 从 DOC 字符串警告中恢复可选的稳定代码前缀。 */
 function parseDocWarning(message: string) {
   const match = /^\[([A-Z0-9_]+)\]\s*(.*)$/s.exec(message);

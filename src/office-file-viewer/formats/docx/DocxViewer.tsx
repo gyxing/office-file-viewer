@@ -633,6 +633,7 @@ function DocxViewerComponent({
             <div
               ref={scrollContainerRef}
               className="office-file-docx-viewer__scroller"
+              data-office-fit-viewport="true"
             >
               {profile.pageMode === 'windowed' ? (
                 <VirtualWordPageList

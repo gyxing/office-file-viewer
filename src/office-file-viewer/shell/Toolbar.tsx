@@ -1,11 +1,12 @@
 // OfficeToolbar 提供打开文件、翻页、缩放、全屏等 OfficeFileViewer 顶部通用操作。
-import type { ChangeEvent } from 'react';
+import type { ChangeEvent, ReactElement, ReactNode } from 'react';
 import React, { memo, useRef } from 'react';
 import {
   useOfficeFileViewerMessages,
   type OfficeFileViewerMessages,
 } from '../locale';
 import type { WordRevisionMode } from '../services/annotations/types';
+import { OFFICE_FILE_ACCEPT } from '../services/parsing/formatDefinitions';
 import type { PreviewKind } from '../services/preview';
 import type { SpreadsheetViewMode } from '../services/spreadsheet/viewMode';
 import { OfficeButton } from '../shared/ui/OfficeButton';
@@ -26,9 +27,21 @@ import { WordRevisionModeControl } from './WordRevisionModeControl';
 import { ZoomControl, type ZoomControls } from './ZoomControl';
 
 export type { ZoomControls } from './ZoomControl';
-/** 文件选择器允许选择的 Office 扩展名列表。 */
-const OFFICE_FILE_ACCEPT = '.pptx,.ppt,.xlsx,.xls,.docx,.doc,.wps';
+/** 宿主可以隐藏的通用工具栏区域。 */
+export type OfficeFileViewerToolbarOptions = Readonly<{
+  /** 是否显示文件名和格式图标，默认显示。 */
+  fileName?: boolean;
+  /** 是否显示内置文件选择入口，默认显示。 */
+  openFile?: boolean;
+  /** 是否显示缩放控件，默认显示。 */
+  zoom?: boolean;
+  /** 是否显示全屏操作，默认显示。 */
+  fullscreen?: boolean;
+}>;
 
+/** 工具栏实际渲染使用的完整显示配置。 */
+export type ResolvedOfficeFileViewerToolbarOptions =
+  Required<OfficeFileViewerToolbarOptions>;
 /** 工具栏按文件格式开放的互斥操作能力。 */
 export type OfficeToolbarFormatControls =
   | { kind: 'empty' }
@@ -141,6 +154,10 @@ type OfficeToolbarProps = {
   searchControls: OfficeToolbarSearchControls;
   /** 文档审阅入口能力。 */
   reviewControls: OfficeToolbarReviewControls;
+  /** 通用区域的显示配置。 */
+  displayOptions: ResolvedOfficeFileViewerToolbarOptions;
+  /** 宿主追加到全部内置操作之后的自定义工具栏内容。 */
+  extra?: ReactNode;
   /** 解析用户在文件选择器中选中的文件。 */
   onSelectFile(file: File): void;
 };
@@ -282,8 +299,10 @@ function OfficeToolbarComponent({
   fullscreenControls,
   searchControls,
   reviewControls,
+  displayOptions,
+  extra,
   onSelectFile,
-}: OfficeToolbarProps) {
+}: OfficeToolbarProps): ReactElement {
   const messages = useOfficeFileViewerMessages();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -300,31 +319,37 @@ function OfficeToolbarComponent({
       role="toolbar"
       aria-label={messages.toolbar.region}
     >
-      <div className="office-file-toolbar__file-info">
-        <OfficeFileTypeIcon
-          className="office-file-toolbar__filename-icon"
-          previewKind={previewKind}
-        />
-        <strong className="office-file-toolbar__filename" title={fileName}>
-          {fileName}
-        </strong>
-      </div>
+      {displayOptions.fileName ? (
+        <div className="office-file-toolbar__file-info">
+          <OfficeFileTypeIcon
+            className="office-file-toolbar__filename-icon"
+            previewKind={previewKind}
+          />
+          <strong className="office-file-toolbar__filename" title={fileName}>
+            {fileName}
+          </strong>
+        </div>
+      ) : null}
       <div className="office-file-toolbar__actions">
-        <input
-          ref={fileInputRef}
-          className="office-file-toolbar__file-input"
-          type="file"
-          accept={OFFICE_FILE_ACCEPT}
-          tabIndex={-1}
-          onChange={handleFileChange}
-        />
-        <OfficeButton
-          aria-label={messages.toolbar.selectFile}
-          icon={<FolderOpenIcon />}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          {messages.toolbar.selectFile}
-        </OfficeButton>
+        {displayOptions.openFile ? (
+          <>
+            <input
+              ref={fileInputRef}
+              className="office-file-toolbar__file-input"
+              type="file"
+              accept={OFFICE_FILE_ACCEPT}
+              tabIndex={-1}
+              onChange={handleFileChange}
+            />
+            <OfficeButton
+              aria-label={messages.toolbar.selectFile}
+              icon={<FolderOpenIcon />}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {messages.toolbar.selectFile}
+            </OfficeButton>
+          </>
+        ) : null}
         {formatControls.kind === 'presentation'
           ? renderPresentationControls({ controls: formatControls, messages })
           : null}
@@ -372,8 +397,16 @@ function OfficeToolbarComponent({
             {messages.review.title}
           </OfficeButton>
         ) : null}
-        <ZoomControl controls={zoomControls} />
-        <FullscreenControl controls={fullscreenControls} messages={messages} />
+        {displayOptions.zoom ? <ZoomControl controls={zoomControls} /> : null}
+        {displayOptions.fullscreen ? (
+          <FullscreenControl
+            controls={fullscreenControls}
+            messages={messages}
+          />
+        ) : null}
+        {extra ? (
+          <div className="office-file-toolbar__extra">{extra}</div>
+        ) : null}
       </div>
     </div>
   );
