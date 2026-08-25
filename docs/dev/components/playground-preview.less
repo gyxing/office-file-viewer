@@ -1,0 +1,288 @@
+// 预览卡片与代码区保持同一视觉层级，代码位于预览下方连续阅读。
+.office-viewer-playground-preview-card,
+.office-viewer-playground-code {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--site-border);
+  background: var(--site-surface);
+  border-radius: 18px;
+  box-shadow: var(--site-shadow-soft);
+}
+
+.office-viewer-playground-preview-header {
+  display: flex;
+  min-height: 78px;
+  padding: 15px 18px;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--site-border);
+  gap: 20px;
+}
+
+.office-viewer-playground-preview-header h2,
+.office-viewer-playground-code-header h2 {
+  margin: 0;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+}
+
+.office-viewer-playground-preview-header p {
+  margin: 5px 0 0;
+  color: var(--site-text-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.office-viewer-playground-preview-header > span {
+  display: grid;
+  max-width: min(42%, 320px);
+  overflow: hidden;
+  color: var(--site-text-soft);
+  font-size: 12px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  gap: 3px;
+}
+
+.office-viewer-playground-preview-header > span strong {
+  color: var(--site-text-muted);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.office-viewer-playground-preview-surface {
+  padding: 7px;
+  background: #dfe4ec;
+}
+
+.office-viewer-playground-preview-surface > .office-file-viewer,
+.office-viewer-playground-preview-surface > .office-viewer-layout {
+  border-radius: 12px;
+}
+
+.office-viewer-playground-host-stage {
+  min-width: 720px;
+  min-height: 100%;
+  padding: 52px;
+}
+
+.office-viewer-playground-host-document {
+  position: relative;
+  width: min(820px, 100%);
+  min-height: 480px;
+  margin: 0 auto;
+  padding: 42px;
+  color: #172033;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 12%);
+}
+
+.office-viewer-playground-host-document > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 28px;
+}
+
+.office-viewer-playground-host-document > header span {
+  color: #4f46e5;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+.office-viewer-playground-host-document > header h3 {
+  margin: 10px 0 8px;
+  font-size: 28px;
+  letter-spacing: -0.035em;
+}
+
+.office-viewer-playground-host-document > header p {
+  max-width: 540px;
+  margin: 0;
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.office-viewer-playground-host-document > header > strong {
+  padding: 7px 10px;
+  color: #4338ca;
+  font-size: 11px;
+  white-space: nowrap;
+  background: #eef2ff;
+  border-radius: 999px;
+}
+
+.office-viewer-playground-runtime {
+  display: grid;
+  margin-top: 32px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  border-radius: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.office-viewer-playground-runtime > div {
+  display: grid;
+  min-height: 76px;
+  padding: 14px 16px;
+  align-content: center;
+  border-right: 1px solid #e2e8f0;
+  gap: 5px;
+}
+
+.office-viewer-playground-runtime > div:last-child {
+  border-right: 0;
+}
+
+.office-viewer-playground-runtime span {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.office-viewer-playground-runtime strong {
+  font-size: 16px;
+}
+
+.office-viewer-playground-host-cards {
+  display: grid;
+  margin-top: 24px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.office-viewer-playground-host-cards > div {
+  display: grid;
+  min-height: 130px;
+  padding: 18px;
+  align-content: start;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  gap: 8px;
+}
+
+.office-viewer-playground-host-cards span {
+  color: #4f46e5;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.office-viewer-playground-host-cards strong {
+  font-size: 14px;
+}
+
+.office-viewer-playground-host-cards p {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.office-viewer-playground-host-actions {
+  display: flex;
+  margin-top: 24px;
+  gap: 8px;
+}
+
+.office-viewer-playground-host-actions button {
+  width: 36px;
+  height: 34px;
+  color: #4338ca;
+  cursor: pointer;
+  font-size: 18px;
+  border: 1px solid #cbd1f7;
+  background: #f7f7ff;
+  border-radius: 8px;
+}
+
+.office-viewer-playground-code-header {
+  display: flex;
+  min-height: 66px;
+  padding: 12px 16px;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--site-border);
+  gap: 16px;
+}
+
+.office-viewer-playground-code-header > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.office-viewer-playground-code-header [role='tablist'] {
+  display: flex;
+  padding: 3px;
+  background: var(--site-surface-soft);
+  border-radius: 9px;
+}
+
+.office-viewer-playground-code-header [role='tab'] {
+  min-height: 32px;
+  padding: 0 11px;
+  color: var(--site-text-soft);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  border: 0;
+  background: transparent;
+  border-radius: 7px;
+}
+
+.office-viewer-playground-code-header [role='tab'][aria-selected='true'] {
+  color: var(--site-primary-hover);
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(30, 41, 59, 8%);
+}
+
+.office-viewer-playground-code pre {
+  max-height: 560px;
+  margin: 0;
+  padding: 24px;
+  overflow: auto;
+  color: #dbe7f5;
+  background: #182231;
+  tab-size: 2;
+}
+
+.office-viewer-playground-code code {
+  color: inherit;
+  font-family: SFMono-Regular, Consolas, 'Liberation Mono', monospace;
+  font-size: 13px;
+  line-height: 1.72;
+  white-space: pre;
+}
+
+@media (max-width: 700px) {
+  .office-viewer-playground-preview-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .office-viewer-playground-preview-header > span {
+    max-width: 100%;
+    text-align: left;
+  }
+
+  .office-viewer-playground-code-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .office-viewer-playground-code-header > div:first-child {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .office-viewer-playground-code pre {
+    max-height: 460px;
+    padding: 18px;
+  }
+}

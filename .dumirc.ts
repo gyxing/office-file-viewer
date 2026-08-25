@@ -22,6 +22,16 @@ export default defineConfig({
       layout: false,
     },
     {
+      path: '/playground',
+      component: resolvePath(__dirname, 'docs/dev/playground.md'),
+      layout: false,
+    },
+    {
+      path: '/playground/zh-CN',
+      component: resolvePath(__dirname, 'docs/dev/playground.zh-CN.md'),
+      layout: false,
+    },
+    {
       path: '/docs',
       component: resolvePath(__dirname, 'docs/dev/docs.md'),
     },

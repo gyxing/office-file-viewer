@@ -1,0 +1,294 @@
+// 参数面板采用原生表单控件，避免公开体验页引入额外 UI 运行时。
+.office-viewer-playground-controls {
+  padding: 18px;
+  border: 1px solid var(--site-border);
+  background: rgba(255, 255, 255, 94%);
+  border-radius: 18px;
+  box-shadow: var(--site-shadow-soft);
+}
+
+.office-viewer-playground-controls-header {
+  display: flex;
+  margin-bottom: 4px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.office-viewer-playground-controls-header h2 {
+  margin: 0;
+  font-size: 16px;
+  letter-spacing: -0.02em;
+}
+
+.office-viewer-playground-controls-header button,
+.office-viewer-playground-copy {
+  min-height: 34px;
+  padding: 0 11px;
+  color: var(--site-primary-hover);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid #cbd1f7;
+  background: #f7f7ff;
+  border-radius: 9px;
+}
+
+.office-viewer-playground-controls fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 17px 0 15px;
+  border: 0;
+  border-bottom: 1px solid var(--site-border);
+}
+
+.office-viewer-playground-controls fieldset:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.office-viewer-playground-controls legend {
+  margin-bottom: 10px;
+  padding: 0;
+  color: var(--site-text);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.office-viewer-playground-segmented {
+  display: grid;
+  padding: 3px;
+  background: var(--site-surface-soft);
+  border-radius: 11px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.office-viewer-playground-segmented button {
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 8px;
+  overflow: hidden;
+  color: var(--site-text-soft);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 0;
+  background: transparent;
+  border-radius: 8px;
+}
+
+.office-viewer-playground-segmented button[aria-pressed='true'] {
+  color: var(--site-primary-hover);
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(30, 41, 59, 10%);
+}
+
+.office-viewer-playground-field {
+  display: grid;
+  min-width: 0;
+  color: var(--site-text-soft);
+  font-size: 12px;
+  gap: 6px;
+}
+
+.office-viewer-playground-field + .office-viewer-playground-field,
+.office-viewer-playground-field-grid + .office-viewer-playground-toggle-grid,
+.office-viewer-playground-field + .office-viewer-playground-toggle-grid {
+  margin-top: 10px;
+}
+
+.office-viewer-playground-field > span:first-child {
+  font-weight: 650;
+}
+
+.office-viewer-playground-field-grid {
+  display: grid;
+  margin-top: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.office-viewer-playground-field input[type='text'],
+.office-viewer-playground-field input[type='number'],
+.office-viewer-playground-field select {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 10px;
+  color: var(--site-text);
+  font: inherit;
+  border: 1px solid var(--site-border-strong);
+  outline: 0;
+  background: #fff;
+  border-radius: 9px;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.office-viewer-playground-field input:focus,
+.office-viewer-playground-field select:focus {
+  border-color: var(--site-primary);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 12%);
+}
+
+.office-viewer-playground-color-control {
+  display: flex;
+  min-height: 36px;
+  padding: 4px 8px 4px 5px;
+  align-items: center;
+  border: 1px solid var(--site-border-strong);
+  background: #fff;
+  border-radius: 9px;
+  gap: 7px;
+}
+
+.office-viewer-playground-color-control input {
+  width: 28px;
+  height: 26px;
+  padding: 0;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+}
+
+.office-viewer-playground-color-control code {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--site-text-soft);
+  font-size: 11px;
+  text-overflow: ellipsis;
+}
+
+.office-viewer-playground-input-suffix {
+  position: relative;
+  display: block;
+}
+
+.office-viewer-playground-input-suffix input {
+  padding-right: 34px !important;
+}
+
+.office-viewer-playground-input-suffix > span {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  color: var(--site-text-muted);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.office-viewer-playground-nested-controls {
+  display: grid;
+  margin-top: 11px;
+  padding: 12px;
+  border: 1px solid #e3e6ee;
+  background: #fafbfc;
+  border-radius: 12px;
+  gap: 10px;
+}
+
+.office-viewer-playground-nested-controls .office-viewer-playground-field-grid {
+  margin-top: 0;
+}
+
+.office-viewer-playground-toggle-grid {
+  display: grid;
+  margin-top: 11px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 10px;
+}
+
+.office-viewer-playground-toggle {
+  display: flex;
+  min-width: 0;
+  min-height: 30px;
+  align-items: center;
+  color: var(--site-text-soft);
+  cursor: pointer;
+  font-size: 12px;
+  gap: 8px;
+}
+
+.office-viewer-playground-toggle input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+}
+
+.office-viewer-playground-toggle > span {
+  position: relative;
+  width: 30px;
+  height: 18px;
+  flex: 0 0 auto;
+  background: #c8cfda;
+  border-radius: 999px;
+  transition: background-color 160ms ease;
+}
+
+.office-viewer-playground-toggle > span::after {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+  content: '';
+  background: #fff;
+  border-radius: 999px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 20%);
+  transition: transform 160ms ease;
+}
+
+.office-viewer-playground-toggle input:checked + span {
+  background: var(--site-primary);
+}
+
+.office-viewer-playground-toggle input:checked + span::after {
+  transform: translateX(12px);
+}
+
+.office-viewer-playground-toggle input:focus-visible + span {
+  outline: 3px solid rgba(79, 70, 229, 30%);
+  outline-offset: 2px;
+}
+
+.office-viewer-playground-toggle strong {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 960px) {
+  .office-viewer-playground-controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0 22px;
+  }
+
+  .office-viewer-playground-controls-header {
+    grid-column: 1 / -1;
+  }
+
+  .office-viewer-playground-controls fieldset:last-child {
+    padding-bottom: 15px;
+    border-bottom: 1px solid var(--site-border);
+  }
+}
+
+@media (max-width: 640px) {
+  .office-viewer-playground-controls {
+    display: block;
+    padding: 16px;
+  }
+
+  .office-viewer-playground-controls fieldset:last-child {
+    padding-bottom: 0;
+    border-bottom: 0;
+  }
+}

@@ -1,5 +1,4 @@
-import { OfficeFileViewer } from 'office-file-viewer';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   getWebsiteContent,
   GITHUB_URL,
@@ -15,6 +14,10 @@ import {
   SupportedFormatsSection,
 } from './HomeProductSections';
 import './OfficeViewerHomePage.less';
+import {
+  getSiteCopyLabel as getCopyLabel,
+  useSiteCopyFeedback as useCopyFeedback,
+} from './site-copy';
 import { SiteFooter } from './SiteFooter';
 
 type OfficeViewerHomePageProps = {
@@ -22,85 +25,10 @@ type OfficeViewerHomePageProps = {
   locale: WebsiteLocale;
 };
 
-type CopyState = 'idle' | 'copied' | 'failed';
-
 // 包管理器顺序同时决定标签页展示顺序与左右方向键行为。
 const PACKAGE_MANAGERS: PackageManager[] = ['npm', 'yarn'];
 // 仅观察主导航可到达的区块，避免短区块频繁抢占当前状态。
-const HOME_SECTION_IDS: HomeSectionId[] = [
-  'overview',
-  'demo',
-  'highlights',
-  'formats',
-];
-
-/** 优先使用 Clipboard API，并为权限受限或较旧的浏览器提供回退。 */
-async function writeTextToClipboard(value: string): Promise<void> {
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(value);
-    return;
-  }
-
-  const textarea = document.createElement('textarea');
-  textarea.value = value;
-  textarea.setAttribute('readonly', '');
-  textarea.style.position = 'fixed';
-  textarea.style.opacity = '0';
-  document.body.appendChild(textarea);
-  textarea.select();
-
-  const copied = document.execCommand('copy');
-  textarea.remove();
-  if (!copied) {
-    throw new Error('Clipboard API is unavailable');
-  }
-}
-
-/** 管理复制结果反馈，并在组件卸载时清理延迟任务。 */
-function useCopyFeedback() {
-  const [state, setState] = useState<CopyState>('idle');
-  const resetTimerRef = useRef<number>();
-
-  useEffect(
-    () => () => {
-      if (resetTimerRef.current !== undefined) {
-        window.clearTimeout(resetTimerRef.current);
-      }
-    },
-    [],
-  );
-
-  const copy = async (value: string) => {
-    if (resetTimerRef.current !== undefined) {
-      window.clearTimeout(resetTimerRef.current);
-    }
-
-    try {
-      await writeTextToClipboard(value);
-      setState('copied');
-    } catch {
-      setState('failed');
-    }
-
-    resetTimerRef.current = window.setTimeout(() => setState('idle'), 2400);
-  };
-
-  return { copy, state };
-}
-
-/** 根据复制状态选择当前操作文案。 */
-function getCopyLabel(
-  state: CopyState,
-  labels: { idle: string; copied: string; failed: string },
-) {
-  if (state === 'copied') {
-    return labels.copied;
-  }
-  if (state === 'failed') {
-    return labels.failed;
-  }
-  return labels.idle;
-}
+const HOME_SECTION_IDS: HomeSectionId[] = ['overview', 'highlights', 'formats'];
 
 /** 在尊重减少动态效果偏好的前提下，为站内锚点提供平滑滚动。 */
 function handleSectionLink(event: React.MouseEvent<HTMLAnchorElement>) {
@@ -222,7 +150,6 @@ export function OfficeViewerHomePage({ locale }: OfficeViewerHomePageProps) {
             failed: content.hero.copyFailed,
           })}
           onCopy={() => heroCopy.copy(content.developer.commands.npm)}
-          onSectionLink={handleSectionLink}
         />
 
         <ProductOverviewSection content={content} />
@@ -245,8 +172,32 @@ export function OfficeViewerHomePage({ locale }: OfficeViewerHomePageProps) {
               <span>{content.demo.privacyDescription}</span>
             </div>
           </div>
-          <div className="office-viewer-site-demo-frame">
-            <OfficeFileViewer locale={locale} height="100%" />
+          <div className="office-viewer-site-demo-entry">
+            <div
+              className="office-viewer-site-demo-illustration"
+              aria-hidden="true"
+            >
+              <span>
+                <i />
+                <i />
+                <i />
+              </span>
+              <div>
+                <b />
+                <b />
+                <b />
+              </div>
+            </div>
+            <div>
+              <strong>{content.demo.privacyTitle}</strong>
+              <p>{content.demo.privacyDescription}</p>
+              <a
+                className="office-viewer-site-button is-primary"
+                href={content.playgroundHref}
+              >
+                {content.demo.action}
+              </a>
+            </div>
           </div>
         </section>
 
@@ -372,8 +323,7 @@ export function OfficeViewerHomePage({ locale }: OfficeViewerHomePageProps) {
           <div>
             <a
               className="office-viewer-site-button is-light"
-              href="#demo"
-              onClick={handleSectionLink}
+              href={content.playgroundHref}
             >
               {content.finalCta.demo}
             </a>

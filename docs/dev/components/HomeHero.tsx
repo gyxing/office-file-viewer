@@ -5,7 +5,6 @@ type HomeHeroProps = {
   content: WebsiteContent;
   copyLabel: string;
   onCopy: () => void;
-  onSectionLink: (event: React.MouseEvent<HTMLAnchorElement>) => void;
 };
 
 /** 用真实处理阶段解释文件如何在浏览器内完成预览。 */
@@ -64,12 +63,7 @@ function LocalProcessingFlow({ content }: { content: WebsiteContent }) {
 }
 
 /** 渲染首页核心价值、主要操作、安装命令与本地处理说明。 */
-export function HomeHero({
-  content,
-  copyLabel,
-  onCopy,
-  onSectionLink,
-}: HomeHeroProps) {
+export function HomeHero({ content, copyLabel, onCopy }: HomeHeroProps) {
   return (
     <section className="office-viewer-site-hero" aria-labelledby="hero-title">
       <div className="office-viewer-site-hero-copy">
@@ -82,8 +76,7 @@ export function HomeHero({
         <div className="office-viewer-site-hero-actions">
           <a
             className="office-viewer-site-button is-primary"
-            href="#demo"
-            onClick={onSectionLink}
+            href={content.playgroundHref}
           >
             {content.hero.primaryAction}
           </a>

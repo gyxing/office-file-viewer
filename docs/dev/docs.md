@@ -29,7 +29,7 @@ yarn add office-file-viewer
 
 `react` and `react-dom` are peer dependencies supplied by the host. The package is ESM-only, so the host build tool must support ESM. Component CSS is included by the package build and does not require a Less loader.
 
-Import public APIs only from `office-file-viewer`. Undocumented `dist` or source-file imports are not part of the compatibility contract.
+Import Office-preview APIs from `office-file-viewer`. When only the reusable viewer shell is needed, the stable `office-file-viewer/layout` subpath is also available. Other undocumented `dist` or source-file imports are not part of the compatibility contract.
 
 ## Version compatibility
 
@@ -170,10 +170,12 @@ Remote source rules:
 | `onSpeakerNotesVisibilityChange` | `(visible: boolean) => void`                          | -                 | Called when the presentation notes visibility changes            |
 | `className`                      | `string`                                              | -                 | Additional class name for the viewer root                        |
 | `height`                         | `CSSProperties['height']`                             | Parent height     | Viewer height; takes precedence over `style.height`              |
-| `toolbar`                        | `false \| OfficeFileViewerToolbarOptions`             | `{}`              | Hide the toolbar or file name, open, zoom, and fullscreen areas  |
+| `toolbar`                        | `false \| OfficeFileViewerToolbarOptions`             | `{}`              | Hide the toolbar or independently control built-in action areas  |
 | `toolbarExtra`                   | `ReactNode`                                           | -                 | Host content appended after all built-in actions                 |
 | `onFileSelect`                   | `(file: File) => void`                                | -                 | Fires after built-in local selection and before parsing          |
 | `style`                          | `CSSProperties`                                       | -                 | Inline styles for the viewer root                                |
+| `theme`                          | `OfficeViewerThemeOptions`                            | `light`           | Viewer-chrome mode, primary color, and semantic tokens           |
+| `watermark`                      | `false \| OfficeViewerWatermarkOptions`               | `false`           | Text watermark over document-content viewports                   |
 | `onFileParsed`                   | `(parsed: ParsedOfficeFile, file: File) => void`      | -                 | Called once when the complete materialized result is available   |
 | `onPreviewReady`                 | `(info: OfficePreviewReadyInfo, file: File) => void`  | -                 | Called once when the first usable preview is ready               |
 | `onError`                        | `(error: OfficeFileViewerError, file?: File) => void` | -                 | Called when loading, parsing, or a viewer operation fails        |
@@ -189,20 +191,121 @@ Remote source rules:
 | `onHyperlinkActivate`            | `(event: OfficeHyperlinkActivateEvent) => void`       | -                 | Called on valid activation and can prevent default navigation    |
 | `onParseProgress`                | `(progress: ParseProgress) => void`                   | -                 | Called when the current parse stage or progress changes          |
 
-### Toolbar and theme
+### Toolbar, theme, and watermark
 
-Pass `toolbar={false}` to hide the built-in toolbar. Object values independently hide the file name, open-file action, zoom, or fullscreen area. `toolbarExtra` renders a host React node after all built-in actions, and `onFileSelect` fires after built-in selection but before parsing starts. When the toolbar is hidden and `uri` is omitted, the host must provide its own file entry point.
+Pass `toolbar={false}` to hide the built-in toolbar. Object values independently hide the following areas; omitted fields remain visible by default. Format-specific actions still appear only when the current file type exposes the corresponding capability.
+
+| Field                    | Controlled area                                     |
+| ------------------------ | --------------------------------------------------- |
+| `fileName`               | File name and format icon                           |
+| `openFile`               | Built-in file picker                                |
+| `wordOutline`            | Word outline action                                 |
+| `wordRevisionMode`       | Word revision projection selector                   |
+| `spreadsheetViewMode`    | Spreadsheet source/reading mode selector            |
+| `presentationNavigation` | Previous/next actions for multi-slide presentations |
+| `speakerNotes`           | Speaker-notes action                                |
+| `search`                 | Full-document search action                         |
+| `review`                 | Excel/PowerPoint review action                      |
+| `zoom`                   | Zoom and fit-mode controls                          |
+| `fullscreen`             | Fullscreen action                                   |
+
+`toolbar.search` and `toolbar.review` only control action visibility. Use the top-level `search={false}` or `review={false}` props to remove the corresponding runtime. `toolbarExtra` renders a host React node after all built-in actions, and `onFileSelect` fires after built-in selection but before parsing starts. When the toolbar is hidden and `uri` is omitted, the host must provide its own file entry point.
 
 ```tsx | pure
 <OfficeFileViewer
   uri={file}
-  toolbar={{ openFile: false, fullscreen: false }}
+  toolbar={{
+    openFile: false,
+    wordOutline: false,
+    presentationNavigation: false,
+    fullscreen: false,
+  }}
   toolbarExtra={<button type="button">Download original</button>}
   onFileSelect={(nextFile) => console.log(nextFile.name)}
 />
 ```
 
-The viewer root exposes stable Shell CSS variables, including `--office-file-primary-color`, `--office-file-primary-hover-color`, `--office-file-primary-active-color`, `--office-file-text-color`, `--office-file-muted-text-color`, `--office-file-surface-color`, `--office-file-workspace-color`, `--office-file-border-color`, `--office-file-focus-ring-color`, `--office-file-radius`, and `--office-file-toolbar-min-height`. They customize viewer chrome without overriding source-document fonts, colors, or borders.
+`theme.mode` supports `light`, `dark`, and `system`, with light as the default. `primaryColor` drives buttons, focus, and selection states, while `tokens` override stable semantic values for text, surfaces, workspace, borders, focus rings, and radius. Themes affect viewer chrome such as the toolbar, sidebars, tabs, notes, and workspace without rewriting source styles inside Word pages, Excel cells, or PowerPoint slides.
+
+`watermark` renders one repeating SVG pattern over the actual document-content viewport instead of creating a large node grid. It excludes the toolbar, outline, thumbnails, search, and review sidebars, does not intercept pointer input, and never modifies the source or downloaded file.
+
+```tsx | pure
+<OfficeFileViewer
+  uri={file}
+  theme={{
+    mode: 'system',
+    primaryColor: '#7c3aed',
+    tokens: { workspaceColor: '#f4f1ff', controlRadius: 8 },
+  }}
+  watermark={{
+    content: ['Internal', 'Project members only'],
+    opacity: 0.12,
+    rotate: -22,
+    gap: [140, 100],
+  }}
+/>
+```
+
+The viewer root still exposes stable Shell CSS variables, including `--office-file-primary-color`, `--office-file-primary-hover-color`, `--office-file-primary-active-color`, `--office-file-text-color`, `--office-file-muted-text-color`, `--office-file-surface-color`, `--office-file-workspace-color`, `--office-file-border-color`, `--office-file-focus-ring-color`, `--office-file-radius`, and `--office-file-toolbar-min-height`. CSS variables passed directly through `style` override values generated by `theme`.
+
+#### Reusable viewer shell
+
+When the host already owns document rendering, it can reuse only the shared toolbar, zoom, fullscreen, theme, and watermark. Prefer the dedicated entry so the shell module does not import Office-format parser entry points:
+
+```tsx | pure
+import { OfficeViewerLayout } from 'office-file-viewer/layout';
+
+export default function CustomDocumentPreview() {
+  return (
+    <OfficeViewerLayout
+      fileName="custom.document"
+      height="80vh"
+      theme={{ mode: 'dark', primaryColor: '#8b5cf6' }}
+      watermark={{ content: 'CONFIDENTIAL' }}
+    >
+      <article className="custom-document">Host-rendered content</article>
+    </OfficeViewerLayout>
+  );
+}
+```
+
+`contentScaling="managed"` is the default and applies toolbar percentage zoom directly to ordinary DOM content. Virtualized lists, Canvas renderers, and custom transform pipelines should use `manual` and read state and actions through `useOfficeViewerLayout()`:
+
+```tsx | pure
+import {
+  OfficeViewerLayout,
+  useOfficeViewerLayout,
+} from 'office-file-viewer/layout';
+
+function VirtualDocument() {
+  const { state } = useOfficeViewerLayout();
+  return <canvas data-render-zoom={state.zoom} />;
+}
+
+export default function Preview() {
+  return (
+    <OfficeViewerLayout contentScaling="manual">
+      <VirtualDocument />
+    </OfficeViewerLayout>
+  );
+}
+```
+
+| `OfficeViewerLayout` prop | Type                                      | Default     | Description                                               |
+| ------------------------- | ----------------------------------------- | ----------- | --------------------------------------------------------- |
+| `fileName`                | `string`                                  | -           | Toolbar file name; hides file info when omitted           |
+| `height`                  | `CSSProperties['height']`                 | parent      | Viewer-shell height                                       |
+| `toolbar`                 | `false \| OfficeFileViewerToolbarOptions` | `{}`        | Hides or configures file name, open, zoom, and fullscreen |
+| `toolbarExtra`            | `ReactNode`                               | -           | Host content appended after built-in actions              |
+| `onFileSelect`            | `(file: File) => void`                    | -           | File callback; the open action is hidden when omitted     |
+| `theme`                   | `OfficeViewerThemeOptions`                | `light`     | Same viewer-chrome theme as the Office component          |
+| `watermark`               | `false \| OfficeViewerWatermarkOptions`   | `false`     | Same content-viewport watermark as the Office component   |
+| `defaultZoom` / `zoom`    | `number`                                  | `100`       | Uncontrolled initial zoom or controlled zoom              |
+| `onZoomChange`            | `(zoom: number) => void`                  | -           | Called when a user requests a zoom change                 |
+| `contentScaling`          | `'managed' \| 'manual'`                   | `'managed'` | Whether the shell or host applies zoom                    |
+| `onFullscreenChange`      | `(fullscreen: boolean) => void`           | -           | Called when browser fullscreen state changes              |
+| `onFullscreenError`       | `(error: Error) => void`                  | -           | Called when a fullscreen request fails                    |
+| `children`                | `ReactNode`                               | -           | Host-rendered document content                            |
 
 ### Content-image preview
 

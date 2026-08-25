@@ -1,10 +1,13 @@
 .office-file-xlsx-viewer {
+  // 表格画布属于源文档内容，不能跟随外壳主题改变底色。
+  --office-file-spreadsheet-canvas-color: #fff;
+
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
   overflow: hidden;
-  background: #f2f5f9;
+  background: var(--office-file-workspace-color);
 }
 
 .office-file-xlsx-sheet-tabs {
@@ -15,8 +18,8 @@
   padding: 0 16px;
   align-items: stretch;
   gap: 16px;
-  background: #fff;
-  border-bottom: 1px solid #dde3ec;
+  background: var(--office-file-surface-color);
+  border-bottom: 1px solid var(--office-file-border-color);
   box-shadow: 0 1px 0 rgba(15, 23, 42, 4%);
 }
 
@@ -37,7 +40,7 @@
   max-width: 240px;
   padding: 0 12px;
   overflow: hidden;
-  color: #334155;
+  color: var(--office-file-text-color);
   font: inherit;
   font-size: 14px;
   line-height: 45px;
@@ -54,7 +57,7 @@
   bottom: 0;
   left: 12px;
   height: 2px;
-  background: #1677ff;
+  background: var(--office-file-primary-color);
   content: '';
   opacity: 0;
   transform: scaleX(0.6);
@@ -63,7 +66,7 @@
 
 .office-file-xlsx-sheet-tabs__tab:hover,
 .office-file-xlsx-sheet-tabs__tab[aria-selected='true'] {
-  color: #1677ff;
+  color: var(--office-file-primary-color);
 }
 
 .office-file-xlsx-sheet-tabs__tab[aria-selected='true']::after {
@@ -72,7 +75,7 @@
 }
 
 .office-file-xlsx-sheet-tabs__tab:focus-visible {
-  outline: 2px solid rgb(22 119 255 / 24%);
+  outline: 2px solid var(--office-file-focus-ring-color);
   outline-offset: -3px;
 }
 
@@ -81,7 +84,7 @@
   flex: 0 0 auto;
   align-items: center;
   font-size: 12px;
-  color: #64748b;
+  color: var(--office-file-muted-text-color);
   white-space: nowrap;
 }
 
@@ -91,7 +94,7 @@
   min-height: 0;
   padding: 16px;
   overflow: auto;
-  background: #e9edf3;
+  background: var(--office-file-workspace-color);
   scrollbar-gutter: stable both-edges;
 }
 
@@ -109,7 +112,7 @@
   gap: 12px;
   padding: 24px;
   color: #536174;
-  background: #e9edf3;
+  background: var(--office-file-workspace-color);
 }
 
 .office-file-xlsx-virtual-grid {
@@ -117,7 +120,7 @@
 }
 
 .office-file-xlsx-virtual-grid__canvas {
-  background: #fff;
+  background: var(--office-file-spreadsheet-canvas-color);
   box-shadow: 0 10px 24px rgba(15, 23, 42, 10%);
 }
 
@@ -172,7 +175,7 @@
   left: 0;
   z-index: 0;
   box-sizing: border-box;
-  background: #fff;
+  background: var(--office-file-spreadsheet-canvas-color);
   border: 1px solid #b9c4d2;
   box-shadow: 0 10px 24px rgba(15, 23, 42, 10%);
   pointer-events: none;
@@ -310,7 +313,7 @@
   padding: 24px;
   overflow: auto;
   place-items: center;
-  background: #e9edf3;
+  background: var(--office-file-workspace-color);
 }
 
 .office-file-xlsx-sheet-table {
@@ -320,7 +323,7 @@
   z-index: 1;
   table-layout: fixed;
   color: #1f2937;
-  background: #fff;
+  background: var(--office-file-spreadsheet-canvas-color);
   border: 1px solid #b9c4d2;
   border-collapse: collapse;
 }
@@ -495,12 +498,12 @@
 
 .office-file-spreadsheet-annotation-marker:hover,
 .office-file-spreadsheet-annotation-marker[data-active='true'] {
-  border-top-color: #1677ff;
+  border-top-color: var(--office-file-primary-color);
   filter: drop-shadow(0 0 1px rgb(15 23 42 / 45%));
 }
 
 .office-file-spreadsheet-annotation-marker:focus-visible {
-  outline: 2px solid #1677ff;
+  outline: 2px solid var(--office-file-primary-color);
   outline-offset: 2px;
 }
 

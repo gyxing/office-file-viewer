@@ -63,7 +63,7 @@
   padding: 0;
   align-items: center;
   justify-content: center;
-  color: #475569;
+  color: var(--office-file-muted-text-color);
   background: transparent;
   border: 0;
   border-radius: 6px;
@@ -72,7 +72,7 @@
 
 .office-file-word-outline__toggle:hover {
   color: var(--office-file-primary-color);
-  background: #f0f5ff;
+  background: var(--office-file-selected-surface-color);
 }
 
 .office-file-word-outline__toggle:focus-visible {
@@ -124,7 +124,7 @@
 }
 
 .office-file-outline-tree__row:hover {
-  background: #f5f7fa;
+  background: var(--office-file-subtle-surface-color);
 }
 
 .office-file-outline-tree__row[aria-selected='true'] {
@@ -133,7 +133,7 @@
 }
 
 .office-file-outline-tree__row[data-focused='true']:focus-visible {
-  box-shadow: inset 0 0 0 2px rgb(22 119 255 / 28%);
+  box-shadow: inset 0 0 0 2px var(--office-file-focus-ring-color);
 }
 
 .office-file-outline-tree__guides {
@@ -147,7 +147,7 @@
   top: 0;
   bottom: 0;
   width: 1px;
-  background: #d7dce3;
+  background: var(--office-file-border-color);
 }
 
 .office-file-outline-tree__branch {
@@ -160,7 +160,7 @@
 .office-file-outline-tree__branch::before,
 .office-file-outline-tree__branch::after {
   position: absolute;
-  background: #d7dce3;
+  background: var(--office-file-border-color);
   content: '';
 }
 
@@ -196,7 +196,7 @@
 
 .office-file-outline-tree__switcher {
   padding: 0;
-  color: #475569;
+  color: var(--office-file-muted-text-color);
   background: transparent;
   border: 0;
   cursor: pointer;

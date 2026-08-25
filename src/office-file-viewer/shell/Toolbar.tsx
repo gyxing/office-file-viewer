@@ -27,12 +27,26 @@ import { WordRevisionModeControl } from './WordRevisionModeControl';
 import { ZoomControl, type ZoomControls } from './ZoomControl';
 
 export type { ZoomControls } from './ZoomControl';
-/** 宿主可以隐藏的通用工具栏区域。 */
+/** 宿主可以独立隐藏的内置工具栏区域。 */
 export type OfficeFileViewerToolbarOptions = Readonly<{
   /** 是否显示文件名和格式图标，默认显示。 */
   fileName?: boolean;
   /** 是否显示内置文件选择入口，默认显示。 */
   openFile?: boolean;
+  /** 是否显示 Word 文档大纲入口，默认显示。 */
+  wordOutline?: boolean;
+  /** 是否显示 Word 修订投影切换，默认显示。 */
+  wordRevisionMode?: boolean;
+  /** 是否显示电子表格显示模式切换，默认显示。 */
+  spreadsheetViewMode?: boolean;
+  /** 是否显示演示文稿上一页和下一页操作，默认显示。 */
+  presentationNavigation?: boolean;
+  /** 是否显示演讲者备注入口，默认显示。 */
+  speakerNotes?: boolean;
+  /** 是否显示全文查找入口，默认显示。 */
+  search?: boolean;
+  /** 是否显示文档审阅入口，默认显示。 */
+  review?: boolean;
   /** 是否显示缩放控件，默认显示。 */
   zoom?: boolean;
   /** 是否显示全屏操作，默认显示。 */
@@ -154,12 +168,14 @@ type OfficeToolbarProps = {
   searchControls: OfficeToolbarSearchControls;
   /** 文档审阅入口能力。 */
   reviewControls: OfficeToolbarReviewControls;
-  /** 通用区域的显示配置。 */
+  /** 内置操作区域的完整显示配置。 */
   displayOptions: ResolvedOfficeFileViewerToolbarOptions;
   /** 宿主追加到全部内置操作之后的自定义工具栏内容。 */
   extra?: ReactNode;
-  /** 解析用户在文件选择器中选中的文件。 */
-  onSelectFile(file: File): void;
+  /** 文件选择器接受的文件类型，默认使用全部受支持的 Office 格式。 */
+  fileAccept?: string;
+  /** 解析用户在文件选择器中选中的文件；为空时不显示打开文件入口。 */
+  onSelectFile?: (file: File) => void;
 };
 
 type PresentationControls = Extract<
@@ -173,6 +189,8 @@ type WordControls = Extract<OfficeToolbarFormatControls, { kind: 'word' }>;
 type PresentationControlGroupProps = {
   /** 翻页和备注能力。 */
   controls: PresentationControls;
+  /** 演示文稿专属入口的显示配置。 */
+  displayOptions: ResolvedOfficeFileViewerToolbarOptions;
   /** 当前语言环境对应的界面文案。 */
   messages: OfficeFileViewerMessages;
 };
@@ -181,6 +199,8 @@ type PresentationControlGroupProps = {
 type WordControlProps = {
   /** 当前可用的大纲能力。 */
   controls: WordControls;
+  /** Word 专属入口的显示配置。 */
+  displayOptions: ResolvedOfficeFileViewerToolbarOptions;
   /** 当前语言环境对应的界面文案。 */
   messages: OfficeFileViewerMessages;
 };
@@ -196,6 +216,7 @@ type FullscreenControlProps = {
 /** 按 Space 的直接子项结构渲染演示文稿操作。 */
 function renderPresentationControls({
   controls,
+  displayOptions,
   messages,
 }: PresentationControlGroupProps) {
   const speakerNotesLabel = controls.speakerNotes.visible
@@ -203,7 +224,7 @@ function renderPresentationControls({
     : messages.toolbar.showSpeakerNotes;
   const items = [];
 
-  if (controls.navigation) {
+  if (displayOptions.presentationNavigation && controls.navigation) {
     items.push(
       <OfficeTooltip key="previous" content={messages.toolbar.previousSlide}>
         <OfficeButton
@@ -223,24 +244,26 @@ function renderPresentationControls({
       </OfficeTooltip>,
     );
   }
-  items.push(
-    <OfficeButton
-      key="speaker-notes"
-      aria-label={speakerNotesLabel}
-      aria-pressed={controls.speakerNotes.visible}
-      variant={controls.speakerNotes.visible ? 'primary' : 'default'}
-      icon={<NotesIcon />}
-      disabled={controls.speakerNotes.disabled}
-      onClick={controls.speakerNotes.toggle}
-    >
-      {messages.toolbar.speakerNotes}
-    </OfficeButton>,
-  );
+  if (displayOptions.speakerNotes) {
+    items.push(
+      <OfficeButton
+        key="speaker-notes"
+        aria-label={speakerNotesLabel}
+        aria-pressed={controls.speakerNotes.visible}
+        variant={controls.speakerNotes.visible ? 'primary' : 'default'}
+        icon={<NotesIcon />}
+        disabled={controls.speakerNotes.disabled}
+        onClick={controls.speakerNotes.toggle}
+      >
+        {messages.toolbar.speakerNotes}
+      </OfficeButton>,
+    );
+  }
   return items;
 }
 
 /** 渲染 Word 大纲入口和修订投影切换。 */
-function WordControl({ controls, messages }: WordControlProps) {
+function WordControl({ controls, displayOptions, messages }: WordControlProps) {
   if (!controls.outline && !controls.revisionMode) return null;
   const outlineLabel = controls.outline
     ? controls.outline.visible
@@ -250,7 +273,7 @@ function WordControl({ controls, messages }: WordControlProps) {
 
   return (
     <>
-      {controls.outline ? (
+      {displayOptions.wordOutline && controls.outline ? (
         <OfficeButton
           aria-label={outlineLabel}
           aria-pressed={controls.outline.visible}
@@ -261,7 +284,7 @@ function WordControl({ controls, messages }: WordControlProps) {
           {messages.outline.title}
         </OfficeButton>
       ) : null}
-      {controls.revisionMode ? (
+      {displayOptions.wordRevisionMode && controls.revisionMode ? (
         <WordRevisionModeControl
           value={controls.revisionMode.value}
           disabled={controls.revisionMode.disabled}
@@ -301,6 +324,7 @@ function OfficeToolbarComponent({
   reviewControls,
   displayOptions,
   extra,
+  fileAccept = OFFICE_FILE_ACCEPT,
   onSelectFile,
 }: OfficeToolbarProps): ReactElement {
   const messages = useOfficeFileViewerMessages();
@@ -310,7 +334,7 @@ function OfficeToolbarComponent({
     const file = event.currentTarget.files?.[0];
     // 清空原生输入值，确保用户可以连续打开同一文件。
     event.currentTarget.value = '';
-    if (file) void onSelectFile(file);
+    if (file) void onSelectFile?.(file);
   };
 
   return (
@@ -331,13 +355,13 @@ function OfficeToolbarComponent({
         </div>
       ) : null}
       <div className="office-file-toolbar__actions">
-        {displayOptions.openFile ? (
+        {displayOptions.openFile && onSelectFile ? (
           <>
             <input
               ref={fileInputRef}
               className="office-file-toolbar__file-input"
               type="file"
-              accept={OFFICE_FILE_ACCEPT}
+              accept={fileAccept}
               tabIndex={-1}
               onChange={handleFileChange}
             />
@@ -351,19 +375,28 @@ function OfficeToolbarComponent({
           </>
         ) : null}
         {formatControls.kind === 'presentation'
-          ? renderPresentationControls({ controls: formatControls, messages })
+          ? renderPresentationControls({
+              controls: formatControls,
+              displayOptions,
+              messages,
+            })
           : null}
         {formatControls.kind === 'word' ? (
-          <WordControl controls={formatControls} messages={messages} />
+          <WordControl
+            controls={formatControls}
+            displayOptions={displayOptions}
+            messages={messages}
+          />
         ) : null}
-        {formatControls.kind === 'spreadsheet' ? (
+        {displayOptions.spreadsheetViewMode &&
+        formatControls.kind === 'spreadsheet' ? (
           <SpreadsheetViewModeControl
             value={formatControls.viewMode.value}
             disabled={formatControls.viewMode.disabled}
             onChange={formatControls.viewMode.change}
           />
         ) : null}
-        {searchControls.kind === 'enabled' ? (
+        {displayOptions.search && searchControls.kind === 'enabled' ? (
           <OfficeButton
             data-testid="office-search-toggle"
             aria-label={
@@ -380,7 +413,7 @@ function OfficeToolbarComponent({
             {messages.search.title}
           </OfficeButton>
         ) : null}
-        {reviewControls.kind === 'enabled' ? (
+        {displayOptions.review && reviewControls.kind === 'enabled' ? (
           <OfficeButton
             data-testid="office-review-toggle"
             aria-label={

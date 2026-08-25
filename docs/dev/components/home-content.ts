@@ -50,6 +50,8 @@ export type WebsiteContent = {
   languageHref: string;
   /** 当前语言的完整文档入口。 */
   docsHref: string;
+  /** 当前语言的独立在线体验入口。 */
+  playgroundHref: string;
   skipToContent: string;
   navigation: {
     ariaLabel: string;
@@ -112,6 +114,7 @@ export type WebsiteContent = {
     description: string;
     privacyTitle: string;
     privacyDescription: string;
+    action: string;
   };
   highlights: {
     eyebrow: string;
@@ -168,6 +171,7 @@ const WEBSITE_CONTENT: Record<WebsiteLocale, WebsiteContent> = {
     languageLabel: '简体中文',
     languageHref: `${SITE_ROOT}zh-CN/`,
     docsHref: `${SITE_ROOT}docs`,
+    playgroundHref: `${SITE_ROOT}playground`,
     skipToContent: 'Skip to main content',
     navigation: {
       ariaLabel: 'Primary navigation',
@@ -275,6 +279,7 @@ const WEBSITE_CONTENT: Record<WebsiteLocale, WebsiteContent> = {
       privacyTitle: 'Private by default',
       privacyDescription:
         'This page does not upload the file you select to a server.',
+      action: 'Open the playground',
     },
     highlights: {
       eyebrow: 'Why Office File Viewer',
@@ -410,6 +415,7 @@ export function Preview({ file }: { file: File }) {
     languageLabel: 'English',
     languageHref: SITE_ROOT,
     docsHref: `${SITE_ROOT}zh-CN/docs`,
+    playgroundHref: `${SITE_ROOT}zh-CN/playground`,
     skipToContent: '跳转到主要内容',
     navigation: {
       ariaLabel: '主导航',
@@ -510,6 +516,7 @@ export function Preview({ file }: { file: File }) {
         '选择受支持的 Office 文件，直接体验真实组件。解析与渲染全部在当前浏览器标签页完成。',
       privacyTitle: '默认保护隐私',
       privacyDescription: '本页面不会把你选择的文件上传到服务器。',
+      action: '打开在线体验',
     },
     highlights: {
       eyebrow: '优点亮点',

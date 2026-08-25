@@ -1,6 +1,6 @@
 {
   "name": "office-file-viewer",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "A browser-based React component for offline preview of Word, Excel, and PowerPoint files.",
   "keywords": [
     "office",
@@ -52,6 +52,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./layout": {
+      "types": "./dist/layout.d.ts",
+      "import": "./dist/layout.js",
+      "default": "./dist/layout.js"
     },
     "./package.json": "./package.json"
   },

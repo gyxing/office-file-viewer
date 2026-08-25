@@ -9,6 +9,7 @@ import type {
   PresentationNavigationIntent,
 } from '../../services/presentation/transitionTypes';
 import { useOfficeAnnotationSourceRegistration } from '../../shared/annotations';
+import { OfficeWatermarkSurface } from '../../shared/watermark';
 import { OfficePreviewEmpty } from '../common/OfficePreviewEmpty';
 import { useOfficeSearchProviderRegistration } from '../search/OfficeSearchContext';
 import './index.less';
@@ -104,19 +105,21 @@ function PptxViewerComponent({
         onSelectSlide={onSelectSlide}
       />
       <div className="office-file-pptx-viewer__workspace">
-        <PptxSlideViewport
-          slide={currentSlide}
-          activeIndex={activeIndex}
-          zoom={zoom}
-          width={snapshot.width}
-          height={snapshot.height}
-          loading={loading}
-          error={error}
-          onRetry={retry}
-          mediaOptions={mediaOptions}
-          transitions={transitions}
-          transitionIntent={transitionIntent}
-        />
+        <OfficeWatermarkSurface>
+          <PptxSlideViewport
+            slide={currentSlide}
+            activeIndex={activeIndex}
+            zoom={zoom}
+            width={snapshot.width}
+            height={snapshot.height}
+            loading={loading}
+            error={error}
+            onRetry={retry}
+            mediaOptions={mediaOptions}
+            transitions={transitions}
+            transitionIntent={transitionIntent}
+          />
+        </OfficeWatermarkSurface>
         {showSpeakerNotes ? (
           <PptxSpeakerNotes
             slideIndex={currentSlide?.index ?? activeIndex + 1}

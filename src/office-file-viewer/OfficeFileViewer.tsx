@@ -53,11 +53,17 @@ import {
   OfficeImagePreviewProvider,
   type OfficeFileViewerImagePreviewConfig,
 } from './shared/image-preview';
+import type { OfficeViewerThemeOptions } from './shared/theme';
+import type { OfficeViewerWatermark } from './shared/watermark';
+import { OFFICE_DEFAULT_ZOOM } from './shell/constants';
+import { useOfficeViewerController } from './shell/controller/useOfficeViewerController';
+import { OfficeViewerFrame } from './shell/frame';
 import { OfficeParseStatus } from './shell/ParseStatus';
 import {
   OfficePreviewStage,
   type OfficePreviewStageState,
 } from './shell/PreviewStage';
+import { resolveToolbarOptions } from './shell/resolveToolbarOptions';
 import {
   OfficeToolbar,
   type FullscreenControls,
@@ -65,11 +71,8 @@ import {
   type OfficeToolbarFormatControls,
   type OfficeToolbarReviewControls,
   type OfficeToolbarSearchControls,
-  type ResolvedOfficeFileViewerToolbarOptions,
   type ZoomControls,
 } from './shell/Toolbar';
-import { OFFICE_DEFAULT_ZOOM } from './shell/constants';
-import { useOfficeViewerController } from './shell/controller/useOfficeViewerController';
 import { useOfficeFitZoom } from './shell/useOfficeFitZoom';
 import type {
   OfficeFileViewerViewState,
@@ -85,26 +88,17 @@ export type {
 export type { OfficeFileViewerPresentationMediaOptions } from './services/presentation/mediaTypes';
 export type { OfficeFileViewerPresentationTransitions } from './services/presentation/transitionTypes';
 export type { OfficeFileViewerSearchOptions } from './services/search/types';
+export type { OfficeViewerThemeOptions } from './shared/theme';
+export type {
+  OfficeViewerWatermark,
+  OfficeViewerWatermarkOptions,
+} from './shared/watermark';
 export type { OfficeFileViewerToolbarOptions } from './shell/Toolbar';
 
 /** 未声明搜索选项时复用稳定空对象，避免无关渲染重置查询。 */
 const DEFAULT_SEARCH_OPTIONS: OfficeFileViewerSearchOptions = {};
 /** 未声明审阅选项时复用稳定空对象，保持旧调用方默认行为。 */
 const DEFAULT_REVIEW_OPTIONS: OfficeFileViewerReviewOptions = {};
-/** 工具栏未声明时显示全部通用区域。 */
-const DEFAULT_TOOLBAR_OPTIONS: ResolvedOfficeFileViewerToolbarOptions = {
-  fileName: true,
-  openFile: true,
-  zoom: true,
-  fullscreen: true,
-};
-
-/** 合并工具栏局部配置，并保持默认界面向后兼容。 */
-function resolveToolbarOptions(
-  options: OfficeFileViewerToolbarOptions | undefined,
-): ResolvedOfficeFileViewerToolbarOptions {
-  return { ...DEFAULT_TOOLBAR_OPTIONS, ...options };
-}
 
 /** Office文件预览器组件属性。 */
 export type OfficeFileViewerProps = {
@@ -135,7 +129,7 @@ export type OfficeFileViewerProps = {
   className?: string;
   /** 预览区域高度，支持任意 CSS 高度值；未提供时使用父容器高度。 */
   height?: CSSProperties['height'];
-  /** 控制内置工具栏及其通用区域；传 false 时完全隐藏。 */
+  /** 控制内置工具栏及各操作区域；传 false 时完全隐藏。 */
   toolbar?: false | OfficeFileViewerToolbarOptions;
   /** 追加到全部内置操作之后的宿主工具栏内容。 */
   toolbarExtra?: ReactNode;
@@ -143,6 +137,10 @@ export type OfficeFileViewerProps = {
   onFileSelect?: (file: File) => void;
   /** 传递给预览器根元素的内联样式。 */
   style?: CSSProperties;
+  /** 配置工具栏、侧栏与工作区主题，不改变源文档正文样式。 */
+  theme?: OfficeViewerThemeOptions;
+  /** 配置文档内容视口水印；传 false 或不传时不显示。 */
+  watermark?: OfficeViewerWatermark;
   /** 完整文件解析成功后触发一次；渐进解析结果不会触发该回调。 */
   onFileParsed?: (parsed: ParsedOfficeFile, file: File) => void;
   /** 首屏预览就绪后触发一次，完整模型和按需数据源都会触发。 */
@@ -187,6 +185,8 @@ function OfficeFileViewerContent({
   className,
   height,
   style,
+  theme,
+  watermark,
   toolbar,
   toolbarExtra,
   onFileSelect,
@@ -529,8 +529,6 @@ function OfficeFileViewerContent({
       wordRevisionMode: view.wordRevisionMode,
     };
   }
-  // 专用 height 配置优先于 style.height，避免两个入口同时传值时结果不确定。
-  const viewerStyle = height === undefined ? style : { ...style, height };
   const handleSelectFile = useCallback(
     (file: File) => {
       try {
@@ -546,11 +544,13 @@ function OfficeFileViewerContent({
   );
 
   return (
-    <div
-      ref={viewerRef}
-      className={['office-file-viewer', className].filter(Boolean).join(' ')}
-      style={viewerStyle}
-      tabIndex={-1}
+    <OfficeViewerFrame
+      viewerRef={viewerRef}
+      className={className}
+      height={height}
+      style={style}
+      theme={theme}
+      watermark={watermark}
       onKeyDown={
         searchEnabled ? searchController.handleViewerKeyDown : undefined
       }
@@ -656,7 +656,7 @@ function OfficeFileViewerContent({
           </OfficeImagePreviewProvider>
         </OfficeHyperlinkProvider>
       </OfficeResourceStoreProvider>
-    </div>
+    </OfficeViewerFrame>
   );
 }
 

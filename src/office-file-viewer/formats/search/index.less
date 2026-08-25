@@ -59,7 +59,7 @@
   padding: 0;
   align-items: center;
   justify-content: center;
-  color: #475569;
+  color: var(--office-file-muted-text-color);
   background: transparent;
   border: 0;
   border-radius: 6px;
@@ -68,12 +68,12 @@
 
 .office-file-search-sidebar__icon-button:hover:not(:disabled) {
   color: var(--office-file-primary-color);
-  background: #f0f5ff;
+  background: var(--office-file-selected-surface-color);
 }
 
 .office-file-search-sidebar__icon-button:focus-visible,
 .office-file-search-sidebar__input-wrap:focus-within {
-  outline: 2px solid var(--office-file-primary-color);
+  outline: 2px solid var(--office-file-focus-ring-color);
   outline-offset: 1px;
 }
 
@@ -98,7 +98,7 @@
   gap: 6px;
   padding: 0 8px;
   background: var(--office-file-surface-color);
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--office-file-control-border-color);
   border-radius: 6px;
 }
 
@@ -111,7 +111,7 @@
   width: 100%;
   min-width: 0;
   padding: 0;
-  color: #172033;
+  color: var(--office-file-text-color);
   font: inherit;
   background: transparent;
   border: 0;
@@ -129,7 +129,7 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 8px 12px;
-  color: #475569;
+  color: var(--office-file-muted-text-color);
   font-size: 12px;
 }
 
@@ -154,7 +154,7 @@
   padding: 42px 20px;
   align-items: flex-start;
   justify-content: center;
-  color: #94a3b8;
+  color: var(--office-file-muted-text-color);
   font-size: 13px;
   text-align: center;
 }
@@ -202,7 +202,7 @@
 }
 
 .office-file-search-results__item:hover {
-  background: #f5f7fa;
+  background: var(--office-file-subtle-surface-color);
 }
 
 .office-file-search-results__item[aria-selected='true'] {
@@ -211,7 +211,7 @@
 }
 
 .office-file-search-results__item:focus-visible {
-  outline: 2px solid var(--office-file-primary-color);
+  outline: 2px solid var(--office-file-focus-ring-color);
   outline-offset: -2px;
 }
 

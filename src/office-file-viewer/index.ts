@@ -13,6 +13,9 @@ export type {
   OfficeFileViewerToolbarOptions,
   OfficeFileViewerUri,
   OfficeFileViewerUriLoader,
+  OfficeViewerThemeOptions,
+  OfficeViewerWatermark,
+  OfficeViewerWatermarkOptions,
 } from './OfficeFileViewer';
 export type {
   OfficeAnnotation,
@@ -55,6 +58,15 @@ export type {
   OfficeFileViewerImagePreviewConfig,
   OfficeFileViewerImagePreviewOptions,
 } from './shared/image-preview';
+export { OfficeViewerLayout, useOfficeViewerLayout } from './shell/layout';
+export type {
+  OfficeViewerLayoutActions,
+  OfficeViewerLayoutContentScaling,
+  OfficeViewerLayoutContextValue,
+  OfficeViewerLayoutMeta,
+  OfficeViewerLayoutProps,
+  OfficeViewerLayoutState,
+} from './shell/layout';
 /** 按需加载 PPT 二进制解析器，避免仅使用预览组件时进入主包。 */
 export async function parsePpt(file: File): Promise<PresentationDocument> {
   try {

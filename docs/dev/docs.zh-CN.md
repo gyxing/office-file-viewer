@@ -29,7 +29,7 @@ yarn add office-file-viewer
 
 `react` 和 `react-dom` 由宿主项目提供。当前包仅发布 ESM，因此宿主构建工具必须支持 ESM。组件构建产物已包含 CSS，不要求宿主配置 Less loader。
 
-公共 API 只能从 `office-file-viewer` 根入口导入。未文档化的 `dist` 或源码深层路径不属于兼容性承诺。
+Office 预览 API 从 `office-file-viewer` 根入口导入。只使用可复用预览外壳时，也可从稳定子路径 `office-file-viewer/layout` 导入；其他未文档化的 `dist` 或源码深层路径不属于兼容性承诺。
 
 ## 版本兼容
 
@@ -170,10 +170,12 @@ type OfficeFileViewerUri = File | string | OfficeFileViewerUriLoader;
 | `onSpeakerNotesVisibilityChange` | `(visible: boolean) => void`                          | -          | 演讲者备注显示状态变化时触发                 |
 | `className`                      | `string`                                              | -          | 预览器根节点附加类名                         |
 | `height`                         | `CSSProperties['height']`                             | 跟随父容器 | 预览器高度；优先级高于 `style.height`        |
-| `toolbar`                        | `false \| OfficeFileViewerToolbarOptions`             | `{}`       | 隐藏工具栏或文件名、打开、缩放、全屏区域     |
+| `toolbar`                        | `false \| OfficeFileViewerToolbarOptions`             | `{}`       | 隐藏工具栏或独立控制各内置操作区域           |
 | `toolbarExtra`                   | `ReactNode`                                           | -          | 在全部内置操作后追加宿主工具栏内容           |
 | `onFileSelect`                   | `(file: File) => void`                                | -          | 内置入口选择本地文件、解析开始前触发         |
 | `style`                          | `CSSProperties`                                       | -          | 预览器根节点内联样式                         |
+| `theme`                          | `OfficeViewerThemeOptions`                            | `light`    | 外壳配色模式、主色和语义令牌                 |
+| `watermark`                      | `false \| OfficeViewerWatermarkOptions`               | `false`    | 覆盖文档内容视口的文字水印                   |
 | `onFileParsed`                   | `(parsed: ParsedOfficeFile, file: File) => void`      | -          | 完整实体化解析结果可用时触发一次             |
 | `onPreviewReady`                 | `(info: OfficePreviewReadyInfo, file: File) => void`  | -          | 首个可用预览就绪时触发一次                   |
 | `onError`                        | `(error: OfficeFileViewerError, file?: File) => void` | -          | 加载、解析或预览器操作失败时触发             |
@@ -189,20 +191,121 @@ type OfficeFileViewerUri = File | string | OfficeFileViewerUriLoader;
 | `onHyperlinkActivate`            | `(event: OfficeHyperlinkActivateEvent) => void`       | -          | 链接有效激活时触发，可阻止默认导航           |
 | `onParseProgress`                | `(progress: ParseProgress) => void`                   | -          | 解析阶段或完成度变化时触发                   |
 
-### 工具栏与主题
+### 工具栏、主题与水印
 
-`toolbar={false}` 会完全隐藏内置工具栏；对象配置可以分别隐藏文件名、打开文件、缩放和全屏区域。`toolbarExtra` 会在全部内置操作后渲染宿主 React 节点，`onFileSelect` 在内置入口选择文件后、解析启动前触发。隐藏工具栏且没有传入 `uri` 时，宿主需要提供自己的文件入口。
+`toolbar={false}` 会完全隐藏内置工具栏；对象配置可以独立隐藏以下区域，未声明的字段默认显示。格式专属操作仍只会在对应文件类型且能力可用时出现。
+
+| 字段                     | 控制区域                      |
+| ------------------------ | ----------------------------- |
+| `fileName`               | 文件名和格式图标              |
+| `openFile`               | 内置文件选择入口              |
+| `wordOutline`            | Word 大纲入口                 |
+| `wordRevisionMode`       | Word 修订投影切换             |
+| `spreadsheetViewMode`    | 电子表格原始版式/阅读模式切换 |
+| `presentationNavigation` | 多页演示文稿上一页/下一页操作 |
+| `speakerNotes`           | 演讲者备注入口                |
+| `search`                 | 全文查找入口                  |
+| `review`                 | Excel/PowerPoint 审阅入口     |
+| `zoom`                   | 缩放与适应模式控件            |
+| `fullscreen`             | 全屏操作                      |
+
+`toolbar.search` 和 `toolbar.review` 只控制入口显隐；顶层 `search={false}`、`review={false}` 才会移除对应运行时。`toolbarExtra` 会在全部内置操作后渲染宿主 React 节点，`onFileSelect` 在内置入口选择文件后、解析启动前触发。隐藏工具栏且没有传入 `uri` 时，宿主需要提供自己的文件入口。
 
 ```tsx | pure
 <OfficeFileViewer
   uri={file}
-  toolbar={{ openFile: false, fullscreen: false }}
+  toolbar={{
+    openFile: false,
+    wordOutline: false,
+    presentationNavigation: false,
+    fullscreen: false,
+  }}
   toolbarExtra={<button type="button">下载原文件</button>}
   onFileSelect={(nextFile) => console.log(nextFile.name)}
 />
 ```
 
-预览器根元素提供稳定的 Shell CSS 变量。常用变量包括 `--office-file-primary-color`、`--office-file-primary-hover-color`、`--office-file-primary-active-color`、`--office-file-text-color`、`--office-file-muted-text-color`、`--office-file-surface-color`、`--office-file-workspace-color`、`--office-file-border-color`、`--office-file-focus-ring-color`、`--office-file-radius` 和 `--office-file-toolbar-min-height`。这些变量只影响预览器界面，不覆盖源文档自身的字体、颜色和边框。
+`theme.mode` 支持 `light`、`dark` 和 `system`，默认使用浅色。`primaryColor` 会同步驱动按钮、焦点和选中状态；`tokens` 可覆盖文字、表面、工作区、边框、焦点环和圆角等稳定语义令牌。主题只改变工具栏、侧栏、标签页、备注区和工作区等组件外壳，不改写 Word 页面、Excel 单元格或 PowerPoint 幻灯片中的源样式。
+
+`watermark` 使用单个 SVG 重复图案覆盖实际文档内容视口，不创建大量水印节点。它不会遮挡工具栏、目录、缩略图、查找或审阅侧栏，不参与鼠标命中，也不会写入源文件或下载文件。
+
+```tsx | pure
+<OfficeFileViewer
+  uri={file}
+  theme={{
+    mode: 'system',
+    primaryColor: '#7c3aed',
+    tokens: { workspaceColor: '#f4f1ff', controlRadius: 8 },
+  }}
+  watermark={{
+    content: ['内部资料', '仅供项目成员使用'],
+    opacity: 0.12,
+    rotate: -22,
+    gap: [140, 100],
+  }}
+/>
+```
+
+预览器根元素仍提供稳定的 Shell CSS 变量。常用变量包括 `--office-file-primary-color`、`--office-file-primary-hover-color`、`--office-file-primary-active-color`、`--office-file-text-color`、`--office-file-muted-text-color`、`--office-file-surface-color`、`--office-file-workspace-color`、`--office-file-border-color`、`--office-file-focus-ring-color`、`--office-file-radius` 和 `--office-file-toolbar-min-height`。通过 `style` 直接传入的 CSS 变量优先于 `theme` 生成值。
+
+#### 可复用预览外壳
+
+宿主已有自己的文档渲染器时，可以只复用统一工具栏、缩放、全屏、主题和水印。推荐从独立入口导入，以避免把 Office 格式解析入口带入宿主的外壳模块：
+
+```tsx | pure
+import { OfficeViewerLayout } from 'office-file-viewer/layout';
+
+export default function CustomDocumentPreview() {
+  return (
+    <OfficeViewerLayout
+      fileName="custom.document"
+      height="80vh"
+      theme={{ mode: 'dark', primaryColor: '#8b5cf6' }}
+      watermark={{ content: 'CONFIDENTIAL' }}
+    >
+      <article className="custom-document">宿主渲染的文档内容</article>
+    </OfficeViewerLayout>
+  );
+}
+```
+
+`contentScaling="managed"` 是默认值，外壳会把工具栏百分比直接应用到普通 DOM 内容。虚拟列表、Canvas 或自行维护变换矩阵的渲染器应使用 `manual`，并在子组件中通过 `useOfficeViewerLayout()` 读取状态与动作：
+
+```tsx | pure
+import {
+  OfficeViewerLayout,
+  useOfficeViewerLayout,
+} from 'office-file-viewer/layout';
+
+function VirtualDocument() {
+  const { state } = useOfficeViewerLayout();
+  return <canvas data-render-zoom={state.zoom} />;
+}
+
+export default function Preview() {
+  return (
+    <OfficeViewerLayout contentScaling="manual">
+      <VirtualDocument />
+    </OfficeViewerLayout>
+  );
+}
+```
+
+| `OfficeViewerLayout` 属性 | 类型                                      | 默认值      | 说明                                   |
+| ------------------------- | ----------------------------------------- | ----------- | -------------------------------------- |
+| `fileName`                | `string`                                  | -           | 工具栏文件名；为空时隐藏文件信息区     |
+| `height`                  | `CSSProperties['height']`                 | 跟随父容器  | 外壳高度                               |
+| `toolbar`                 | `false \| OfficeFileViewerToolbarOptions` | `{}`        | 隐藏或配置文件名、打开、缩放和全屏区域 |
+| `toolbarExtra`            | `ReactNode`                               | -           | 追加到全部内置操作后的宿主内容         |
+| `onFileSelect`            | `(file: File) => void`                    | -           | 文件选择回调；为空时不显示打开文件入口 |
+| `theme`                   | `OfficeViewerThemeOptions`                | `light`     | 与主预览组件相同的外壳主题             |
+| `watermark`               | `false \| OfficeViewerWatermarkOptions`   | `false`     | 与主预览组件相同的内容视口水印         |
+| `defaultZoom` / `zoom`    | `number`                                  | `100`       | 非受控初始缩放或受控缩放               |
+| `onZoomChange`            | `(zoom: number) => void`                  | -           | 用户改变缩放时触发                     |
+| `contentScaling`          | `'managed' \| 'manual'`                   | `'managed'` | 外壳或宿主负责应用缩放                 |
+| `onFullscreenChange`      | `(fullscreen: boolean) => void`           | -           | 浏览器全屏状态改变时触发               |
+| `onFullscreenError`       | `(error: Error) => void`                  | -           | 请求全屏失败时触发                     |
+| `children`                | `ReactNode`                               | -           | 宿主渲染的文档内容                     |
 
 ### 内容图片预览
 
