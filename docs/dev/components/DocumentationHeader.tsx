@@ -34,9 +34,9 @@ export function DocumentationHeader({ locale }: DocumentationHeaderProps) {
   const navigation = (
     <>
       <a href={homeHref + '#overview'}>{content.navigation.overview}</a>
-      <a href={homeHref + '#demo'}>{content.navigation.demo}</a>
       <a href={homeHref + '#highlights'}>{content.navigation.highlights}</a>
       <a href={homeHref + '#formats'}>{content.navigation.formats}</a>
+      <a href={content.playgroundHref}>{content.navigation.demo}</a>
       <a href={DOCUMENTATION_PATHS[locale]} aria-current="page">
         {content.navigation.docs}
       </a>
@@ -45,14 +45,17 @@ export function DocumentationHeader({ locale }: DocumentationHeaderProps) {
   const mobileNavigation = (
     <>
       <a
+        className="office-viewer-site-mobile-demo"
+        href={content.playgroundHref}
+      >
+        {content.navigation.demo}
+      </a>
+      <a
         className="office-viewer-site-mobile-docs"
         href={DOCUMENTATION_PATHS[locale]}
         aria-current="page"
       >
         {content.navigation.docs}
-      </a>
-      <a className="office-viewer-site-mobile-demo" href={homeHref + '#demo'}>
-        {content.navigation.demo}
       </a>
     </>
   );

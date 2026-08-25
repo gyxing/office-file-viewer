@@ -22,7 +22,7 @@
   white-space: nowrap;
   background: var(--office-file-surface-color);
   border: 1px solid var(--office-file-control-border);
-  border-radius: 6px;
+  border-radius: var(--office-file-radius);
   cursor: pointer;
   transition: color 160ms ease, border-color 160ms ease,
     background-color 160ms ease, box-shadow 160ms ease;
@@ -46,7 +46,7 @@
 .office-file-button:disabled {
   color: var(--office-file-control-disabled);
   background: var(--office-file-control-disabled-bg);
-  border-color: #e5e7eb;
+  border-color: var(--office-file-border-color);
   cursor: not-allowed;
 }
 
@@ -185,7 +185,7 @@
   justify-content: center;
   flex-direction: column;
   gap: 12px;
-  color: #a0a8b3;
+  color: var(--office-file-muted-text-color);
   text-align: center;
 }
 

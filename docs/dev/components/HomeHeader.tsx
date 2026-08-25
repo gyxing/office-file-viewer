@@ -2,7 +2,7 @@ import React from 'react';
 import { type WebsiteContent } from './home-content';
 import { SiteHeaderShell } from './SiteHeaderShell';
 
-export type HomeSectionId = 'overview' | 'demo' | 'highlights' | 'formats';
+export type HomeSectionId = 'overview' | 'highlights' | 'formats';
 
 type HomeHeaderProps = {
   /** 当前语言对应的站点文案。 */
@@ -18,11 +18,10 @@ const NAVIGATION_ITEMS: Array<{
   id: HomeSectionId;
   label: keyof Pick<
     WebsiteContent['navigation'],
-    'overview' | 'demo' | 'highlights' | 'formats'
+    'overview' | 'highlights' | 'formats'
   >;
 }> = [
   { id: 'overview', label: 'overview' },
-  { id: 'demo', label: 'demo' },
   { id: 'highlights', label: 'highlights' },
   { id: 'formats', label: 'formats' },
 ];
@@ -47,20 +46,20 @@ export function HomeHeader({
           {content.navigation[item.label]}
         </a>
       ))}
+      <a href={content.playgroundHref}>{content.navigation.demo}</a>
       <a href={content.docsHref}>{content.navigation.docs}</a>
     </>
   );
   const mobileNavigation = (
     <>
-      <a className="office-viewer-site-mobile-docs" href={content.docsHref}>
-        {content.navigation.docs}
-      </a>
       <a
         className="office-viewer-site-mobile-demo"
-        href="#demo"
-        onClick={onSectionLink}
+        href={content.playgroundHref}
       >
         {content.navigation.demo}
+      </a>
+      <a className="office-viewer-site-mobile-docs" href={content.docsHref}>
+        {content.navigation.docs}
       </a>
     </>
   );

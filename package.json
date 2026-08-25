@@ -53,6 +53,11 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./layout": {
+      "types": "./dist/layout.d.ts",
+      "import": "./dist/layout.js",
+      "default": "./dist/layout.js"
+    },
     "./package.json": "./package.json"
   },
   "module": "dist/index.js",

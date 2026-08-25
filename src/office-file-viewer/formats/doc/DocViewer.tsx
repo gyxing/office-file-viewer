@@ -25,6 +25,7 @@ import { createMemoryWordOutlineProvider } from '../../services/word/createMemor
 import { collectDocSearchBlocks } from '../../services/word/WordSearchProvider';
 import { useOfficeAnnotationSourceRegistration } from '../../shared/annotations';
 import { useExternalStoreSnapshot } from '../../shared/react/useExternalStoreSnapshot';
+import { OfficeWatermarkSurface } from '../../shared/watermark';
 import { OfficePreviewEmpty } from '../common/OfficePreviewEmpty';
 import { useOfficeSearchProviderRegistration } from '../search/OfficeSearchContext';
 import { useWordTargetNavigation } from '../word-hyperlink/useWordTargetNavigation';
@@ -451,24 +452,26 @@ function DocViewerComponent({
             onClose={onCloseOutline}
             onOpenSearch={onOpenSearch}
           />
-          <div
-            ref={scrollContainerRef}
-            className="office-file-doc-viewer__scroller"
-            data-office-fit-viewport="true"
-          >
-            {profile.pageMode === 'windowed' ? (
-              <VirtualWordPageList
-                source={pageSource}
-                scrollerRef={scrollContainerRef}
-                layoutRevision={layoutKey}
-                zoom={zoom}
-                navigationControllerRef={pageNavigationControllerRef}
-                renderPage={renderPage}
-              />
-            ) : (
-              materializedPages.map(renderPage)
-            )}
-          </div>
+          <OfficeWatermarkSurface>
+            <div
+              ref={scrollContainerRef}
+              className="office-file-doc-viewer__scroller"
+              data-office-fit-viewport="true"
+            >
+              {profile.pageMode === 'windowed' ? (
+                <VirtualWordPageList
+                  source={pageSource}
+                  scrollerRef={scrollContainerRef}
+                  layoutRevision={layoutKey}
+                  zoom={zoom}
+                  navigationControllerRef={pageNavigationControllerRef}
+                  renderPage={renderPage}
+                />
+              ) : (
+                materializedPages.map(renderPage)
+              )}
+            </div>
+          </OfficeWatermarkSurface>
         </div>
       </div>
     </WordRevisionModeContext.Provider>

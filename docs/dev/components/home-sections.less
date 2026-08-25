@@ -158,19 +158,83 @@
   line-height: 1.55;
 }
 
-.office-viewer-site-demo-frame {
-  height: clamp(500px, 62vh, 700px);
-  padding: 8px;
+.office-viewer-site-demo-entry {
+  display: grid;
+  min-height: 260px;
+  overflow: hidden;
   border: 1px solid var(--site-border-strong);
-  background: #edf0f5;
+  background: var(--site-surface);
   border-radius: 20px;
   box-shadow: var(--site-shadow);
+  grid-template-columns: minmax(0, 1.05fr) minmax(300px, 0.8fr);
 }
 
-.office-viewer-site-demo-frame > div,
-.office-viewer-site-demo-frame .office-file-viewer {
-  height: 100%;
-  border-radius: 14px;
+.office-viewer-site-demo-entry > div:last-child {
+  display: flex;
+  padding: 38px;
+  align-items: flex-start;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.office-viewer-site-demo-entry > div:last-child > strong {
+  font-size: 18px;
+}
+
+.office-viewer-site-demo-entry > div:last-child > p {
+  margin: 8px 0 22px;
+  color: var(--site-text-soft);
+  line-height: 1.65;
+}
+
+.office-viewer-site-demo-illustration {
+  display: grid;
+  min-height: 260px;
+  padding: 34px;
+  align-content: center;
+  background: linear-gradient(135deg, #1c2540, #29345a);
+  gap: 14px;
+}
+
+.office-viewer-site-demo-illustration > span {
+  display: flex;
+  height: 38px;
+  padding: 0 14px;
+  align-items: center;
+  background: rgba(255, 255, 255, 9%);
+  border-radius: 10px;
+  gap: 7px;
+}
+
+.office-viewer-site-demo-illustration i {
+  width: 8px;
+  height: 8px;
+  background: #9da8d4;
+  border-radius: 999px;
+}
+
+.office-viewer-site-demo-illustration > div {
+  display: grid;
+  min-height: 116px;
+  padding: 24px;
+  background: rgba(255, 255, 255, 96%);
+  border-radius: 12px;
+  gap: 13px;
+}
+
+.office-viewer-site-demo-illustration b {
+  display: block;
+  height: 10px;
+  background: #dfe4ee;
+  border-radius: 999px;
+}
+
+.office-viewer-site-demo-illustration b:nth-child(2) {
+  width: 78%;
+}
+
+.office-viewer-site-demo-illustration b:nth-child(3) {
+  width: 56%;
 }
 
 .office-viewer-site-highlight-grid {
@@ -575,7 +639,8 @@
 
 .office-viewer-site-final-cta {
   display: flex;
-  width: min(1180px, calc(100% - 48px));
+  width: calc(100% - 48px);
+  max-width: 1180px;
   margin: 24px auto 40px;
   padding: 36px;
   align-items: center;

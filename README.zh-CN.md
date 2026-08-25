@@ -15,6 +15,8 @@
 - **纯浏览器解析**：适用于内网、离线环境和隐私敏感场景。
 - **三类 Office 文件**：支持 Word、Excel、PowerPoint 的 13 种常用扩展名。
 - **统一 React 组件**：各格式共用加载、错误、空状态、缩放和全屏交互。
+- **主题与水印**：内置浅色、深色和跟随系统模式，可覆盖语义令牌，并为文档内容区添加高性能文字水印。
+- **可复用预览外壳**：宿主自定义内容也可复用相同工具栏、缩放、全屏、主题和水印能力。
 - **多种文件来源**：接受本地 `File`、远程 URL 或支持取消信号的异步加载函数。
 - **渐进预览**：受支持格式可以在解析继续进行时提前展示已完成内容。
 - **全文查找**：全部支持格式均提供可取消的增量查找、结果导航、大小写匹配和全词匹配。
@@ -43,7 +45,7 @@ npm install office-file-viewer
 yarn add office-file-viewer
 ```
 
-`react` 和 `react-dom` 是由宿主提供的 peer dependency。当前包仅发布 ESM，组件样式已构建为作用域隔离的 CSS，公共 API 只能从 `office-file-viewer` 根入口导入。
+`react` 和 `react-dom` 是由宿主提供的 peer dependency。当前包仅发布 ESM，组件样式已构建为作用域隔离的 CSS。Office 预览 API 从 `office-file-viewer` 导入；只使用可复用外壳时，也可从稳定子路径 `office-file-viewer/layout` 导入。
 
 ## 版本兼容
 

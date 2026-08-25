@@ -15,6 +15,8 @@ The package provides a unified viewer for Word documents, Excel spreadsheets, an
 - **Browser-only parsing**: Suitable for intranets, offline environments, and privacy-sensitive workflows.
 - **Three Office families**: 13 common Word, Excel, and PowerPoint extensions.
 - **Unified React component**: Shared loading, error, empty, zoom, and fullscreen interactions.
+- **Themes and watermarks**: Built-in light, dark, and system modes support semantic token overrides and a performant text watermark over document content.
+- **Reusable viewer shell**: Host-rendered content can reuse the same toolbar, zoom, fullscreen, theme, and watermark capabilities.
 - **Flexible sources**: Accepts a local `File`, remote URL, or async loader with a cancellation signal.
 - **Progressive preview**: Supported formats can render completed content while parsing continues.
 - **Full-document search**: Every supported extension provides cancellable incremental search, result navigation, case matching, and whole-word matching.
@@ -43,7 +45,7 @@ With Yarn:
 yarn add office-file-viewer
 ```
 
-`react` and `react-dom` are peer dependencies supplied by the host. The package is ESM-only, component styles are built as scoped CSS, and public APIs should be imported only from `office-file-viewer`.
+`react` and `react-dom` are peer dependencies supplied by the host. The package is ESM-only and component styles are built as scoped CSS. Import Office-preview APIs from `office-file-viewer`; when only the reusable shell is needed, the stable `office-file-viewer/layout` subpath is also available.
 
 ## Version compatibility
 

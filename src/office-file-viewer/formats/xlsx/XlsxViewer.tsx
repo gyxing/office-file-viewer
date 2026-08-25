@@ -13,6 +13,7 @@ import type { SpreadsheetSource } from '../../services/spreadsheet/SpreadsheetSo
 import { getSpreadsheetSource } from '../../services/spreadsheet/spreadsheetSourceRegistry';
 import type { SpreadsheetViewMode } from '../../services/spreadsheet/viewMode';
 import { useOfficeAnnotationSourceRegistration } from '../../shared/annotations';
+import { OfficeWatermarkSurface } from '../../shared/watermark';
 import { OfficePreviewEmpty } from '../common/OfficePreviewEmpty';
 import { useOfficeSearchProviderRegistration } from '../search/OfficeSearchContext';
 import './index.less';
@@ -204,34 +205,36 @@ function XlsxSourceViewer({
         activeSheet={descriptor}
         onSelectSheet={onSelectSheet}
       />
-      <SpreadsheetSheetState
-        loading={state.loading}
-        error={state.error}
-        retry={state.retry}
-      >
-        {state.activeSheet?.kind === 'chart' ? (
-          <XlsxChartSheet sheet={state.activeSheet} zoom={zoom} />
-        ) : state.profile?.gridMode === 'table' && state.activeSheet ? (
-          <XlsxSheetGrid
-            sheet={state.activeSheet}
-            zoom={zoom}
-            viewMode={viewMode}
-            navigationControllerRef={navigationControllerRef}
-          />
-        ) : state.profile ? (
-          <VirtualSpreadsheetGrid
-            source={source}
-            sheetId={descriptor.id}
-            layout={source.getSheetLayout(descriptor.id)}
-            gridMode={state.profile.gridMode}
-            zoom={zoom}
-            viewMode={viewMode}
-            readingRowHeights={readingRowHeights}
-            onReadingRowHeightsChange={handleReadingRowHeightsChange}
-            navigationControllerRef={navigationControllerRef}
-          />
-        ) : null}
-      </SpreadsheetSheetState>
+      <OfficeWatermarkSurface>
+        <SpreadsheetSheetState
+          loading={state.loading}
+          error={state.error}
+          retry={state.retry}
+        >
+          {state.activeSheet?.kind === 'chart' ? (
+            <XlsxChartSheet sheet={state.activeSheet} zoom={zoom} />
+          ) : state.profile?.gridMode === 'table' && state.activeSheet ? (
+            <XlsxSheetGrid
+              sheet={state.activeSheet}
+              zoom={zoom}
+              viewMode={viewMode}
+              navigationControllerRef={navigationControllerRef}
+            />
+          ) : state.profile ? (
+            <VirtualSpreadsheetGrid
+              source={source}
+              sheetId={descriptor.id}
+              layout={source.getSheetLayout(descriptor.id)}
+              gridMode={state.profile.gridMode}
+              zoom={zoom}
+              viewMode={viewMode}
+              readingRowHeights={readingRowHeights}
+              onReadingRowHeightsChange={handleReadingRowHeightsChange}
+              navigationControllerRef={navigationControllerRef}
+            />
+          ) : null}
+        </SpreadsheetSheetState>
+      </OfficeWatermarkSurface>
     </div>
   );
 }

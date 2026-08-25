@@ -56,6 +56,14 @@
     min-height: 0;
   }
 
+  .office-viewer-site-demo-entry {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .office-viewer-site-demo-illustration {
+    min-height: 220px;
+  }
+
   .office-viewer-site-final-cta {
     align-items: flex-start;
     flex-direction: column;
@@ -201,10 +209,13 @@
     font-size: 12px;
   }
 
-  .office-viewer-site-demo-frame {
-    height: 480px;
-    padding: 5px;
+  .office-viewer-site-demo-entry {
     border-radius: 16px;
+  }
+
+  .office-viewer-site-demo-entry > div:last-child,
+  .office-viewer-site-demo-illustration {
+    padding: 24px;
   }
 
   .office-viewer-site-highlight-card {

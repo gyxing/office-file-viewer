@@ -37,6 +37,7 @@ import { useOfficeEmbeddedFontsReady } from '../../shared/fonts/OfficeFontProvid
 import { OfficeImagePreviewContext } from '../../shared/image-preview/OfficeImagePreviewContext';
 import { useExternalStoreSnapshot } from '../../shared/react/useExternalStoreSnapshot';
 import { OfficeSpinner } from '../../shared/ui/OfficeSpinner';
+import { OfficeWatermarkSurface } from '../../shared/watermark';
 import { OfficePreviewEmpty } from '../common/OfficePreviewEmpty';
 import { useOfficeSearchProviderRegistration } from '../search/OfficeSearchContext';
 import { useWordTargetNavigation } from '../word-hyperlink/useWordTargetNavigation';
@@ -630,24 +631,26 @@ function DocxViewerComponent({
               onClose={onCloseOutline}
               onOpenSearch={onOpenSearch}
             />
-            <div
-              ref={scrollContainerRef}
-              className="office-file-docx-viewer__scroller"
-              data-office-fit-viewport="true"
-            >
-              {profile.pageMode === 'windowed' ? (
-                <VirtualWordPageList
-                  source={pageSource}
-                  scrollerRef={scrollContainerRef}
-                  layoutRevision={layoutKey}
-                  zoom={zoom}
-                  navigationControllerRef={pageNavigationControllerRef}
-                  renderPage={renderPage}
-                />
-              ) : (
-                materializedPages.map(renderPage)
-              )}
-            </div>
+            <OfficeWatermarkSurface>
+              <div
+                ref={scrollContainerRef}
+                className="office-file-docx-viewer__scroller"
+                data-office-fit-viewport="true"
+              >
+                {profile.pageMode === 'windowed' ? (
+                  <VirtualWordPageList
+                    source={pageSource}
+                    scrollerRef={scrollContainerRef}
+                    layoutRevision={layoutKey}
+                    zoom={zoom}
+                    navigationControllerRef={pageNavigationControllerRef}
+                    renderPage={renderPage}
+                  />
+                ) : (
+                  materializedPages.map(renderPage)
+                )}
+              </div>
+            </OfficeWatermarkSurface>
           </div>
         </div>
       </DocxCharacterSpacingContext.Provider>
