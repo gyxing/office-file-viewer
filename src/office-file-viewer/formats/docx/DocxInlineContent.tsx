@@ -461,6 +461,8 @@ function DocxInlineContentComponent({
             : undefined,
         // 西文字体不继承宋体的小字号字宽补偿。
         letterSpacing: 0,
+        // 外层段落已经按 Word 网格控制行盒，西文字形自身高度不能再次把混排行撑高。
+        lineHeight: 0,
       }
     : undefined;
   const hasAutoSpacing = hasDocxAutoSpacingBoundary(inline.text, {

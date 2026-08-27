@@ -61,9 +61,6 @@ function DocxTableBlockComponent({
     hasExplicitRowHeight: boolean,
     cell: DocxTableCell,
   ) => {
-    // 源文件显式声明的 0 也具有语义，不能再被浏览器补偿值覆盖。
-    if (value !== undefined) return value;
-    // Word 的自动行高会包含字体度量留白；仅在源文件未固定行高和内边距时补偿浏览器差异。
     const paragraph = cell.blocks.find(
       (item): item is DocxParagraphBlock => item.type === 'paragraph',
     );
@@ -74,6 +71,13 @@ function DocxTableBlockComponent({
           ? paragraph.lineHeight
           : paragraphFontSize * paragraph.lineHeight
         : paragraphFontSize * 1.2;
+    if (value !== undefined) {
+      // 大行盒的自动行高仍保留 Word 字体上下度量；紧凑表格继续尊重显式 0 边距。
+      return value === 0 && !hasExplicitRowHeight && paragraphLineHeight > 22
+        ? paragraphFontSize / 8
+        : value;
+    }
+    // Word 的自动行高会包含字体度量留白；仅在源文件未固定行高和内边距时补偿浏览器差异。
     const defaultVerticalPadding = block.insideShape
       ? 2
       : hasExplicitRowHeight

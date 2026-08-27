@@ -952,6 +952,8 @@ function parseParagraph(
     : autoGridLineHeight ??
       context.defaultLineHeight ??
       snappedDocumentLineHeight;
+  const inferredHeadingLineHeight =
+    style.lineHeight === undefined && style.keepNext && style.keepLines;
   const lineHeight =
     style.lineHeightRule === 'exact' && style.lineHeight !== undefined
       ? style.lineHeight
@@ -968,7 +970,7 @@ function parseParagraph(
         gridLineHeight !== undefined &&
         explicitLineHeightPx < gridLineHeight
       ? gridLineHeight
-      : style.lineHeight === undefined && style.keepNext && style.keepLines
+      : inferredHeadingLineHeight
       ? // Word 标题即使未声明行距，也使用独立的字体自然行盒；浏览器 normal 会把标题高度压低。
         lineBoxFontSize * DOCX_HEADING_LINE_HEIGHT_MULTIPLIER
       : style.lineHeight === undefined &&
@@ -977,7 +979,6 @@ function parseParagraph(
       ? // 未声明行距的普通正文仍需占用默认文档网格，否则连续段落会被压缩到浏览器自然行高。
         gridLineHeight
       : style.lineHeight;
-
   // 文本框未显式声明时不沿用正文脚本自动间距，避免短行被额外空隙挤换行。
   const autoSpaceLatin = options?.insideShape
     ? style.autoSpaceLatin ?? false
@@ -1005,6 +1006,7 @@ function parseParagraph(
     tabStops: style.tabStops,
     align: style.align,
     lineHeight,
+    inferredHeadingLineHeight: inferredHeadingLineHeight || undefined,
     style: paragraphTextStyle,
     spacingBefore: style.spacingBefore,
     spacingAfter: style.spacingAfter,
@@ -1399,6 +1401,7 @@ function parseTable(
       const cell: DocxTableCell = {
         id: cellId,
         ...cellStyle,
+        columnIndex,
         // 文档网格已提供完整行盒时不再叠加浏览器补偿内边距。
         paddingTop:
           gridControlsVerticalSpacing && cellStyle.paddingTop === undefined
@@ -1500,6 +1503,14 @@ function readSectionPage(sectPr: Element | null | undefined): DocxPage {
   const pgSz = childByLocalName(sectPr, 'pgSz');
   const pgMar = childByLocalName(sectPr, 'pgMar');
   const pgBorders = childByLocalName(sectPr, 'pgBorders');
+  const docGrid = childByLocalName(sectPr, 'docGrid');
+  const gridType = attr(docGrid, 'w:type') ?? attr(docGrid, 'type');
+  const gridLineHeight =
+    gridType === 'lines' || gridType === 'linesAndChars'
+      ? positiveTwipToPx(
+          attr(docGrid, 'w:linePitch') ?? attr(docGrid, 'linePitch'),
+        )
+      : undefined;
 
   return {
     width: Math.round(
@@ -1527,6 +1538,7 @@ function readSectionPage(sectPr: Element | null | undefined): DocxPage {
     ),
     headerDistance: twipToPx(attr(pgMar, 'w:header') ?? attr(pgMar, 'header')),
     footerDistance: twipToPx(attr(pgMar, 'w:footer') ?? attr(pgMar, 'footer')),
+    gridLineHeight,
     borderTop: readBorder(childByLocalName(pgBorders, 'top')),
     borderRight: readBorder(childByLocalName(pgBorders, 'right')),
     borderBottom: readBorder(childByLocalName(pgBorders, 'bottom')),
@@ -1773,6 +1785,42 @@ function splitSectionOverflowPage(
   return splitPages.length ? splitPages : [pageContent];
 }
 
+/** 连续大纲标题采用自然行盒，避免通用标题兼容行高在标题链中重复累计。 */
+function normalizeConsecutiveHeadingLineHeights(blocks: DocxBlock[]) {
+  return blocks.map((block, index) => {
+    const nextBlock = blocks[index + 1];
+    if (
+      block.type !== 'paragraph' ||
+      !block.inferredHeadingLineHeight ||
+      block.outlineLevel === undefined ||
+      nextBlock?.type !== 'paragraph' ||
+      nextBlock.outlineLevel === undefined
+    ) {
+      return block;
+    }
+    const metricInline =
+      block.inlines.find(
+        (inline) =>
+          inline.type === 'text' &&
+          Boolean(inline.text) &&
+          inline.advanceWidth === undefined,
+      ) ??
+      block.inlines.find(
+        (inline) => inline.type === 'text' && Boolean(inline.text),
+      );
+    const fontSize =
+      (metricInline?.type === 'text'
+        ? metricInline.style?.lineBoxFontSize ?? metricInline.style?.fontSize
+        : undefined) ??
+      block.style?.fontSize ??
+      14;
+    return {
+      ...block,
+      lineHeight: fontSize * DOCX_BODY_LINE_HEIGHT_MULTIPLIER,
+    };
+  });
+}
+
 /** 将输入标准化为 `normalizeDocxPages` 返回的结构。 */
 function normalizeDocxPages(pages: DocxPageContent[]) {
   return pages
@@ -1780,6 +1828,8 @@ function normalizeDocxPages(pages: DocxPageContent[]) {
     .map((pageContent, index) => ({
       ...pageContent,
       id: `docx-page-${index + 1}`,
+      blocks: normalizeConsecutiveHeadingLineHeights(pageContent.blocks),
+      suppressFirstBlockSpacing: index > 0 || undefined,
       // WPS 相册等模板把整页内容保存为定位画布，这类物理页不应被浏览器测量结果再次拆开。
       preservePhysicalPage:
         pageContent.blocks.some((block) =>

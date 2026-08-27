@@ -64,7 +64,10 @@ import {
   resolveDocxSpacingBefore,
   shouldSuppressDocxContextualSpacing,
 } from './docxParagraphSpacing';
-import { measureVisibleDocxBlockHeight } from './docxRenderUtils';
+import {
+  alignDocxInlineObjectParagraphToGrid,
+  measureVisibleDocxBlockHeight,
+} from './docxRenderUtils';
 import './index.less';
 import { measureDocxFootnotes } from './measureDocxFootnotes';
 import { measureDocxParagraphLines } from './measureDocxParagraphLines';
@@ -160,6 +163,15 @@ function useMeasuredDocxPages(
             elements,
             blockIndex,
           );
+          const alignedBlock =
+            block.type === 'paragraph'
+              ? alignDocxInlineObjectParagraphToGrid(
+                  element,
+                  block,
+                  blockHeight,
+                  sourcePage.page.gridLineHeight,
+                )
+              : { block, height: blockHeight };
           const blockFootnotes = Array.from(
             new Set(
               collectDocxNoteReferences([block])
@@ -173,8 +185,12 @@ function useMeasuredDocxPages(
             return measured ? [measured] : [];
           });
           return {
-            block,
-            height: blockHeight,
+            block: alignedBlock.block,
+            height: alignedBlock.height,
+            paragraphBoxHeight:
+              block.type === 'paragraph'
+                ? element.getBoundingClientRect().height
+                : undefined,
             leadingSpacing: Number.parseFloat(
               window.getComputedStyle(element).marginTop || '0',
             ),
@@ -185,7 +201,11 @@ function useMeasuredDocxPages(
               0,
             ),
             measuredFootnotes: blockFootnotes,
-            ...measureDocxParagraphLines(element, block, blockHeight),
+            ...measureDocxParagraphLines(
+              element,
+              alignedBlock.block,
+              alignedBlock.height,
+            ),
             ...measureDocxTableRows(element, block),
           };
         },

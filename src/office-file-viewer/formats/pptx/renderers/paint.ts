@@ -58,3 +58,40 @@ export function gradientToSvgEndpoints(angle: number) {
     y2: 0.5 + Math.sin(radians) / 2,
   };
 }
+/** 将 DrawingML 预设线型转换为 CSS 边框线型。 */
+export function presentationLineStyle(dash?: string) {
+  const normalized = dash?.toLowerCase();
+  if (!normalized || normalized === 'solid') return 'solid';
+  return normalized.includes('dot') && !normalized.includes('dash')
+    ? 'dotted'
+    : 'dashed';
+}
+
+/** 将 DrawingML 预设线型转换为 SVG 可识别的虚线数组。 */
+export function presentationStrokeDasharray(dash?: string, strokeWidth = 1) {
+  const normalized = dash?.toLowerCase();
+  if (!normalized || normalized === 'solid') return undefined;
+
+  const width = Math.max(1, strokeWidth);
+  const units = (...values: number[]) =>
+    values.map((value) => value * width).join(' ');
+  switch (normalized) {
+    case 'dot':
+    case 'sysdot':
+      return units(0, 2);
+    case 'sysdash':
+      return units(3, 2);
+    case 'dashdot':
+    case 'sysdashdot':
+      return units(4, 3, 0, 3);
+    case 'lgdash':
+      return units(8, 3);
+    case 'lgdashdot':
+      return units(8, 3, 0, 3);
+    case 'lgdashdotdot':
+    case 'sysdashdotdot':
+      return units(8, 3, 0, 3, 0, 3);
+    default:
+      return units(4, 3);
+  }
+}

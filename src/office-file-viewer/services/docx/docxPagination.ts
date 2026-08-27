@@ -11,8 +11,10 @@ import type {
 export const DOCX_MEASURE_BLOCK_LIMIT = 100;
 /** 单个 DOCX 测量批次允许包含的表格行上限。 */
 export const DOCX_MEASURE_TABLE_ROW_LIMIT = 200;
-/** 仅忽略浏览器布局取整造成的亚像素误差，避免真实溢出内容被纸张裁切。 */
+/** 仅吸收浏览器亚像素取整误差，避免把真实越界行放入当前页。 */
 const DOCX_PAGE_OVERFLOW_TOLERANCE = 1;
+/** 多行片段累加行高时允许吸收的浏览器亚像素误差。 */
+const DOCX_PARAGRAPH_LINE_FIT_TOLERANCE = 2.5;
 /** 脚注分隔线及其上下间距需要占用的最小高度。 */
 const DOCX_FOOTNOTE_SEPARATOR_HEIGHT = 8;
 
@@ -61,6 +63,8 @@ export type DocxMeasuredBlock = {
   leadingSpacing: number;
   /** 内容块位于页尾时最后一个可见字形占用的高度。 */
   pageEndHeight?: number;
+  /** 多行段落最后一行补足下半行距后的行盒底边。 */
+  paragraphLineBoxEndHeight?: number;
   /** 各表格行的测量高度。 */
   rowHeights?: readonly number[];
   /** 各表格行可在不裁切可见内容时使用的纵向拆分位置。 */
@@ -71,6 +75,10 @@ export type DocxMeasuredBlock = {
   originalTableRowCount?: number;
   /** 纯文本段落在浏览器排版后的各行 UTF-16 结束偏移。 */
   paragraphLineEndOffsets?: readonly number[];
+  /** 段落元素不含外边距的完整行盒高度。 */
+  paragraphBoxHeight?: number;
+  /** 纯文本段落在浏览器排版后的实际行数。 */
+  paragraphLineCount?: number;
   /** 与 paragraphLineEndOffsets 一一对应的行级流式高度。 */
   paragraphLineHeights?: readonly number[];
   /** 当前正文块首次引用的脚注正文实测高度。 */
@@ -244,12 +252,15 @@ export function paginateMeasuredDocxPage(
   // 同时保护同步测量路径，确保整页画布在不同数据规模下都保持一个物理页。
   if (sourcePage.preservePhysicalPage) return [sourcePage];
 
-  const contentHeight =
+  const rawContentHeight =
     sourcePage.page.minHeight -
     sourcePage.page.marginTop -
     sourcePage.page.marginBottom;
+  const contentHeight = rawContentHeight;
   // 源页面首段保留自身段前距；仅自动续页会抑制新页首块的普通段前距。
-  const firstPageLeadingSpacing = measuredBlocks[0]?.leadingSpacing ?? 0;
+  const firstPageLeadingSpacing = sourcePage.suppressFirstBlockSpacing
+    ? 0
+    : measuredBlocks[0]?.leadingSpacing ?? 0;
   const measuredContentHeight = measuredBlocks.reduce(
     (sum, item) => sum + item.height,
     firstPageLeadingSpacing,
@@ -269,6 +280,11 @@ export function paginateMeasuredDocxPage(
       .flatMap((item) => item.measuredFootnotes ?? [])
       .map((note) => [note.noteId, note] as const),
   );
+  const pageWithMeasuredBlocks = measuredBlocks.some(
+    (item, index) => item.block !== sourcePage.blocks[index],
+  )
+    ? { ...sourcePage, blocks: measuredBlocks.map((item) => item.block) }
+    : sourcePage;
   const appendFootnoteContinuations = (
     sourcePages: readonly DocxPageContent[],
   ) => {
@@ -320,7 +336,7 @@ export function paginateMeasuredDocxPage(
         : 0) <=
     contentHeight + DOCX_PAGE_OVERFLOW_TOLERANCE
   ) {
-    return appendFootnoteContinuations([sourcePage]);
+    return appendFootnoteContinuations([pageWithMeasuredBlocks]);
   }
 
   const pages: DocxPageContent[] = [];
@@ -362,6 +378,7 @@ export function paginateMeasuredDocxPage(
     _leadingSpacing = 0,
     pageEndHeight = height,
     footnoteReserveHeight = 0,
+    overflowTolerance = DOCX_PAGE_OVERFLOW_TOLERANCE,
   ) => {
     const nextFootnoteHeight = normalizeFootnoteHeight(
       currentFootnoteHeight + footnoteReserveHeight,
@@ -369,7 +386,7 @@ export function paginateMeasuredDocxPage(
     if (
       currentBlocks.length &&
       currentHeight + pageEndHeight + reservedFootnoteArea(nextFootnoteHeight) >
-        contentHeight + DOCX_PAGE_OVERFLOW_TOLERANCE
+        contentHeight + overflowTolerance
     ) {
       pushPage();
     }
@@ -383,17 +400,17 @@ export function paginateMeasuredDocxPage(
 
   const getKeepWithNextTerminalHeight = (item: DocxMeasuredBlock) => {
     if (item.block.type === 'paragraph') {
-      if (
-        item.block.widowControl !== false &&
-        !item.block.keepLines &&
-        item.paragraphLineHeights?.length
-      ) {
-        // 默认孤行控制只要求标题后的正文至少保留两行。
+      if (!item.block.keepLines && item.paragraphLineHeights?.length) {
+        // keepNext 只约束下一段的起始行；孤行控制关闭时 Word 允许仅保留一行。
+        const minimumLineCount = item.block.widowControl === false ? 1 : 2;
         return item.paragraphLineHeights
-          .slice(0, Math.min(2, item.paragraphLineHeights.length))
+          .slice(
+            0,
+            Math.min(minimumLineCount, item.paragraphLineHeights.length),
+          )
           .reduce((height, lineHeight) => height + lineHeight, 0);
       }
-      // 关闭孤行控制时，WPS 会把可完整放入新页的下一段与标题整段成组。
+      // keepLines 明确要求正文整体与标题同页时才保留整段高度。
       return item.height;
     }
     if (item.block.type === 'table' && item.rowHeights?.length) {
@@ -431,17 +448,28 @@ export function paginateMeasuredDocxPage(
     }
     const lineEndOffsets = measurement.paragraphLineEndOffsets;
     const lineHeights = measurement.paragraphLineHeights;
+    const canSplitParagraph =
+      block.type === 'paragraph' && canSplitMeasuredParagraph(block);
+    // 短段落接近页尾时，Word 会按完整末行行盒判断；长段落继续按可见字形底边，避免累计行距误差提前换页。
+    const paragraphOverflowHeight =
+      block.type === 'paragraph' &&
+      measurement.paragraphLineCount !== undefined &&
+      measurement.paragraphLineCount <= 3
+        ? measurement.paragraphLineBoxEndHeight ??
+          measurement.pageEndHeight ??
+          measurement.height
+        : measurement.pageEndHeight ?? measurement.height;
     if (
       block.type === 'paragraph' &&
       currentHeight +
-        (measurement.pageEndHeight ?? measurement.height) +
+        paragraphOverflowHeight +
         reservedFootnoteArea(
           normalizeFootnoteHeight(
             currentFootnoteHeight + (measurement.footnoteReserveHeight ?? 0),
           ),
         ) >
         contentHeight + DOCX_PAGE_OVERFLOW_TOLERANCE &&
-      canSplitMeasuredParagraph(block) &&
+      canSplitParagraph &&
       (!block.keepLines || measurement.height > contentHeight) &&
       lineEndOffsets &&
       lineHeights &&
@@ -471,7 +499,8 @@ export function paginateMeasuredDocxPage(
         while (
           lineEnd < lineEndOffsets.length &&
           (lineEnd === lineStart ||
-            fragmentHeight + lineHeights[lineEnd] <= availableHeight + 1)
+            fragmentHeight + lineHeights[lineEnd] <=
+              availableHeight + DOCX_PARAGRAPH_LINE_FIT_TOLERANCE)
         ) {
           fragmentHeight += lineHeights[lineEnd];
           lineEnd += 1;
@@ -499,6 +528,9 @@ export function paginateMeasuredDocxPage(
           sliceMeasuredParagraph(block, startOffset, endOffset),
           fragmentHeight,
           fragmentLeadingSpacing,
+          fragmentHeight,
+          0,
+          DOCX_PARAGRAPH_LINE_FIT_TOLERANCE,
         );
         lineStart = lineEnd;
         if (lineStart < lineEndOffsets.length) pushPage();
@@ -538,10 +570,70 @@ export function paginateMeasuredDocxPage(
       measurement.height - rowHeights.reduce((sum, height) => sum + height, 0),
     );
     let pendingRows: DocxTableBlock['rows'] = [];
+    let pendingStartRowIndex: number | undefined;
     let pendingHeight = 0;
     let partIndex = 0;
     let hasPreviousRows = (measurement.rowOffset ?? 0) > 0;
     let pendingFootnoteHeight = measurement.footnoteReserveHeight ?? 0;
+    const appendPendingRow = (
+      row: DocxTableBlock['rows'][number],
+      rowIndex: number,
+    ) => {
+      if (!pendingRows.length) pendingStartRowIndex = rowIndex;
+      pendingRows.push(row);
+    };
+    const restoreRowSpanContinuations = () => {
+      if (
+        pendingStartRowIndex === undefined ||
+        pendingStartRowIndex <= 0 ||
+        !pendingRows.length
+      ) {
+        return pendingRows;
+      }
+      const startRowIndex = pendingStartRowIndex;
+      const continuationCells = block.rows.flatMap((sourceRow, rowIndex) => {
+        if (rowIndex >= startRowIndex) return [];
+        return sourceRow.cells.flatMap((cell) => {
+          const rowSpan = cell.rowSpan ?? 1;
+          const columnIndex = cell.columnIndex;
+          const remainingRowSpan = rowIndex + rowSpan - startRowIndex;
+          if (
+            columnIndex === undefined ||
+            rowSpan <= 1 ||
+            remainingRowSpan <= 0
+          ) {
+            return [];
+          }
+          return [
+            {
+              ...cell,
+              id: `${cell.id}-continuation-${startRowIndex}`,
+              blocks: [],
+              rowSpan:
+                remainingRowSpan > 1
+                  ? Math.min(remainingRowSpan, pendingRows.length)
+                  : undefined,
+            },
+          ];
+        });
+      });
+      if (!continuationCells.length) return pendingRows;
+      const occupiedColumns = new Set(
+        pendingRows[0].cells.map((cell) => cell.columnIndex),
+      );
+      const firstRow = {
+        ...pendingRows[0],
+        cells: [
+          ...continuationCells.filter(
+            (cell) => !occupiedColumns.has(cell.columnIndex),
+          ),
+          ...pendingRows[0].cells,
+        ].sort(
+          (left, right) => (left.columnIndex ?? 0) - (right.columnIndex ?? 0),
+        ),
+      };
+      return [firstRow, ...pendingRows.slice(1)];
+    };
     const appendRows = (isFinalPart = false) => {
       if (!pendingRows.length) return;
       partIndex += 1;
@@ -552,7 +644,7 @@ export function paginateMeasuredDocxPage(
             (measurement.rowOffset ?? 0) + 1
           }-${partIndex}`,
           sourceBlockId: block.sourceBlockId ?? block.id,
-          rows: pendingRows,
+          rows: restoreRowSpanContinuations(),
         },
         pendingHeight,
         hasPreviousRows ? 0 : measurement.leadingSpacing,
@@ -560,6 +652,7 @@ export function paginateMeasuredDocxPage(
         pendingFootnoteHeight,
       );
       pendingRows = [];
+      pendingStartRowIndex = undefined;
       pendingHeight = 0;
       hasPreviousRows = true;
       pendingFootnoteHeight = 0;
@@ -581,7 +674,7 @@ export function paginateMeasuredDocxPage(
         const availableHeight =
           remainingBodyHeight(pendingFootnoteHeight) - pendingHeight;
         if (remainingHeight <= availableHeight + DOCX_PAGE_OVERFLOW_TOLERANCE) {
-          pendingRows.push(
+          appendPendingRow(
             fragmentOffset > 0
               ? {
                   ...row,
@@ -593,6 +686,7 @@ export function paginateMeasuredDocxPage(
                   },
                 }
               : row,
+            rowIndex,
           );
           pendingHeight += remainingHeight;
           break;
@@ -614,17 +708,20 @@ export function paginateMeasuredDocxPage(
           : undefined;
         if (breakOffset !== undefined) {
           const fragmentHeight = breakOffset - fragmentOffset;
-          pendingRows.push({
-            ...row,
-            id: `${row.id}-fragment-${Math.round(fragmentOffset)}-${Math.round(
-              breakOffset,
-            )}`,
-            fragment: {
-              height: fragmentHeight,
-              offset: fragmentOffset,
-              sourceHeight,
+          appendPendingRow(
+            {
+              ...row,
+              id: `${row.id}-fragment-${Math.round(
+                fragmentOffset,
+              )}-${Math.round(breakOffset)}`,
+              fragment: {
+                height: fragmentHeight,
+                offset: fragmentOffset,
+                sourceHeight,
+              },
             },
-          });
+            rowIndex,
+          );
           pendingHeight += fragmentHeight;
           appendRows();
           pushPage();
@@ -639,7 +736,7 @@ export function paginateMeasuredDocxPage(
         }
 
         // 空白页仍无法找到安全拆点时保留整行，避免裁切图片或复杂单元格内容。
-        pendingRows.push(row);
+        appendPendingRow(row, rowIndex);
         pendingHeight += sourceHeight;
         break;
       }

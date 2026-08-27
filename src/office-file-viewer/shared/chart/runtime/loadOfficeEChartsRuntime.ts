@@ -51,6 +51,10 @@ const capabilityLoaders: Record<OfficeEChartsCapability, () => Promise<void>> =
       import('./registerMapCapability').then((module) =>
         module.registerMapCapability(),
       ),
+    labels: () =>
+      import('./registerLabelCapability').then((module) =>
+        module.registerLabelCapability(),
+      ),
   };
 
 /** 加载单个能力；失败结果不缓存，允许后续视图重新尝试。 */

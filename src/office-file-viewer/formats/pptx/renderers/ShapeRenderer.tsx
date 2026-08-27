@@ -8,6 +8,8 @@ import {
   gradientToSvgEndpoints,
   isGradientPaint,
   paintToCss,
+  presentationLineStyle,
+  presentationStrokeDasharray,
 } from './paint';
 import { buildRendererId } from './renderIds';
 
@@ -20,12 +22,6 @@ type ShapeRendererProps = {
   /** 是否允许当前形状响应链接交互。 */
   interactive: boolean;
 };
-
-function lineStyle(dash?: string) {
-  if (!dash || dash === 'solid') return 'solid';
-  if (dash.includes('dot')) return 'dotted';
-  return 'dashed';
-}
 
 /** 渲染形状渲染器。 */
 function ShapeRendererComponent({
@@ -81,7 +77,7 @@ function ShapeRendererComponent({
           isVectorShape || isLineShape
             ? undefined
             : element.stroke
-            ? `${element.strokeWidth ?? 1}px ${lineStyle(
+            ? `${element.strokeWidth ?? 1}px ${presentationLineStyle(
                 element.strokeDash,
               )} ${colorWithOpacity(element.stroke, element.strokeOpacity)}`
             : undefined,
@@ -145,11 +141,10 @@ function ShapeRendererComponent({
               }
               strokeOpacity={element.strokeOpacity}
               strokeWidth={element.strokeWidth ?? 1}
-              strokeDasharray={
-                element.strokeDash && element.strokeDash !== 'solid'
-                  ? element.strokeDash
-                  : undefined
-              }
+              strokeDasharray={presentationStrokeDasharray(
+                element.strokeDash,
+                element.strokeWidth,
+              )}
               strokeLinecap="round"
               vectorEffect="non-scaling-stroke"
             />
@@ -175,11 +170,10 @@ function ShapeRendererComponent({
               }
               strokeOpacity={element.strokeOpacity}
               strokeWidth={element.strokeWidth ?? 1}
-              strokeDasharray={
-                element.strokeDash && element.strokeDash !== 'solid'
-                  ? element.strokeDash
-                  : undefined
-              }
+              strokeDasharray={presentationStrokeDasharray(
+                element.strokeDash,
+                element.strokeWidth,
+              )}
               vectorEffect="non-scaling-stroke"
             />
           )}

@@ -116,6 +116,8 @@ export type LayoutDefinition = {
   path: string;
   /** 母版路径。 */
   masterPath: string;
+  /** 是否显示母版中的非占位图形；版式可通过 `showMasterSp="0"` 关闭。 */
+  showMasterShapes: boolean;
   /** 尚未加载内容所使用的占位项。 */
   placeholders: Record<string, PlaceholderStyle>;
   /** 按占位符用途索引的版式文字预设。 */

@@ -16,16 +16,18 @@ import { OfficeSearchHighlightedText } from '../../search/OfficeSearchContext';
 import { reflectionCopyToCss, reflectionToCss } from './effects';
 import { resolvePptxFontFamily } from './fontFamily';
 import {
-  resolvePresentationLeadingOffset,
-  resolvePresentationLineHeight,
-} from './textStyle';
-import {
   colorWithOpacity,
   gradientToSvgEndpoints,
   isGradientPaint,
   paintToCss,
+  presentationLineStyle,
+  presentationStrokeDasharray,
 } from './paint';
 import { buildRendererId } from './renderIds';
+import {
+  resolvePresentationLeadingOffset,
+  resolvePresentationLineHeight,
+} from './textStyle';
 import { usePresentationTextAutoFit } from './usePresentationTextAutoFit';
 
 /** Office 允许行末中文标点部分悬挂到文本边界之外。 */
@@ -83,12 +85,6 @@ function resolveTextPaintStyle(
     };
   }
   return { color: colorWithOpacity(fill ?? fallbackColor, opacity) };
-}
-
-function lineStyle(dash?: string) {
-  if (!dash || dash === 'solid') return 'solid';
-  if (dash.includes('dot')) return 'dotted';
-  return 'dashed';
 }
 
 /** Office 会让普通文本字体中的符号继承文字颜色，避免浏览器改用不可着色的彩色 emoji。 */
@@ -168,10 +164,7 @@ function resolveParagraphFontSize(
   );
 }
 
-function shouldHangEndPunctuation(
-  paragraph: TextParagraph,
-  runIndex: number,
-) {
+function shouldHangEndPunctuation(paragraph: TextParagraph, runIndex: number) {
   for (let index = paragraph.runs.length - 1; index >= 0; index -= 1) {
     const text = paragraph.runs[index].text.trimEnd();
     if (!text) continue;
@@ -225,16 +218,21 @@ function TextRunRenderer({
   const sourceFontFamily = runStyle.fontFamily ?? boxStyle.fontFamily;
   const sourceEastAsiaFontFamily =
     runStyle.eastAsiaFontFamily ?? boxStyle.eastAsiaFontFamily;
-  const trimmedText = hangEndPunctuation ? run.text.trimEnd() : run.text;
+  const preferTextSymbols = usesOfficeTextSymbols(sourceFontFamily);
+  // Office 普通字体中的符号使用单色文字字形；把 emoji 展示选择符改成文字展示选择符，保留原字符长度。
+  const sourceText = preferTextSymbols
+    ? run.text.replace(/\uFE0F/g, '\uFE0E')
+    : run.text;
+  const trimmedText = hangEndPunctuation ? sourceText.trimEnd() : sourceText;
   const hangingPunctuation =
     hangEndPunctuation && HANGING_END_PUNCTUATION.test(trimmedText)
       ? trimmedText.slice(-1)
       : undefined;
   const leadingText = hangingPunctuation
     ? trimmedText.slice(0, -1)
-    : run.text;
+    : sourceText;
   const trailingText = hangingPunctuation
-    ? run.text.slice(trimmedText.length)
+    ? sourceText.slice(trimmedText.length)
     : '';
   const renderText = (text: string) =>
     searchSlideIndex === undefined ? (
@@ -253,7 +251,7 @@ function TextRunRenderer({
     <span
       {...hyperlinkProps}
       className={
-        usesOfficeTextSymbols(sourceFontFamily)
+        preferTextSymbols
           ? 'office-file-pptx-viewer__text-run--text-symbols'
           : undefined
       }
@@ -275,6 +273,7 @@ function TextRunRenderer({
         fontWeight: resolveOfficeCssFontWeight(
           runStyle.fontWeight ?? boxStyle.fontWeight,
           runStyle.bold ?? boxStyle.bold,
+          sourceFontFamily,
         ),
         fontStyle: runStyle.italic ?? boxStyle.italic ? 'italic' : 'normal',
         textDecoration:
@@ -301,9 +300,7 @@ function TextRunRenderer({
     >
       {renderText(leadingText)}
       {hangingPunctuation ? (
-        <span style={{ letterSpacing: '-0.75em' }}>
-          {hangingPunctuation}
-        </span>
+        <span style={{ letterSpacing: '-0.75em' }}>{hangingPunctuation}</span>
       ) : null}
       {trailingText}
     </span>
@@ -361,7 +358,9 @@ function TextRendererComponent({
   if (
     hasRenderableText &&
     renderedParagraphs.length > 1 &&
-    isEmptyParagraph(renderedParagraphs[renderedParagraphs.length - 1].paragraph)
+    isEmptyParagraph(
+      renderedParagraphs[renderedParagraphs.length - 1].paragraph,
+    )
   ) {
     renderedParagraphs.pop();
   }
@@ -373,10 +372,9 @@ function TextRendererComponent({
     !isVectorShape && element.stroke && element.width <= strokeWidth,
   );
   const strokeCss = element.stroke
-    ? `${strokeWidth}px ${lineStyle(element.strokeDash)} ${colorWithOpacity(
-        element.stroke,
-        element.strokeOpacity,
-      )}`
+    ? `${strokeWidth}px ${presentationLineStyle(
+        element.strokeDash,
+      )} ${colorWithOpacity(element.stroke, element.strokeOpacity)}`
     : undefined;
   const shapeBorderStyle: CSSProperties = isHorizontalRule
     ? { borderTop: strokeCss }
@@ -431,8 +429,7 @@ function TextRendererComponent({
       marginTop: (paragraph.style?.spaceBefore ?? 0) * autoFitScale,
       marginBottom: (paragraph.style?.spaceAfter ?? 0) * autoFitScale,
       paddingLeft: `${
-        (paragraph.style?.marginLeft ?? 0) +
-        bulletLayout.paragraphPadding
+        (paragraph.style?.marginLeft ?? 0) + bulletLayout.paragraphPadding
       }px`,
       textIndent: paragraph.style?.textIndent
         ? `${paragraph.style.textIndent}px`
@@ -470,7 +467,11 @@ function TextRendererComponent({
           style.fontSize !== undefined
             ? style.fontSize * autoFitScale
             : undefined,
-        fontWeight: resolveOfficeCssFontWeight(style.fontWeight, style.bold),
+        fontWeight: resolveOfficeCssFontWeight(
+          style.fontWeight,
+          style.bold,
+          style.fontFamily,
+        ),
         fontStyle: style.italic ? 'italic' : 'normal',
         textDecoration: textDecoration(style),
         textTransform: style.allCaps ? 'uppercase' : undefined,
@@ -510,8 +511,7 @@ function TextRendererComponent({
         paddingRight: hasRenderableText ? style.marginRight ?? 0 : 0,
         paddingTop: hasRenderableText ? style.marginTop ?? 0 : 0,
         paddingBottom: hasRenderableText ? style.marginBottom ?? 0 : 0,
-        letterSpacing:
-          (style.charSpace ?? 0) * autoFitScale + autoFitTracking,
+        letterSpacing: (style.charSpace ?? 0) * autoFitScale + autoFitTracking,
         // PowerPoint 不会在连续数字或英文单词中间强制断行，窄文本框应保留原词并裁切。
         wordBreak: 'normal',
         overflowWrap: 'normal',
@@ -572,11 +572,10 @@ function TextRendererComponent({
             }
             strokeOpacity={element.strokeOpacity}
             strokeWidth={element.strokeWidth ?? 1}
-            strokeDasharray={
-              element.strokeDash && element.strokeDash !== 'solid'
-                ? element.strokeDash
-                : undefined
-            }
+            strokeDasharray={presentationStrokeDasharray(
+              element.strokeDash,
+              element.strokeWidth,
+            )}
             vectorEffect="non-scaling-stroke"
           />
         </svg>
@@ -623,10 +622,7 @@ function TextRendererComponent({
               searchSlideIndex={searchSlideIndex}
               elementId={element.id}
               resolveFontFamily={resolveFontFamily}
-              hangEndPunctuation={shouldHangEndPunctuation(
-                paragraph,
-                runIndex,
-              )}
+              hangEndPunctuation={shouldHangEndPunctuation(paragraph, runIndex)}
               fontScale={autoFitScale}
               trackingAdjustment={autoFitTracking}
             />
@@ -668,7 +664,8 @@ function TextRendererComponent({
                     visibility: 'hidden',
                     fontSize:
                       (paragraph.bullet.size ??
-                        resolveParagraphFontSize(paragraph, style)) !== undefined
+                        resolveParagraphFontSize(paragraph, style)) !==
+                      undefined
                         ? (paragraph.bullet.size ??
                             resolveParagraphFontSize(paragraph, style))! *
                           autoFitScale

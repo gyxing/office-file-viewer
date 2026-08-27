@@ -262,6 +262,7 @@ function readLayout(
   return {
     path: relPath,
     masterPath,
+    showMasterShapes: attr(doc.documentElement, 'showMasterSp') !== '0',
     placeholders,
     textPresets,
     background,

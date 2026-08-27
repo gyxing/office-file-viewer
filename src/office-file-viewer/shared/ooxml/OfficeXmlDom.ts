@@ -65,6 +65,11 @@ class OfficeXmlElement {
     );
   }
 
+  // 主题和绘图解析会读取首个颜色子节点，Worker DOM 需与浏览器 Element 保持同一访问语义。
+  get firstElementChild() {
+    return this.children[0] ?? null;
+  }
+
   get textContent(): string {
     return this.childNodes.map((node) => node.textContent).join('');
   }
