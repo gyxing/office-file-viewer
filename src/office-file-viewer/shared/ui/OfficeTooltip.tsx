@@ -61,6 +61,7 @@ export function OfficeTooltip({
       onFocusCapture={() => setDismissed(false)}
       onKeyDownCapture={handleKeyDown}
       onPointerEnter={() => setDismissed(false)}
+      onPointerLeave={() => setDismissed(true)}
     >
       {describedChild}
       <span

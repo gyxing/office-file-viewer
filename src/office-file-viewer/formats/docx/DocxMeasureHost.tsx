@@ -12,7 +12,10 @@ import {
   resolveDocxSpacingBefore,
   shouldSuppressDocxContextualSpacing,
 } from './docxParagraphSpacing';
-import { measureVisibleDocxBlockHeight } from './docxRenderUtils';
+import {
+  alignDocxInlineObjectParagraphToGrid,
+  measureVisibleDocxBlockHeight,
+} from './docxRenderUtils';
 import { measureDocxFootnotes } from './measureDocxFootnotes';
 import { measureDocxParagraphLines } from './measureDocxParagraphLines';
 import { measureDocxTableRows } from './measureDocxTableRows';
@@ -76,6 +79,15 @@ export function DocxMeasureHost({
       const measurements = batch.blocks.map((block, index) => {
         const element = measuredElements[index];
         const height = measureVisibleDocxBlockHeight(measuredElements, index);
+        const alignedBlock =
+          block.type === 'paragraph'
+            ? alignDocxInlineObjectParagraphToGrid(
+                element,
+                block,
+                height,
+                batch.sourcePage.page.gridLineHeight,
+              )
+            : { block, height };
         const blockFootnotes = Array.from(
           new Set(
             collectDocxNoteReferences([block])
@@ -95,8 +107,12 @@ export function DocxMeasureHost({
           0,
         );
         return {
-          block,
-          height,
+          block: alignedBlock.block,
+          height: alignedBlock.height,
+          paragraphBoxHeight:
+            block.type === 'paragraph'
+              ? element.getBoundingClientRect().height
+              : undefined,
           leadingSpacing: Number.parseFloat(
             window.getComputedStyle(element).marginTop || '0',
           ),
@@ -104,7 +120,11 @@ export function DocxMeasureHost({
           originalTableRowCount: batch.originalTableRowCounts[block.id],
           footnoteReserveHeight,
           measuredFootnotes: blockFootnotes,
-          ...measureDocxParagraphLines(element, block, height),
+          ...measureDocxParagraphLines(
+            element,
+            alignedBlock.block,
+            alignedBlock.height,
+          ),
           ...measureDocxTableRows(element, block),
         };
       });

@@ -23,7 +23,11 @@ export function measureDocxParagraphLines(
   blockHeight: number,
 ): Pick<
   DocxMeasuredBlock,
-  'pageEndHeight' | 'paragraphLineEndOffsets' | 'paragraphLineHeights'
+  | 'pageEndHeight'
+  | 'paragraphLineBoxEndHeight'
+  | 'paragraphLineCount'
+  | 'paragraphLineEndOffsets'
+  | 'paragraphLineHeights'
 > {
   if (block.type !== 'paragraph' || !canSplitMeasuredParagraph(block)) {
     return {};
@@ -93,12 +97,30 @@ export function measureDocxParagraphLines(
   range.detach();
   if (textOffset !== expectedText.length) return {};
   const elementTop = element.getBoundingClientRect().top;
-  const pageEndHeight =
+  const visiblePageEndHeight =
     measureVisibleInlineBottom(element) ??
     (lines.length
       ? Math.max(0, lines[lines.length - 1].bottom - elementTop)
       : undefined);
-  if (lines.length < 2) return { pageEndHeight };
+  const lastLine = lines[lines.length - 1];
+  const previousLine = lines[lines.length - 2];
+  // Word 按行盒分页；Range 只返回字形盒，多行段尾需要补相邻行距中位于字形下方的一半留白。
+  const trailingHalfLeading =
+    lastLine && previousLine
+      ? Math.max(
+          0,
+          (lastLine.top - previousLine.top - (lastLine.bottom - lastLine.top)) /
+            2,
+        )
+      : 0;
+  const paragraphLineBoxEndHeight =
+    visiblePageEndHeight === undefined
+      ? undefined
+      : visiblePageEndHeight + trailingHalfLeading;
+  const pageEndHeight = visiblePageEndHeight;
+  if (lines.length < 2) {
+    return { pageEndHeight, paragraphLineCount: lines.length };
+  }
   lines[lines.length - 1].endOffset = textOffset;
   const lineEndOffsets = lines
     .map((line) => line.endOffset)
@@ -120,6 +142,8 @@ export function measureDocxParagraphLines(
   if (lineHeights.some((height) => height <= 0)) return {};
   return {
     pageEndHeight,
+    paragraphLineBoxEndHeight,
+    paragraphLineCount: lines.length,
     paragraphLineEndOffsets: lineEndOffsets,
     paragraphLineHeights: lineHeights,
   };

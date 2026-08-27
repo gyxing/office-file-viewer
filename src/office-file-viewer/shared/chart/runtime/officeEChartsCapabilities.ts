@@ -1,7 +1,29 @@
 import type { OfficeChartModel, OfficeChartType } from '../officeChartTypes';
 
 /** Office 图表按需加载时采用的稳定能力组。 */
-export type OfficeEChartsCapability = 'cartesian' | 'pie' | 'radar' | 'map';
+export type OfficeEChartsCapability =
+  | 'cartesian'
+  | 'pie'
+  | 'radar'
+  | 'map'
+  | 'labels';
+
+/** 判断当前图表是否真的需要加载数据标签布局能力。 */
+function hasVisibleDataLabels(chart: OfficeChartModel) {
+  if (chart.showDataLabels) return true;
+  return [chart.dataLabels, ...chart.series.map((series) => series.dataLabels)]
+    .filter(Boolean)
+    .some(
+      (labels) =>
+        !labels?.delete &&
+        Boolean(
+          labels?.showVal ||
+            labels?.showCatName ||
+            labels?.showSerName ||
+            labels?.showPercent,
+        ),
+    );
+}
 
 /** 把标准图表类型映射到对应的 ECharts 能力组。 */
 function resolveChartTypeCapability(
@@ -35,6 +57,8 @@ export function resolveOfficeEChartsCapabilities(
   ) {
     capabilities.add('cartesian');
   }
+
+  if (hasVisibleDataLabels(chart)) capabilities.add('labels');
 
   return Array.from(capabilities);
 }

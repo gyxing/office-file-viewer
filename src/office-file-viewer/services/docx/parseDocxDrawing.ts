@@ -1,6 +1,7 @@
 import { parseOfficeChartXml } from '../../shared/ooxml/charts';
 import { resolvePackageMediaRef } from '../../shared/ooxml/media';
-import type { OfficeTheme } from '../../shared/ooxml/theme';
+import { getOfficePartRelationshipsPath } from '../../shared/ooxml/relationships';
+import { readOfficeTheme, type OfficeTheme } from '../../shared/ooxml/theme';
 import { emuToPx } from '../../shared/ooxml/units';
 import { parseWpsWebExtensionChartModel } from '../../shared/ooxml/wpsChart';
 import {
@@ -131,6 +132,26 @@ function readDrawingAnchorPosition(
   };
 }
 
+/** 读取图表关系中声明的专属主题覆盖，避免系列颜色错误沿用文档主主题。 */
+function resolveChartTheme(
+  chartPath: string,
+  context: ParseContext,
+): OfficeTheme {
+  const relationships =
+    context.packageState.relationships[
+      getOfficePartRelationshipsPath(chartPath)
+    ] ?? {};
+  const overridePath = Object.values(relationships).find((relationship) =>
+    relationship.type?.toLowerCase().endsWith('/themeoverride'),
+  )?.target;
+  const overrideXml = overridePath
+    ? context.packageState.entries.get(overridePath)
+    : undefined;
+  return typeof overrideXml === 'string'
+    ? readOfficeTheme(overrideXml, context.theme)
+    : context.theme;
+}
+
 function parseChartElement(
   node: Element,
   context: ParseContext,
@@ -142,9 +163,9 @@ function parseChartElement(
   const xml = chartPath
     ? (context.packageState.entries.get(chartPath) as string | undefined)
     : undefined;
-  if (!xml) return undefined;
+  if (!xml || !chartPath) return undefined;
 
-  const chart = parseOfficeChartXml(xml, context.theme);
+  const chart = parseOfficeChartXml(xml, resolveChartTheme(chartPath, context));
   const extent =
     descendantByLocalName(node, 'extent') ??
     descendantByLocalName(node, 'xfrm');

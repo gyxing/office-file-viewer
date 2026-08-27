@@ -78,6 +78,7 @@ function TableTextRun({
         fontWeight: resolveOfficeCssFontWeight(
           run.style?.fontWeight ?? cellStyle?.fontWeight,
           run.style?.bold ?? cellStyle?.bold,
+          run.style?.fontFamily ?? cellStyle?.fontFamily,
         ),
         fontStyle: run.style?.italic || cellStyle?.italic ? 'italic' : 'normal',
         textDecoration:

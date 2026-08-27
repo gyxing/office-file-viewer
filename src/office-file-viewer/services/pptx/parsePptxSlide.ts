@@ -77,6 +77,9 @@ const DEFAULT_TEXT_BODY_HORIZONTAL_INSET = emuToPx(91440);
 /** DrawingML 文本框未声明上下内边距时采用的 0.05 英寸默认值。 */
 const DEFAULT_TEXT_BODY_VERTICAL_INSET = emuToPx(45720);
 
+/** DrawingML 所有样式源均未声明字号时采用 PowerPoint 的 18pt 缺省值。 */
+const DEFAULT_PRESENTATION_FONT_SIZE = 24;
+
 /** Office 百分比行距基于字体常规行高，CSS 无单位行高则直接基于字号。 */
 const OFFICE_FONT_LINE_HEIGHT_RATIO = 1.2;
 
@@ -1534,7 +1537,10 @@ export function parsePptxTextElement(
       fontFamily: firstRunStyle.fontFamily ?? fallbackStyle.fontFamily,
       eastAsiaFontFamily:
         firstRunStyle.eastAsiaFontFamily ?? fallbackStyle.eastAsiaFontFamily,
-      fontSize: firstRunStyle.fontSize ?? fallbackStyle.fontSize,
+      fontSize:
+        firstRunStyle.fontSize ??
+        fallbackStyle.fontSize ??
+        DEFAULT_PRESENTATION_FONT_SIZE,
       // 行内格式已经落在各 run 上，文本框只保留继承默认值，避免首个粗体 run 污染后续普通正文。
       fontWeight: fallbackStyle.fontWeight,
       bold: fallbackStyle.bold,
@@ -2092,8 +2098,14 @@ export function parseSlideXml(
       ? layout.background
       : master?.background;
 
+  // 幻灯片或版式关闭母版图形时，仅跳过母版视觉元素；母版背景和文字样式仍参与继承。
+  const showMasterShapes =
+    attr(slide, 'showMasterSp') !== '0' && layout?.showMasterShapes !== false;
+
   const elements: SlideElement[] = [
-    ...resolvePptxSlideFields(master?.elements ?? [], index),
+    ...(showMasterShapes
+      ? resolvePptxSlideFields(master?.elements ?? [], index)
+      : []),
     ...resolvePptxSlideFields(layout?.elements ?? [], index),
   ];
   const placeholderStyles = buildPlaceholderStyles(

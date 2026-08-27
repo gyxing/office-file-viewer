@@ -23,11 +23,6 @@ const PANOSE_WEIGHT_TO_CSS: Record<number, number> = {
   11: 900,
 };
 
-/** 旧版 Office 未保存 PANOSE 时，用字体自身已知的基础字重补足缺失元数据。 */
-const OFFICE_FONT_BASE_WEIGHT_HINTS: Readonly<Record<string, number>> = {
-  'noto sans sc': 100,
-};
-
 /** 字体名称显式携带的字重后缀及其 CSS 字重。 */
 const OFFICE_FONT_WEIGHT_SUFFIXES: ReadonlyArray<
   readonly [pattern: RegExp, weight: number]
@@ -177,13 +172,10 @@ export function resolveOfficePanoseFontWeight(panose?: string) {
   return PANOSE_WEIGHT_TO_CSS[weightCode];
 }
 
-/** 在格式未保存字体字重元数据时，从字体名称和已知字体档案推断基础字重。 */
+/** 在格式未保存字体字重元数据时，从字体名称的显式后缀推断基础字重。 */
 export function inferOfficeFontBaseWeight(fontFamily?: string) {
   const sourceFamily = splitFontFamilies(fontFamily)[0];
   if (!sourceFamily) return undefined;
-  const normalized = sourceFamily.toLocaleLowerCase();
-  const hintedWeight = OFFICE_FONT_BASE_WEIGHT_HINTS[normalized];
-  if (hintedWeight !== undefined) return hintedWeight;
   return OFFICE_FONT_WEIGHT_SUFFIXES.find(([pattern]) =>
     pattern.test(sourceFamily),
   )?.[1];
@@ -193,8 +185,13 @@ export function inferOfficeFontBaseWeight(fontFamily?: string) {
 export function resolveOfficeCssFontWeight(
   baseWeight: number | undefined,
   bold: boolean | undefined,
+  fontFamily?: string,
 ) {
-  if (baseWeight === undefined) return bold ? 700 : 400;
-  if (!bold) return baseWeight;
-  return Math.min(900, baseWeight + (baseWeight <= 400 ? 300 : 200));
+  const namedWeight = inferOfficeFontBaseWeight(fontFamily);
+  // 一些 Office 生成器把字体族 PANOSE 的 Thin/ExtraLight 写入普通文本；没有对应名称后缀时按常规字重渲染。
+  const resolvedBaseWeight =
+    namedWeight ??
+    (baseWeight !== undefined && baseWeight >= 300 ? baseWeight : 400);
+  if (!bold) return resolvedBaseWeight;
+  return Math.max(700, resolvedBaseWeight);
 }

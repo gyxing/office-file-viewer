@@ -145,16 +145,19 @@ export function buildCartesianChartOption(
         },
       },
       showSymbol: hideSymbol
-        ? false
+        ? labelConfig.show
         : markerSymbol
         ? true
         : isLineSeries ||
           item.type === 'area' ||
           isBubbleSeries ||
           seriesType === 'scatter',
-      symbol: markerSymbol,
+      // ECharts 的折线标签依附数据点符号；源文件隐藏标记但保留标签时使用零尺寸锚点。
+      symbol: hideSymbol && labelConfig.show ? 'circle' : markerSymbol,
       symbolSize:
-        isBubbleSeries && item.bubbleSizes?.length
+        hideSymbol && labelConfig.show
+          ? 0
+          : isBubbleSeries && item.bubbleSizes?.length
           ? (
               _value: unknown,
               parameters: {
@@ -178,8 +181,7 @@ export function buildCartesianChartOption(
           ? `${-item.overlap}%`
           : undefined,
       barCategoryGap,
-      barMaxWidth:
-        isBarSeries && item.gapWidth === undefined ? 32 : undefined,
+      barMaxWidth: isBarSeries && item.gapWidth === undefined ? 32 : undefined,
     };
   }) as EChartsOption['series'];
 

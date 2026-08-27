@@ -46,6 +46,8 @@ export type DocxPageContent = {
   page: DocxPage;
   /** 是否保留源文档已定义的整页画布，避免测量分页再次拆开。 */
   preservePhysicalPage?: boolean;
+  /** 当前源页不是文档首页时，分页测量需抑制首块普通段前距。 */
+  suppressFirstBlockSpacing?: boolean;
   /** 按源文档顺序排列的内容块。 */
   blocks: DocxBlock[];
   /** 当前页面正文实际引用的去重脚注。 */
@@ -86,6 +88,8 @@ export type DocxPage = {
   headerDistance?: number;
   /** 页脚到页面底部的距离，单位为标准化渲染像素。 */
   footerDistance?: number;
+  /** 页面明确启用的行网格高度，分页容量需按完整网格行向下对齐。 */
+  gridLineHeight?: number;
   /** 上边框的 CSS 样式。 */
   borderTop?: string;
   /** 右边框的 CSS 样式。 */
@@ -178,6 +182,10 @@ export type DocxParagraphBlock = {
   align?: 'left' | 'center' | 'right' | 'justify';
   /** 行高，单位为标准化渲染像素。 */
   lineHeight?: number;
+  /** 行高是否由未声明行距的标题兼容规则推导，供连续标题恢复自然行盒。 */
+  inferredHeadingLineHeight?: boolean;
+  /** 纯行内对象段落按文档网格向上吸附后的最小高度。 */
+  minimumHeight?: number;
   /** 当前内容使用的渲染样式。 */
   style?: DocxTextStyle;
   /** 段后间距，单位为标准化渲染像素。 */
@@ -299,6 +307,8 @@ export type DocxTableCell = {
   blocks: DocxBlock[];
   /** 表格单元格横向跨越的列数。 */
   colSpan?: number;
+  /** 单元格在源表格网格中的零基起始列。 */
+  columnIndex?: number;
   /** 表格单元格纵向跨越的行数。 */
   rowSpan?: number;
   /** 宽度，单位为标准化渲染像素。 */

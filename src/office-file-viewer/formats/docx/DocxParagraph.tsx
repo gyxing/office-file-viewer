@@ -149,9 +149,9 @@ function DocxParagraphComponent({
   const paragraphStyle = useMemo<CSSProperties>(() => {
     // Word 会保留浮动对象所在的锚点行；若压成 0 高度，后续按段落定位的对象会发生累计偏移。
 
-    const baseMinHeight = hasFlowContent
-      ? undefined
-      : getDocxEmptyParagraphHeight(block);
+    const baseMinHeight =
+      block.minimumHeight ??
+      (hasFlowContent ? undefined : getDocxEmptyParagraphHeight(block));
     return {
       ...positionStyle,
       display: block.revisionHidden ? 'none' : undefined,

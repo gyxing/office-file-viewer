@@ -187,3 +187,41 @@ export function measureVisibleDocxBlockHeight(
   }
   return element.offsetHeight + Number.parseFloat(style.marginBottom || '0');
 }
+
+/** 按页面网格修正纯行内对象段落，并把同一高度写回最终渲染模型。 */
+export function alignDocxInlineObjectParagraphToGrid(
+  element: HTMLElement,
+  block: DocxParagraphBlock,
+  measuredHeight: number,
+  gridLineHeight: number | undefined,
+) {
+  if (!gridLineHeight || gridLineHeight <= 0 || element.offsetHeight <= 0) {
+    return { block, height: measuredHeight };
+  }
+  const containsVisibleNonDrawingInline = block.inlines.some((inline) => {
+    if (inline.type === 'text') return Boolean(inline.text.trim());
+    return (
+      inline.type === 'tab' ||
+      inline.type === 'break' ||
+      inline.type === 'note-reference'
+    );
+  });
+  const containsFlowDrawing = block.inlines.some((inline) => {
+    if (inline.type === 'image') return !inline.image.position;
+    if (inline.type === 'shape') return !inline.shape.position;
+    if (inline.type === 'chart') return !inline.chart.position;
+    return false;
+  });
+  if (containsVisibleNonDrawingInline || !containsFlowDrawing) {
+    return { block, height: measuredHeight };
+  }
+  const renderedHeight = element.getBoundingClientRect().height;
+  const alignedHeight =
+    Math.ceil(renderedHeight / gridLineHeight - 0.0001) * gridLineHeight;
+  const delta = alignedHeight - renderedHeight;
+  if (delta <= 0.5) return { block, height: measuredHeight };
+  return {
+    block: { ...block, minimumHeight: alignedHeight },
+    height: measuredHeight + delta,
+  };
+}
