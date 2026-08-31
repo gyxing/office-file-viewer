@@ -210,6 +210,7 @@ function XlsxSourceViewer({
           loading={state.loading}
           error={state.error}
           retry={state.retry}
+          sheetName={descriptor.name}
         >
           {state.activeSheet?.kind === 'chart' ? (
             <XlsxChartSheet sheet={state.activeSheet} zoom={zoom} />
@@ -225,6 +226,7 @@ function XlsxSourceViewer({
               source={source}
               sheetId={descriptor.id}
               layout={source.getSheetLayout(descriptor.id)}
+              sheetName={descriptor.name}
               gridMode={state.profile.gridMode}
               zoom={zoom}
               viewMode={viewMode}

@@ -46,11 +46,19 @@ export const zhCN: OfficeFileViewerMessages = {
   error: { previewFailed: '预览失败' },
   lazyContent: {
     loading: '正在加载内容',
+    pageLoading: (page) => `正在加载第 ${page} 页`,
+    slideLoading: (slide) => `正在加载第 ${slide} 张幻灯片`,
+    sheetLoading: (sheet) => `正在加载工作表：${sheet}`,
     retry: '重试',
     pageLoadFailed: '页面加载失败',
     slideLoadFailed: '幻灯片加载失败',
     sheetLoadFailed: '工作表加载失败',
     resourceLoadFailed: '文档资源加载失败',
+  },
+  viewport: {
+    horizontalOverflow: '当前内容超出视口，可横向滚动查看完整内容',
+    verticalOverflow: '当前内容超出视口，可纵向滚动查看完整内容',
+    bothOverflow: '当前内容超出视口，可横向或纵向滚动查看完整内容',
   },
   progress: {
     stages: {

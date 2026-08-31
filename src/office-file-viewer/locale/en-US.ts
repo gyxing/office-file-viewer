@@ -46,11 +46,22 @@ export const enUS: OfficeFileViewerMessages = {
   error: { previewFailed: 'Preview failed' },
   lazyContent: {
     loading: 'Loading content',
+    pageLoading: (page) => `Loading page ${page}`,
+    slideLoading: (slide) => `Loading slide ${slide}`,
+    sheetLoading: (sheet) => `Loading sheet: ${sheet}`,
     retry: 'Retry',
     pageLoadFailed: 'Failed to load page',
     slideLoadFailed: 'Failed to load slide',
     sheetLoadFailed: 'Failed to load sheet',
     resourceLoadFailed: 'Failed to load document resource',
+  },
+  viewport: {
+    horizontalOverflow:
+      'Content exceeds the viewport; scroll horizontally to see all content',
+    verticalOverflow:
+      'Content exceeds the viewport; scroll vertically to see all content',
+    bothOverflow:
+      'Content exceeds the viewport; scroll horizontally or vertically to see all content',
   },
   progress: {
     stages: {

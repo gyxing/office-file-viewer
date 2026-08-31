@@ -7,6 +7,8 @@ import { OfficeSpinner } from '../../shared/ui/OfficeSpinner';
 type SpreadsheetGridPlaceholderProps = {
   /** 当前是否仍在加载。 */
   loading?: boolean;
+  /** 当前工作表名称，用于生成上下文加载提示。 */
+  sheetName?: string;
   /** 当前范围读取错误。 */
   error?: Error;
   /** 重试当前 Sheet 或范围。 */
@@ -16,16 +18,20 @@ type SpreadsheetGridPlaceholderProps = {
 /** 渲染工作表或虚拟范围的本地 loading/error 状态。 */
 function SpreadsheetGridPlaceholderComponent({
   loading,
+  sheetName,
   error,
   onRetry,
 }: SpreadsheetGridPlaceholderProps) {
   const messages = useOfficeFileViewerMessages();
+  const loadingLabel = sheetName
+    ? messages.lazyContent.sheetLoading(sheetName)
+    : messages.lazyContent.loading;
   return (
     <div className="office-file-xlsx-grid-placeholder">
       {loading ? (
         <>
-          <OfficeSpinner label={messages.lazyContent.loading} />
-          <span>{messages.lazyContent.loading}</span>
+          <OfficeSpinner label={loadingLabel} />
+          <span>{loadingLabel}</span>
         </>
       ) : (
         <>

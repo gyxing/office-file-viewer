@@ -414,6 +414,7 @@ export function VirtualWordPageList<TPage>({
             ) : (
               <WordPagePlaceholder
                 status={state?.status === 'error' ? 'error' : 'loading'}
+                pageNumber={meta.index + 1}
                 minHeight={Math.max(120, estimatedHeight - trailingGap)}
                 onRetry={
                   state?.status === 'error'

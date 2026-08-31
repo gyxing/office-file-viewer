@@ -203,6 +203,7 @@ function XlsxSheetGridComponent({
       className="office-file-xlsx-sheet-grid"
       data-office-spreadsheet-sheet-id={sheet.id}
       data-office-fit-viewport="true"
+      data-office-overflow-viewport="true"
     >
       <div
         className="office-file-xlsx-sheet-grid__canvas"

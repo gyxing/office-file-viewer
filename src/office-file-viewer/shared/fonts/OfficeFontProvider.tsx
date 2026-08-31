@@ -5,17 +5,22 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import type { DocxEmbeddedFontSession } from '../../services/docx/loadDocxEmbeddedFonts';
 import {
-  resolveOfficeFont,
-  resolveOfficeFontFamily,
-} from '../../services/fonts/OfficeFontResolver';
-import {
   createOfficeFontDiagnostics,
   type OfficeFontSet,
 } from '../../services/fonts/fontDiagnostics';
+import {
+  createOfficeFontSourceSession,
+  getOfficeFontSourcesKey,
+} from '../../services/fonts/loadOfficeFontSources';
+import {
+  resolveOfficeFont,
+  resolveOfficeFontFamily,
+} from '../../services/fonts/OfficeFontResolver';
 import type {
   OfficeFileViewerFontOptions,
   OfficeFontFamilyResolver,
@@ -30,6 +35,9 @@ const OfficeFontResolverContext = createContext<OfficeFontFamilyResolver>(
 
 /** 非 DOCX 或不支持内嵌字体的环境无需等待额外字体资源。 */
 const OfficeEmbeddedFontsReadyContext = createContext(true);
+
+/** DOCX 分页测量需要等待全部已声明字体资源，避免回退字体改变分页结果。 */
+const OfficeFontsReadyContext = createContext(true);
 
 /** 隔离相邻文档会话的字体加载状态，避免新文档复用旧会话的就绪值。 */
 type OfficeEmbeddedFontLoadState = {
@@ -86,6 +94,23 @@ export function OfficeFontProvider({
   const shouldLoadEmbeddedFonts = previewKind === 'docx' && Boolean(file);
   const [embeddedFontState, setEmbeddedFontState] =
     useState<OfficeEmbeddedFontLoadState>({ ready: true });
+  const [fontSourceRevision, setFontSourceRevision] = useState(0);
+  const fontSources = options?.sources;
+  const fontSourcesRef = useRef(fontSources);
+  fontSourcesRef.current = fontSources;
+  const fontSourcesKey = useMemo(
+    () => getOfficeFontSourcesKey(fontSources),
+    [fontSources],
+  );
+  const [fontSourceState, setFontSourceState] = useState(() => ({
+    key: fontSourcesKey,
+    ready: !fontSources?.length,
+  }));
+  const fontSourcesReady =
+    !fontSources?.length ||
+    (fontSourceState.key === fontSourcesKey && fontSourceState.ready);
+  const onWarningRef = useRef(onWarning);
+  onWarningRef.current = onWarning;
 
   useEffect(() => {
     if (!shouldLoadEmbeddedFonts || !file) {
@@ -135,6 +160,57 @@ export function OfficeFontProvider({
     };
   }, [containerRef, file, previewKind, sessionKey, shouldLoadEmbeddedFonts]);
 
+  useEffect(() => {
+    const sources = fontSourcesRef.current;
+    if (!sources?.length) {
+      setFontSourceState({ key: fontSourcesKey, ready: true });
+      return undefined;
+    }
+    const ownerDocument =
+      containerRef.current?.ownerDocument ??
+      (typeof document === 'undefined' ? undefined : document);
+    if (!ownerDocument) {
+      setFontSourceState({ key: fontSourcesKey, ready: true });
+      return undefined;
+    }
+    const session = createOfficeFontSourceSession(sources, ownerDocument);
+    let cancelled = false;
+    setFontSourceState({ key: fontSourcesKey, ready: false });
+    void session.ready.then((result) => {
+      if (cancelled) return;
+      setFontSourceState({ key: fontSourcesKey, ready: true });
+      if (result.loaded) setFontSourceRevision((revision) => revision + 1);
+      const reportWarning = onWarningRef.current;
+      if (!result.failures.length || !reportWarning || !file || !previewKind) {
+        return;
+      }
+      result.failures.forEach(({ source }) => {
+        try {
+          reportWarning(
+            {
+              code: 'FONT_SOURCE_LOAD_FAILED',
+              message: `字体资源“${source.family}”加载失败，已继续使用回退字体链。`,
+              previewKind,
+              source: 'font',
+              requestedFamily: source.family,
+              candidates: [source.family],
+            },
+            file,
+          );
+        } catch (observerError) {
+          // 宿主观察回调异常不应反向中断预览渲染。
+          setTimeout(() => {
+            throw observerError;
+          }, 0);
+        }
+      });
+    });
+    return () => {
+      cancelled = true;
+      session.dispose();
+    };
+  }, [containerRef, file, fontSourcesKey, previewKind, sessionKey]);
+
   const embeddedFontsReady =
     !shouldLoadEmbeddedFonts ||
     (embeddedFontState.file === file &&
@@ -143,6 +219,7 @@ export function OfficeFontProvider({
   const embeddedFontAliases = embeddedFontsReady
     ? embeddedFontState.aliases
     : undefined;
+  const fontsReady = embeddedFontsReady && fontSourcesReady;
   const diagnostics = useMemo(() => {
     if (!file || !previewKind) return undefined;
     return createOfficeFontDiagnostics({
@@ -173,11 +250,12 @@ export function OfficeFontProvider({
   ]);
   useEffect(() => () => diagnostics?.dispose(), [diagnostics]);
   useEffect(() => {
-    if (!ready || !embeddedFontsReady || !diagnostics) return undefined;
+    if (!ready || !embeddedFontsReady || !fontSourcesReady || !diagnostics)
+      return undefined;
     // 激活后由诊断器合并当前字体及异步内容后续登记的字体，避免逐节点同步检查。
     diagnostics.activate();
     return undefined;
-  }, [diagnostics, embeddedFontsReady, ready]);
+  }, [diagnostics, embeddedFontsReady, fontSourcesReady, ready]);
 
   const resolutionCache = useMemo(
     () => new Map<string, ReturnType<typeof resolveOfficeFont>>(),
@@ -193,9 +271,7 @@ export function OfficeFontProvider({
         resolutionCache.set(cacheKey, resolution);
       }
       const embeddedFamily = resolution.requestedFamily
-        ? embeddedFontAliases?.[
-            resolution.requestedFamily.toLocaleLowerCase()
-          ]
+        ? embeddedFontAliases?.[resolution.requestedFamily.toLocaleLowerCase()]
         : undefined;
       if (!embeddedFamily) diagnostics?.register(resolution);
       return [
@@ -205,14 +281,22 @@ export function OfficeFontProvider({
         .filter(Boolean)
         .join(', ');
     },
-    [diagnostics, embeddedFontAliases, options, resolutionCache],
+    [
+      diagnostics,
+      embeddedFontAliases,
+      fontSourceRevision,
+      options,
+      resolutionCache,
+    ],
   );
 
   return (
     <OfficeFontResolverContext.Provider value={resolveFontFamily}>
-      <OfficeEmbeddedFontsReadyContext.Provider value={embeddedFontsReady}>
-        {children}
-      </OfficeEmbeddedFontsReadyContext.Provider>
+      <OfficeFontsReadyContext.Provider value={fontsReady}>
+        <OfficeEmbeddedFontsReadyContext.Provider value={embeddedFontsReady}>
+          {children}
+        </OfficeEmbeddedFontsReadyContext.Provider>
+      </OfficeFontsReadyContext.Provider>
     </OfficeFontResolverContext.Provider>
   );
 }
@@ -225,4 +309,9 @@ export function useOfficeFontResolver() {
 /** 判断当前文档内嵌字体是否已经完成注册，供分页测量避开回退字体。 */
 export function useOfficeEmbeddedFontsReady() {
   return useContext(OfficeEmbeddedFontsReadyContext);
+}
+
+/** 判断当前文档全部字体资源是否已经完成注册，供布局测量避免字体切换跳动。 */
+export function useOfficeFontsReady() {
+  return useContext(OfficeFontsReadyContext);
 }

@@ -72,6 +72,8 @@ type VirtualSpreadsheetGridProps = {
   sheetId: string;
   /** 当前内容使用的布局信息。 */
   layout: SpreadsheetSheetLayout;
+  /** 当前工作表名称，用于生成上下文加载提示。 */
+  sheetName?: string;
   /** 当前工作表使用的网格渲染模式。 */
   gridMode: SpreadsheetPerformanceProfile['gridMode'];
   /** 当前预览缩放比例，100 表示原始大小。 */
@@ -303,6 +305,7 @@ function VirtualSpreadsheetGridComponent({
   source,
   sheetId,
   layout,
+  sheetName,
   gridMode,
   zoom,
   viewMode,
@@ -581,6 +584,7 @@ function VirtualSpreadsheetGridComponent({
       className="office-file-xlsx-sheet-grid office-file-xlsx-virtual-grid"
       data-office-spreadsheet-sheet-id={sheetId}
       data-office-fit-viewport="true"
+      data-office-overflow-viewport="true"
     >
       <div
         className="office-file-xlsx-sheet-grid__canvas office-file-xlsx-virtual-grid__canvas"
@@ -712,6 +716,7 @@ function VirtualSpreadsheetGridComponent({
       {!data ? (
         <SpreadsheetGridPlaceholder
           loading={!error}
+          sheetName={sheetName}
           error={error}
           onRetry={() => setRetryRevision((value) => value + 1)}
         />

@@ -60,12 +60,14 @@ function PptxSlideViewportComponent({
       ref={viewportRef}
       className="office-file-pptx-viewer__viewport"
       data-office-fit-viewport="true"
+      data-office-overflow-viewport="true"
     >
       <div className="office-file-pptx-viewer__slide-wrap">
         {error ? (
           <PresentationSlideState
             width={width}
             height={height}
+            slideNumber={activeIndex + 1}
             error={error}
             onRetry={onRetry}
           />
@@ -82,6 +84,7 @@ function PptxSlideViewportComponent({
                 <PresentationSlideState
                   width={width}
                   height={height}
+                  slideNumber={activeIndex + 1}
                   onRetry={onRetry}
                 />
               ) : null

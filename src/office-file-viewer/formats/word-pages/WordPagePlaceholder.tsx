@@ -5,6 +5,8 @@ import { useOfficeFileViewerMessages } from '../../locale';
 type WordPagePlaceholderProps = {
   /** 当前加载或解析状态。 */
   status: 'loading' | 'error';
+  /** 当前占位页面的显示序号。 */
+  pageNumber?: number;
   /** 最小高度，单位为标准化渲染像素。 */
   minHeight: number;
   /** 在用户请求重试当前内容时触发。 */
@@ -14,6 +16,7 @@ type WordPagePlaceholderProps = {
 /** 显示按需页面的本地化加载或失败状态。 */
 export function WordPagePlaceholder({
   status,
+  pageNumber,
   minHeight,
   onRetry,
 }: WordPagePlaceholderProps) {
@@ -28,7 +31,9 @@ export function WordPagePlaceholder({
       <span>
         {status === 'error'
           ? messages.lazyContent.pageLoadFailed
-          : messages.lazyContent.loading}
+          : pageNumber === undefined
+          ? messages.lazyContent.loading
+          : messages.lazyContent.pageLoading(pageNumber)}
       </span>
       {status === 'error' && onRetry ? (
         <button
