@@ -33,7 +33,7 @@ import { createMaterializedWordPageSource } from '../../services/word/createMate
 import { createMemoryWordOutlineProvider } from '../../services/word/createMemoryWordOutlineProvider';
 import { collectDocxSearchBlocks } from '../../services/word/WordSearchProvider';
 import { useOfficeAnnotationSourceRegistration } from '../../shared/annotations';
-import { useOfficeEmbeddedFontsReady } from '../../shared/fonts/OfficeFontProvider';
+import { useOfficeFontsReady } from '../../shared/fonts/OfficeFontProvider';
 import { OfficeImagePreviewContext } from '../../shared/image-preview/OfficeImagePreviewContext';
 import { useExternalStoreSnapshot } from '../../shared/react/useExternalStoreSnapshot';
 import { OfficeSpinner } from '../../shared/ui/OfficeSpinner';
@@ -233,7 +233,7 @@ function DocxViewerComponent({
   onOpenSearch,
 }: DocxViewerProps) {
   const messages = useOfficeFileViewerMessages();
-  const embeddedFontsReady = useOfficeEmbeddedFontsReady();
+  const fontsReady = useOfficeFontsReady();
   const document =
     preview.mode === 'materialized' ? preview.model.document : undefined;
   const source = preview.mode === 'source' ? preview.source : undefined;
@@ -320,7 +320,7 @@ function DocxViewerComponent({
   const { measureRef, pages: materializedPages } = useMeasuredDocxPages(
     materializedSourcePages,
     reportPaginationDuration,
-    embeddedFontsReady,
+    fontsReady,
   );
   const materializedPageSource = useMemo(
     () =>
@@ -585,7 +585,7 @@ function DocxViewerComponent({
   ) {
     return <OfficePreviewEmpty kind="docx" />;
   }
-  if (!embeddedFontsReady) {
+  if (!fontsReady) {
     return (
       <div className="office-file-docx-viewer office-file-docx-viewer--font-loading">
         <OfficeSpinner size="large" label={messages.loading.parsing} />
@@ -656,6 +656,8 @@ function DocxViewerComponent({
                 ref={scrollContainerRef}
                 className="office-file-docx-viewer__scroller"
                 data-office-fit-viewport="true"
+                data-office-overflow-viewport="true"
+                data-office-overflow-vertical="false"
               >
                 {profile.pageMode === 'windowed' ? (
                   <VirtualWordPageList

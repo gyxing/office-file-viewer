@@ -76,6 +76,12 @@ export type OfficeFileViewerMessages = {
   lazyContent: {
     /** 加载状态相关文案。 */
     loading: string;
+    /** 生成指定页面的加载文案。 */
+    pageLoading: (page: number) => string;
+    /** 生成指定幻灯片的加载文案。 */
+    slideLoading: (slide: number) => string;
+    /** 生成指定工作表的加载文案。 */
+    sheetLoading: (sheet: string) => string;
     /** 重新加载按钮文案。 */
     retry: string;
     /** 页面加载失败时显示的文案。 */
@@ -86,6 +92,15 @@ export type OfficeFileViewerMessages = {
     sheetLoadFailed: string;
     /** 媒体资源加载失败时显示的文案。 */
     resourceLoadFailed: string;
+  };
+  /** 内容超出当前视口时的非阻塞提示文案。 */
+  viewport: {
+    /** 内容横向超出视口时显示的说明。 */
+    horizontalOverflow: string;
+    /** 内容纵向超出视口时显示的说明。 */
+    verticalOverflow: string;
+    /** 内容同时横向和纵向超出视口时显示的说明。 */
+    bothOverflow: string;
   };
   /** 文件解析进度相关文案。 */
   progress: {

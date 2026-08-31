@@ -37,7 +37,7 @@ function PptxThumbnailPlaceholderComponent({
         <span>
           {failed
             ? messages.lazyContent.slideLoadFailed
-            : messages.lazyContent.loading}
+            : messages.lazyContent.slideLoading(descriptor.index)}
         </span>
         {failed ? (
           <span className="office-file-pptx-thumbnail__retry">

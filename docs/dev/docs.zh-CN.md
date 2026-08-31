@@ -179,7 +179,7 @@ type OfficeFileViewerUri = File | string | OfficeFileViewerUriLoader;
 | `onFileParsed`                   | `(parsed: ParsedOfficeFile, file: File) => void`      | -          | 完整实体化解析结果可用时触发一次             |
 | `onPreviewReady`                 | `(info: OfficePreviewReadyInfo, file: File) => void`  | -          | 首个可用预览就绪时触发一次                   |
 | `onError`                        | `(error: OfficeFileViewerError, file?: File) => void` | -          | 加载、解析或预览器操作失败时触发             |
-| `onWarning`                      | `(warning, file) => void`                             | -          | 非致命解析降级、部分预览或字体回退警告       |
+| `onWarning`                      | `(warning, file) => void`                             | -          | 非致命解析降级、部分预览或字体运行时警告     |
 | `parseOptions`                   | `OfficeParseOptions`                                  | `{}`       | Worker 策略与可选资源限制                    |
 | `imagePreview`                   | `boolean \| OfficeFileViewerImagePreviewOptions`      | `true`     | 内容图片预览、下载与右键菜单配置             |
 | `hyperlink`                      | `boolean`                                             | `true`     | 是否启用源文档明确声明的超链接               |
@@ -187,7 +187,7 @@ type OfficeFileViewerUri = File | string | OfficeFileViewerUriLoader;
 | `review`                         | `false \| OfficeFileViewerReviewOptions`              | `{}`       | 批注、修订、脚注和尾注的只读审阅配置         |
 | `presentationMedia`              | `false \| OfficeFileViewerPresentationMediaOptions`   | `{}`       | 演示文稿音视频、外部媒体与下载配置           |
 | `transitions`                    | `false \| 'source'`                                   | `false`    | 是否按源文稿播放支持的页级切换               |
-| `fontOptions`                    | `OfficeFileViewerFontOptions`                         | `{}`       | 字体别名、回退字体和缺失字体诊断             |
+| `fontOptions`                    | `OfficeFileViewerFontOptions`                         | `{}`       | 字体别名、回退字体、字体资源和缺失字体诊断   |
 | `onHyperlinkActivate`            | `(event: OfficeHyperlinkActivateEvent) => void`       | -          | 链接有效激活时触发，可阻止默认导航           |
 | `onParseProgress`                | `(progress: ParseProgress) => void`                   | -          | 解析阶段或完成度变化时触发                   |
 
@@ -440,6 +440,13 @@ type OfficeFileViewerPresentationTransitions = false | 'source';
       'Source Office Font': ['Available Corporate Font', 'Arial'],
     },
     fallbackFamilies: ['Noto Sans CJK SC', 'sans-serif'],
+    sources: [
+      {
+        family: 'Available Corporate Font',
+        src: '/fonts/corporate.woff2',
+        weight: 400,
+      },
+    ],
     warnOnMissing: true,
   }}
   onWarning={(warning) => {
@@ -450,7 +457,13 @@ type OfficeFileViewerPresentationTransitions = false | 'source';
 />
 ```
 
-`aliases` 会覆盖同名的内置别名，比较字体名时不区分大小写；`fallbackFamilies` 追加到全部字体链。`warnOnMissing` 默认为 `true`，但只有同时提供 `onWarning` 且浏览器支持 Font Loading API 时才进行诊断。诊断在首屏就绪后批量执行，同一文档会话内每种缺失字体只报告一次，警告代码固定为 `FONT_FALLBACK_APPLIED`。缺失字体只触发回退警告，不会阻止预览。
+`aliases` 会覆盖同名的内置别名，比较字体名时不区分大小写；`fallbackFamilies` 追加到全部字体链。`sources` 是可选的宿主字体资源列表，`src` 可以是 URL、`url(...)`/`local(...)` CSS source 或 `Blob`，组件不会把字体打包进发布产物；加载失败会继续使用回退链，并通过 `onWarning` 报告 `FONT_SOURCE_LOAD_FAILED`。字体资源只在当前文档会话中注册，切换或卸载时自动清理。
+
+URL 字体仍受浏览器的 CORS、CSP 和资源认证策略约束；需要跨域时请由宿主服务器正确返回许可响应头。
+
+`warnOnMissing` 默认为 `true`，但只有同时提供 `onWarning` 且浏览器支持 Font Loading API 时才进行诊断。诊断在首屏就绪及宿主字体资源加载完成后批量执行，同一文档会话内每种缺失字体只报告一次，警告代码固定为 `FONT_FALLBACK_APPLIED`。缺失字体只触发回退警告，不会阻止预览。
+
+分页、工作表和幻灯片的按需内容加载会显示具体页码、工作表名称或幻灯片序号。固定百分比缩放下，如果真实画布尺寸超过内容视口，会显示一次可滚动方向提示；用户首次滚动后提示自动隐藏。适应宽度/适应页面模式不显示该提示。
 
 ### 统一视图状态
 

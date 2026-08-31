@@ -457,6 +457,8 @@ function DocViewerComponent({
               ref={scrollContainerRef}
               className="office-file-doc-viewer__scroller"
               data-office-fit-viewport="true"
+              data-office-overflow-viewport="true"
+              data-office-overflow-vertical="false"
             >
               {profile.pageMode === 'windowed' ? (
                 <VirtualWordPageList

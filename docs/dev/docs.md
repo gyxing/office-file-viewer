@@ -179,7 +179,7 @@ Remote source rules:
 | `onFileParsed`                   | `(parsed: ParsedOfficeFile, file: File) => void`      | -                 | Called once when the complete materialized result is available   |
 | `onPreviewReady`                 | `(info: OfficePreviewReadyInfo, file: File) => void`  | -                 | Called once when the first usable preview is ready               |
 | `onError`                        | `(error: OfficeFileViewerError, file?: File) => void` | -                 | Called when loading, parsing, or a viewer operation fails        |
-| `onWarning`                      | `(warning, file) => void`                             | -                 | Called for non-fatal parse, partial-preview, or font warnings    |
+| `onWarning`                      | `(warning, file) => void`                             | -                 | Called for non-fatal parse, partial-preview, or font-runtime warnings |
 | `parseOptions`                   | `OfficeParseOptions`                                  | `{}`              | Worker strategy and optional resource limits                     |
 | `imagePreview`                   | `boolean \| OfficeFileViewerImagePreviewOptions`      | `true`            | Content-image preview, download, and context-menu configuration  |
 | `hyperlink`                      | `boolean`                                             | `true`            | Enables hyperlinks explicitly declared by the source document    |
@@ -187,7 +187,7 @@ Remote source rules:
 | `review`                         | `false \| OfficeFileViewerReviewOptions`              | `{}`              | Read-only comments, revisions, footnotes, and endnotes           |
 | `presentationMedia`              | `false \| OfficeFileViewerPresentationMediaOptions`   | `{}`              | Presentation media, external-source, and download policy         |
 | `transitions`                    | `false \| 'source'`                                   | `false`           | Play supported source slide transitions                          |
-| `fontOptions`                    | `OfficeFileViewerFontOptions`                         | `{}`              | Font aliases, fallback families, and missing-font diagnostics    |
+| `fontOptions`                    | `OfficeFileViewerFontOptions`                         | `{}`              | Font aliases, fallback families, font sources, and diagnostics   |
 | `onHyperlinkActivate`            | `(event: OfficeHyperlinkActivateEvent) => void`       | -                 | Called on valid activation and can prevent default navigation    |
 | `onParseProgress`                | `(progress: ParseProgress) => void`                   | -                 | Called when the current parse stage or progress changes          |
 
@@ -440,6 +440,13 @@ The package does not bundle or download Office fonts. Rendering keeps the source
       'Source Office Font': ['Available Corporate Font', 'Arial'],
     },
     fallbackFamilies: ['Noto Sans CJK SC', 'sans-serif'],
+    sources: [
+      {
+        family: 'Available Corporate Font',
+        src: '/fonts/corporate.woff2',
+        weight: 400,
+      },
+    ],
     warnOnMissing: true,
   }}
   onWarning={(warning) => {
@@ -450,7 +457,13 @@ The package does not bundle or download Office fonts. Rendering keeps the source
 />
 ```
 
-`aliases` override case-insensitively matching built-in aliases, and `fallbackFamilies` are appended to every font chain. `warnOnMissing` defaults to `true`, but diagnostics run only when `onWarning` is supplied and the browser supports the Font Loading API. Checks are batched after the first usable preview, and each missing family is reported once per document session with the stable code `FONT_FALLBACK_APPLIED`. Missing fonts fall back without blocking preview.
+`aliases` override case-insensitively matching built-in aliases, and `fallbackFamilies` are appended to every font chain. `sources` is an optional host-owned font list. `src` accepts a URL, a `url(...)`/`local(...)` CSS source, or a `Blob`; fonts are never bundled into the package. Failed sources keep the fallback chain active and are reported through `onWarning` with `FONT_SOURCE_LOAD_FAILED`. Sources are registered only for the current document session and are cleaned up when it changes or unmounts.
+
+URL-based fonts still follow the browser's CORS, CSP, and authentication rules; configure the required response headers on the host server for cross-origin resources.
+
+`warnOnMissing` defaults to `true`, but diagnostics run only when `onWarning` is supplied and the browser supports the Font Loading API. Checks are batched after the first usable preview and host font sources finish loading; each missing family is reported once per document session with the stable code `FONT_FALLBACK_APPLIED`. Missing fonts fall back without blocking preview.
+
+On-demand page, sheet, and slide placeholders include the page number, sheet name, or slide number. With fixed percentage zoom, a non-blocking hint appears only when the measured canvas really exceeds its viewport, identifies the available scroll direction, and disappears after the first user scroll. Fit-width and fit-page modes do not show this hint.
 
 ### Unified view state
 

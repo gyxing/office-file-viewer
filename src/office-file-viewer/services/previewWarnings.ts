@@ -37,10 +37,27 @@ export type OfficeFontFallbackWarning = {
   candidates: readonly string[];
 };
 
+/** 宿主声明的字体资源加载失败时产生的结构化警告。 */
+export type OfficeFontSourceLoadWarning = {
+  /** 供宿主稳定识别字体资源加载失败。 */
+  code: 'FONT_SOURCE_LOAD_FAILED';
+  /** 面向日志或界面展示的警告说明。 */
+  message: string;
+  /** 产生警告的文件格式。 */
+  previewKind: PreviewKind;
+  /** 固定标识字体运行时诊断。 */
+  source: 'font';
+  /** 加载失败的字体族名称。 */
+  requestedFamily: string;
+  /** 失败后仍会尝试的字体链。 */
+  candidates: readonly string[];
+};
+
 /** OfficeFileViewer 向宿主报告的非致命问题。 */
 export type OfficeFileViewerWarning =
   | OfficeFileViewerGenericWarning
-  | OfficeFontFallbackWarning;
+  | OfficeFontFallbackWarning
+  | OfficeFontSourceLoadWarning;
 
 /** 根据文件扩展名产生不依赖具体解析路径的只读安全警告。 */
 export function collectOfficeFileWarnings(

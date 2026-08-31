@@ -28,7 +28,7 @@ The package provides a unified viewer for Word documents, Excel spreadsheets, an
 - **Spreadsheet semantics**: Frozen panes, Table/AutoFilter, cell comments, and a common conditional-formatting subset are restored without modifying workbook data.
 - **Presentation media and transitions**: Embedded audio/video is loaded only for the active slide and never autoplayed. External media is blocked by default, and common source transitions are opt-in.
 - **Adaptive Workers**: Every supported extension reuses its parser type in a Worker. The default mode selects a complete model or an on-demand source from the file profile and safely falls back if Worker startup fails.
-- **Font fallback**: Source fonts, aliases, and fallback chains are resolved consistently, with optional structured warnings for fonts missing in the current browser.
+- **Font fallback and host fonts**: Source fonts, aliases, fallback chains, and opt-in host font resources are resolved consistently, with structured warnings when a family or resource is unavailable.
 - **Structured errors**: Input, download, format, encryption, Worker, resource, and parse failures expose stable codes and stages.
 - **Resource management**: The component handles cancellation, subscriptions, Workers, and Blob URLs, with optional host-configured parse limits.
 - **Built-in viewer interface**: Includes scoped controls and styles for file selection, navigation, zoom, and fullscreen.
@@ -92,7 +92,7 @@ Macro-enabled files expose only visible document content. Macros are never loade
 - The viewer is read-only and does not edit, save, convert, print-layout, or export Office files.
 - Remote files remain subject to browser CORS, authentication, and Content Security Policy rules.
 - Internal optimization thresholds never reject large files. Very large or complex files automatically use on-demand reads and virtual rendering, but can still consume significant memory or briefly reduce responsiveness.
-- The package does not bundle Office fonts; final layout depends on fonts available to the browser or fallback fonts configured by the host.
+- The package does not bundle Office fonts; final layout depends on fonts available to the browser or fallback/host font resources configured by the host. URL resources still follow browser CORS/CSP rules.
 - Review, filtering, media, and transition support is read-only. The viewer does not write comments, execute filters, macros, ActiveX, OLE, or object-level animations.
 
 Read the [full performance, security, and rendering boundaries](https://gyxing.github.io/office-file-viewer/docs#limitations).

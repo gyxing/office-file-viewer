@@ -6,6 +6,7 @@ export type { OfficeFileViewerLocale } from './locale';
 export { OfficeFileViewer } from './OfficeFileViewer';
 export type {
   OfficeFileViewerFontOptions,
+  OfficeFileViewerFontSource,
   OfficeFileViewerPresentationMediaOptions,
   OfficeFileViewerPresentationTransitions,
   OfficeFileViewerProps,
@@ -101,6 +102,7 @@ export type {
   OfficeFileViewerWarning,
   OfficeFileViewerWarningSource,
   OfficeFontFallbackWarning,
+  OfficeFontSourceLoadWarning,
 } from './services/previewWarnings';
 export { disposeSpreadsheetWorkbook } from './services/spreadsheet/types';
 export type {

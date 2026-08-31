@@ -8,6 +8,8 @@ type PresentationSlideStateProps = {
   width: number;
   /** 高度，单位为标准化渲染像素。 */
   height: number;
+  /** 当前幻灯片的显示序号。 */
+  slideNumber?: number;
   /** 当前操作产生的错误；未提供表示没有错误。 */
   error?: Error;
   /** 用户请求重新加载时触发的回调。 */
@@ -18,6 +20,7 @@ type PresentationSlideStateProps = {
 function PresentationSlideStateComponent({
   width,
   height,
+  slideNumber,
   error,
   onRetry,
 }: PresentationSlideStateProps) {
@@ -31,7 +34,9 @@ function PresentationSlideStateComponent({
       <span>
         {error
           ? messages.lazyContent.slideLoadFailed
-          : messages.lazyContent.loading}
+          : slideNumber === undefined
+          ? messages.lazyContent.loading
+          : messages.lazyContent.slideLoading(slideNumber)}
       </span>
       {error ? (
         <OfficeButton size="small" onClick={onRetry}>

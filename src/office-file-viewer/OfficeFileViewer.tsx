@@ -58,6 +58,7 @@ import type { OfficeViewerWatermark } from './shared/watermark';
 import { OFFICE_DEFAULT_ZOOM } from './shell/constants';
 import { useOfficeViewerController } from './shell/controller/useOfficeViewerController';
 import { OfficeViewerFrame } from './shell/frame';
+import { OfficeOverflowNotice } from './shell/OverflowNotice';
 import { OfficeParseStatus } from './shell/ParseStatus';
 import {
   OfficePreviewStage,
@@ -74,13 +75,17 @@ import {
   type ZoomControls,
 } from './shell/Toolbar';
 import { useOfficeFitZoom } from './shell/useOfficeFitZoom';
+import { useOfficeOverflowNotice } from './shell/useOfficeOverflowNotice';
 import type {
   OfficeFileViewerViewState,
   OfficeFileViewerViewStateChange,
 } from './shell/viewState';
 
 export type { OfficeFileViewerReviewOptions } from './services/annotations/types';
-export type { OfficeFileViewerFontOptions } from './services/fonts/types';
+export type {
+  OfficeFileViewerFontOptions,
+  OfficeFileViewerFontSource,
+} from './services/fonts/types';
 export type {
   OfficeFileViewerUri,
   OfficeFileViewerUriLoader,
@@ -163,7 +168,7 @@ export type OfficeFileViewerProps = {
   presentationMedia?: false | OfficeFileViewerPresentationMediaOptions;
   /** 是否按源文稿播放支持的页级切换，默认关闭。 */
   transitions?: OfficeFileViewerPresentationTransitions;
-  /** 配置源字体别名、全局回退字体和缺失字体诊断。 */
+  /** 配置源字体别名、回退字体、宿主字体资源和缺失字体诊断。 */
   fontOptions?: OfficeFileViewerFontOptions;
   /** 链接被有效激活时触发，可阻止组件执行默认导航。 */
   onHyperlinkActivate?: (event: OfficeHyperlinkActivateEvent) => void;
@@ -401,6 +406,14 @@ function OfficeFileViewerContent({
     sessionKey: preview?.sessionId,
     activeKey: fitActiveKey,
     onZoom: actions.applyFitZoom,
+  });
+  const overflowAxis = useOfficeOverflowNotice({
+    containerRef: viewerRef,
+    sessionKey: preview?.sessionId,
+    activeKey: fitActiveKey,
+    zoom: view.zoom,
+    zoomMode: view.zoomMode,
+    enabled: meta.hasRenderableContent,
   });
   const zoomControls = useMemo<ZoomControls>(
     () => ({
@@ -640,6 +653,7 @@ function OfficeFileViewerContent({
                           />
                         ) : null}
                       </div>
+                      <OfficeOverflowNotice axis={overflowAxis} />
                       <OfficeParseStatus
                         progress={
                           loading && meta.hasRenderableContent

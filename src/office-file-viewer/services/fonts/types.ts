@@ -3,12 +3,30 @@ export type OfficeFileViewerFontAliases = Readonly<
   Record<string, readonly string[]>
 >;
 
+/** 宿主按需注册的字体资源，资源本身不会被组件打包。 */
+export type OfficeFileViewerFontSource = Readonly<{
+  /** 注册到浏览器字体集合的族名称。 */
+  family: string;
+  /** CSS 字体源地址，或由宿主提供的 Blob 字体数据。 */
+  src: string | Blob;
+  /** CSS 字体字重描述。 */
+  weight?: string | number;
+  /** CSS 字体样式描述。 */
+  style?: string;
+  /** CSS 字体宽度描述。 */
+  stretch?: string;
+  /** 可选的 Unicode 范围描述。 */
+  unicodeRange?: string;
+}>;
+
 /** 字体解析与缺失诊断配置。 */
 export type OfficeFileViewerFontOptions = {
   /** 覆盖内置字体别名的宿主字体映射。 */
   aliases?: OfficeFileViewerFontAliases;
   /** 追加到每条字体链中的全局回退字体。 */
   fallbackFamilies?: readonly string[];
+  /** 在浏览器中按需注册的字体资源，加载失败时继续使用回退链。 */
+  sources?: readonly OfficeFileViewerFontSource[];
   /** 是否通过警告回调报告源字体缺失，默认开启。 */
   warnOnMissing?: boolean;
 };

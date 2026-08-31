@@ -370,6 +370,29 @@
   animation: office-file-parse-indeterminate 1.2s ease-in-out infinite;
 }
 
+.office-file-overflow-notice {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  z-index: 14;
+  box-sizing: border-box;
+  max-width: calc(100% - 32px);
+  padding: 6px 12px;
+  color: var(--office-file-muted-text-color);
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
+  white-space: normal;
+  pointer-events: none;
+  background: var(--office-file-surface-color);
+  border: 1px solid var(--office-file-border-color);
+  border-radius: 999px;
+  box-shadow: 0 3px 12px rgb(15 23 42 / 12%);
+  opacity: 0.96;
+  transform: translate(-50%, 0);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
 @keyframes office-file-parse-indeterminate {
   from {
     transform: translateX(-120%);
@@ -389,6 +412,10 @@
     width: 100%;
     animation: none;
     opacity: 0.55;
+  }
+
+  .office-file-overflow-notice {
+    transition: none;
   }
 }
 
