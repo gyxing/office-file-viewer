@@ -1,11 +1,14 @@
 // ImageRenderer 渲染 PPTX 图片元素，并处理裁剪、旋转和翻转。
 import React, { memo, useMemo } from 'react';
 import type { ImageElement } from '../../../services/pptx/types';
+import { canPreviewPresentationImage } from '../../../services/presentation/imagePreviewPolicy';
 import {
   useOfficeResourceUrl,
   type OfficeResourceSource,
 } from '../../../services/resource-store';
 import { useOfficeHyperlink } from '../../../shared/hyperlink';
+import { useOfficeImagePreviewContext } from '../../../shared/image-preview/OfficeImagePreviewContext';
+import { OfficePreviewableImage } from '../../../shared/image-preview/OfficePreviewableImage';
 
 /** 图片渲染器组件属性。 */
 type ImageRendererProps = {
@@ -17,11 +20,12 @@ type ImageRendererProps = {
 
 /** 渲染图片渲染器。 */
 function ImageRendererComponent({ element, interactive }: ImageRendererProps) {
-  const hyperlinkProps = useOfficeHyperlink<HTMLDivElement>({
+  const hyperlinkProps = useOfficeHyperlink<HTMLImageElement>({
     hyperlink: element.hyperlink,
     source: { type: 'image', id: element.id },
     interactive,
   });
+  const previewContext = useOfficeImagePreviewContext();
   const source = useMemo<OfficeResourceSource>(
     () =>
       typeof element.src === 'string'
@@ -30,6 +34,13 @@ function ImageRendererComponent({ element, interactive }: ImageRendererProps) {
     [element.src],
   );
   const resource = useOfficeResourceUrl(source);
+  const previewable = canPreviewPresentationImage(element);
+  const canPreview = Boolean(
+    interactive &&
+      previewable &&
+      previewContext?.options.enabled &&
+      resource.url,
+  );
   const left = element.crop?.left ?? 0;
   const top = element.crop?.top ?? 0;
   const right = element.crop?.right ?? 0;
@@ -39,7 +50,6 @@ function ImageRendererComponent({ element, interactive }: ImageRendererProps) {
 
   return (
     <div
-      {...hyperlinkProps}
       data-office-presentation-element-id={element.id}
       style={{
         position: 'absolute',
@@ -56,11 +66,23 @@ function ImageRendererComponent({ element, interactive }: ImageRendererProps) {
           .filter(Boolean)
           .join(' '),
         transformOrigin: 'center center',
-        pointerEvents: interactive && element.hyperlink ? 'auto' : 'none',
+        pointerEvents:
+          interactive && (element.hyperlink || canPreview) ? 'auto' : 'none',
       }}
     >
-      <img
+      <OfficePreviewableImage
+        {...hyperlinkProps}
         alt={element.alt ?? ''}
+        className="office-file-pptx-image"
+        previewId={element.id}
+        previewName={element.alt}
+        previewMimeType={
+          typeof element.src === 'string' || element.src.kind === 'url'
+            ? undefined
+            : element.src.mimeType
+        }
+        previewSource={source}
+        previewable={interactive && previewable}
         src={resource.url}
         loading="lazy"
         decoding="async"

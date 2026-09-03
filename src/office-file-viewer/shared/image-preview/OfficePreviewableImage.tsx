@@ -19,6 +19,8 @@ export type OfficePreviewableImageProps = Omit<
   src?: string;
   /** 预览层需要独立持有的原始图片资源。 */
   previewSource: string | OfficeResourceSource;
+  /** 是否允许当前图片使用双击、键盘和右键预览交互。 */
+  previewable?: boolean;
   /** 当前图片在所属文档内的稳定标识。 */
   previewId: string;
   /** 优先用于预览标题和下载文件名的图片名称。 */
@@ -40,6 +42,7 @@ function OfficePreviewableImageComponent({
   previewMimeType,
   previewName,
   previewSource,
+  previewable = true,
   role,
   src,
   tabIndex,
@@ -58,7 +61,9 @@ function OfficePreviewableImageComponent({
     }),
     [alt, previewId, previewMimeType, previewName, previewSource],
   );
-  const interactive = Boolean(previewContext?.options.enabled && src);
+  const interactive = Boolean(
+    previewable && previewContext?.options.enabled && src,
+  );
   const hasHyperlink = hyperlinkData === 'true';
   const openPreview = (trigger: HTMLImageElement) => {
     if (interactive) previewContext?.openPreview(target, trigger);

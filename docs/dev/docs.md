@@ -156,40 +156,40 @@ Remote source rules:
 
 ## `OfficeFileViewer` API
 
-| Prop                             | Type                                                  | Default           | Description                                                      |
-| -------------------------------- | ----------------------------------------------------- | ----------------- | ---------------------------------------------------------------- |
-| `locale`                         | `'zh-CN' \| 'en-US'`                                  | `'zh-CN'`         | Built-in viewer UI language                                      |
-| `uri`                            | `OfficeFileViewerUri`                                 | -                 | File source to preload; the file picker is shown when omitted    |
-| `defaultFileName`                | `string`                                              | Localized message | Fallback name when the source does not provide a usable filename |
-| `defaultZoom`                    | `number`                                              | `100`             | Compatibility prop; use `defaultViewState.zoom` for new code     |
-| `defaultViewState`               | `Partial<OfficeFileViewerViewState>`                  | -                 | Initial values for uncontrolled view fields                      |
-| `viewState`                      | `Partial<OfficeFileViewerViewState>`                  | -                 | Per-field control of zoom, page, sidebars, and display mode      |
-| `onViewStateChange`              | `(state, change) => void`                             | -                 | Called when the user requests a view-state change                |
-| `defaultShowSpeakerNotes`        | `boolean`                                             | `false`           | Initial speaker-notes state in uncontrolled mode                 |
-| `showSpeakerNotes`               | `boolean`                                             | -                 | Controlled speaker-notes visibility                              |
-| `onSpeakerNotesVisibilityChange` | `(visible: boolean) => void`                          | -                 | Called when the presentation notes visibility changes            |
-| `className`                      | `string`                                              | -                 | Additional class name for the viewer root                        |
-| `height`                         | `CSSProperties['height']`                             | Parent height     | Viewer height; takes precedence over `style.height`              |
-| `toolbar`                        | `false \| OfficeFileViewerToolbarOptions`             | `{}`              | Hide the toolbar or independently control built-in action areas  |
-| `toolbarExtra`                   | `ReactNode`                                           | -                 | Host content appended after all built-in actions                 |
-| `onFileSelect`                   | `(file: File) => void`                                | -                 | Fires after built-in local selection and before parsing          |
-| `style`                          | `CSSProperties`                                       | -                 | Inline styles for the viewer root                                |
-| `theme`                          | `OfficeViewerThemeOptions`                            | `light`           | Viewer-chrome mode, primary color, and semantic tokens           |
-| `watermark`                      | `false \| OfficeViewerWatermarkOptions`               | `false`           | Text watermark over document-content viewports                   |
-| `onFileParsed`                   | `(parsed: ParsedOfficeFile, file: File) => void`      | -                 | Called once when the complete materialized result is available   |
-| `onPreviewReady`                 | `(info: OfficePreviewReadyInfo, file: File) => void`  | -                 | Called once when the first usable preview is ready               |
-| `onError`                        | `(error: OfficeFileViewerError, file?: File) => void` | -                 | Called when loading, parsing, or a viewer operation fails        |
+| Prop                             | Type                                                  | Default           | Description                                                           |
+| -------------------------------- | ----------------------------------------------------- | ----------------- | --------------------------------------------------------------------- |
+| `locale`                         | `'zh-CN' \| 'en-US'`                                  | `'zh-CN'`         | Built-in viewer UI language                                           |
+| `uri`                            | `OfficeFileViewerUri`                                 | -                 | File source to preload; the file picker is shown when omitted         |
+| `defaultFileName`                | `string`                                              | Localized message | Fallback name when the source does not provide a usable filename      |
+| `defaultZoom`                    | `number`                                              | `100`             | Compatibility prop; use `defaultViewState.zoom` for new code          |
+| `defaultViewState`               | `Partial<OfficeFileViewerViewState>`                  | -                 | Initial values for uncontrolled view fields                           |
+| `viewState`                      | `Partial<OfficeFileViewerViewState>`                  | -                 | Per-field control of zoom, page, sidebars, and display mode           |
+| `onViewStateChange`              | `(state, change) => void`                             | -                 | Called when the user requests a view-state change                     |
+| `defaultShowSpeakerNotes`        | `boolean`                                             | `false`           | Initial speaker-notes state in uncontrolled mode                      |
+| `showSpeakerNotes`               | `boolean`                                             | -                 | Controlled speaker-notes visibility                                   |
+| `onSpeakerNotesVisibilityChange` | `(visible: boolean) => void`                          | -                 | Called when the presentation notes visibility changes                 |
+| `className`                      | `string`                                              | -                 | Additional class name for the viewer root                             |
+| `height`                         | `CSSProperties['height']`                             | Parent height     | Viewer height; takes precedence over `style.height`                   |
+| `toolbar`                        | `false \| OfficeFileViewerToolbarOptions`             | `{}`              | Hide the toolbar or independently control built-in action areas       |
+| `toolbarExtra`                   | `ReactNode`                                           | -                 | Host content appended after all built-in actions                      |
+| `onFileSelect`                   | `(file: File) => void`                                | -                 | Fires after built-in local selection and before parsing               |
+| `style`                          | `CSSProperties`                                       | -                 | Inline styles for the viewer root                                     |
+| `theme`                          | `OfficeViewerThemeOptions`                            | `light`           | Viewer-chrome mode, primary color, and semantic tokens                |
+| `watermark`                      | `false \| OfficeViewerWatermarkOptions`               | `false`           | Text watermark over document-content viewports                        |
+| `onFileParsed`                   | `(parsed: ParsedOfficeFile, file: File) => void`      | -                 | Called once when the complete materialized result is available        |
+| `onPreviewReady`                 | `(info: OfficePreviewReadyInfo, file: File) => void`  | -                 | Called once when the first usable preview is ready                    |
+| `onError`                        | `(error: OfficeFileViewerError, file?: File) => void` | -                 | Called when loading, parsing, or a viewer operation fails             |
 | `onWarning`                      | `(warning, file) => void`                             | -                 | Called for non-fatal parse, partial-preview, or font-runtime warnings |
-| `parseOptions`                   | `OfficeParseOptions`                                  | `{}`              | Worker strategy and optional resource limits                     |
-| `imagePreview`                   | `boolean \| OfficeFileViewerImagePreviewOptions`      | `true`            | Content-image preview, download, and context-menu configuration  |
-| `hyperlink`                      | `boolean`                                             | `true`            | Enables hyperlinks explicitly declared by the source document    |
-| `search`                         | `false \| OfficeFileViewerSearchOptions`              | `{}`              | Full-document search runtime and initial matching options        |
-| `review`                         | `false \| OfficeFileViewerReviewOptions`              | `{}`              | Read-only comments, revisions, footnotes, and endnotes           |
-| `presentationMedia`              | `false \| OfficeFileViewerPresentationMediaOptions`   | `{}`              | Presentation media, external-source, and download policy         |
-| `transitions`                    | `false \| 'source'`                                   | `false`           | Play supported source slide transitions                          |
-| `fontOptions`                    | `OfficeFileViewerFontOptions`                         | `{}`              | Font aliases, fallback families, font sources, and diagnostics   |
-| `onHyperlinkActivate`            | `(event: OfficeHyperlinkActivateEvent) => void`       | -                 | Called on valid activation and can prevent default navigation    |
-| `onParseProgress`                | `(progress: ParseProgress) => void`                   | -                 | Called when the current parse stage or progress changes          |
+| `parseOptions`                   | `OfficeParseOptions`                                  | `{}`              | Worker strategy and optional resource limits                          |
+| `imagePreview`                   | `boolean \| OfficeFileViewerImagePreviewOptions`      | `true`            | Content-image preview, download, and context-menu configuration       |
+| `hyperlink`                      | `boolean`                                             | `true`            | Enables hyperlinks explicitly declared by the source document         |
+| `search`                         | `false \| OfficeFileViewerSearchOptions`              | `{}`              | Full-document search runtime and initial matching options             |
+| `review`                         | `false \| OfficeFileViewerReviewOptions`              | `{}`              | Read-only comments, revisions, footnotes, and endnotes                |
+| `presentationMedia`              | `false \| OfficeFileViewerPresentationMediaOptions`   | `{}`              | Presentation media, external-source, and download policy              |
+| `transitions`                    | `false \| 'source'`                                   | `false`           | Play supported source slide transitions                               |
+| `fontOptions`                    | `OfficeFileViewerFontOptions`                         | `{}`              | Font aliases, fallback families, font sources, and diagnostics        |
+| `onHyperlinkActivate`            | `(event: OfficeHyperlinkActivateEvent) => void`       | -                 | Called on valid activation and can prevent default navigation         |
+| `onParseProgress`                | `(progress: ParseProgress) => void`                   | -                 | Called when the current parse stage or progress changes               |
 
 ### Toolbar, theme, and watermark
 
@@ -309,7 +309,7 @@ export default function Preview() {
 
 ### Content-image preview
 
-Visible content images in every Word and Excel format support double-click, `Enter`, or Space to open the preview layer by default. The layer provides fit-to-window display, `10%` to `500%` zoom, panning, clockwise rotation, reset, and download. The custom image context menu contains only Preview and Download.
+Standalone content images in Word, Excel, and PPT/PPTX/PPTM/POTX formats support double-click, `Enter`, or Space to open the preview layer by default. The layer provides fit-to-window display, `10%` to `500%` zoom, panning, clockwise rotation, reset, and download. The custom image context menu contains only Preview and Download. PowerPoint combines resource type, object metadata, and display size to identify small icons, which expose neither image preview nor the custom preview menu; master, layout, background, and shape-fill images are outside this interaction scope.
 
 ```ts | pure
 type OfficeFileViewerImagePreviewOptions = {
@@ -331,7 +331,7 @@ Omit the prop or pass `true` to enable every capability. Pass `false` to disable
 />
 ```
 
-When `contextMenu` is disabled, double-click and keyboard preview remain available and the browser-native context menu is restored. Decorative header images, backgrounds, watermarks, page drawing layers, charts, and presentation images are outside this interaction scope.
+When `contextMenu` is disabled, double-click and keyboard preview remain available and the browser-native context menu is restored. Decorative header images, backgrounds, watermarks, page drawing layers, and charts are outside this interaction scope; PowerPoint enables it only for standalone slide content images.
 
 ### Office hyperlinks
 
@@ -701,7 +701,7 @@ Common chart coverage includes line, column, pie, doughnut, area, scatter, bubbl
 Viewer interactions include:
 
 - Zoom from `25%` to `300%` using numeric input, presets, `10%` steps, and format-aware fit-width/fit-page modes.
-- Visible content images in Word and Excel formats support preview, zoom, rotation, download, and a custom context menu.
+- Standalone visible content images in Word, Excel, and PowerPoint formats support preview, zoom, rotation, download, and a custom context menu; small PowerPoint icons expose neither image preview nor the custom preview menu, while master, layout, background, and shape-fill images remain static.
 - The Word-format outline is hidden by default, appears only when usable headings exist, and can be resized horizontally when opened.
 - Worksheet tabs plus Original layout and Reading mode for Excel formats.
 - Slide and thumbnail navigation for PowerPoint formats; previous/next controls are hidden for a single-slide deck.

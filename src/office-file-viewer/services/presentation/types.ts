@@ -325,12 +325,37 @@ export type ShapeElement = BaseElement & {
   borderRadius?: number;
 };
 
+/** 描述演示文稿图片资源的来源类别和预览识别辅助信息。 */
+export type PresentationImageSourceKind = 'raster' | 'vector' | 'unknown';
+
+/** 图片预览策略用于识别图标语义的轻量来源信息。 */
+export type PresentationImagePreviewMetadata = {
+  /** 图片资源在源文件中的大类，矢量资源可作为图标识别信号。 */
+  sourceKind?: PresentationImageSourceKind;
+  /** 图片资源的 MIME 类型，用于区分轻量图标位图和照片。 */
+  mimeType?: string;
+  /** 源绘制对象的名称，不改变图片的可见替代文本。 */
+  objectName?: string;
+  /** 源绘制对象的描述或辅助文本。 */
+  objectDescription?: string;
+  /** 同一资源在当前幻灯片中被引用的次数。 */
+  resourceReuseCount?: number;
+  /** 资源原始字节数，供轻量资源特征判断使用。 */
+  resourceSize?: number;
+  /** 用于统计资源复用次数的稳定键。 */
+  resourceKey?: string;
+};
+
 /** 包含图片资源、替代文本和裁剪范围的图片元素。 */
 export type ImageElement = BaseElement & {
   /** 用于区分联合类型分支的类型标识。 */
   type: 'image';
   /** 图片资源地址或延迟资源引用。 */
   src: string | OfficeResourceSource;
+  /** 是否允许将当前图片作为独立内容打开预览；母版、版式和图片填充等组合视觉应设为 false。 */
+  previewable?: boolean;
+  /** 仅供预览策略识别图片来源和图标语义的元数据。 */
+  previewMetadata?: PresentationImagePreviewMetadata;
   /** 图片无法显示时使用的替代文本。 */
   alt?: string;
   /** 图片裁剪边界。 */

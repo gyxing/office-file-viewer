@@ -391,6 +391,11 @@ async function parseShape(
       zIndex: common.zIndex,
       hyperlink: common.hyperlink,
       src: imageSource,
+      previewable: true,
+      previewMetadata:
+        blipIndex === undefined
+          ? undefined
+          : context.blipPreviewMetadata.get(blipIndex),
       alt: `PowerPoint 图片 ${blipIndex}`,
     };
     return image;
@@ -411,6 +416,7 @@ async function parseShape(
         `PowerPoint 对象 ${externalObjectId}`,
         context,
       ),
+      previewable: false,
       alt: `PowerPoint 嵌入对象 ${externalObjectId}`,
     };
     return image;

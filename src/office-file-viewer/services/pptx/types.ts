@@ -10,6 +10,8 @@ export type {
   MediaElement,
   PresentationDocument as PptxDocument,
   PresentationAnnotation,
+  PresentationImagePreviewMetadata,
+  PresentationImageSourceKind,
   ReflectionStyle,
   ShadowStyle,
   ShapeElement,

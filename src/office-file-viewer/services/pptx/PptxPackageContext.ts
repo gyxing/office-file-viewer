@@ -29,6 +29,8 @@ export type PptxPackageState = {
   mediaByName: Record<string, string | OfficeResourceSource>;
   /** 按包内完整路径索引的媒体资源。 */
   mediaByPath: Record<string, string | OfficeResourceSource>;
+  /** 按幻灯片关系统计媒体资源的引用次数，用于识别重复使用的小图标。 */
+  mediaUseCounts: Record<string, number>;
 };
 
 /** PPTX 表格样式支持的区域变体名称。 */

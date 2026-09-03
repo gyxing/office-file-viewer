@@ -13,6 +13,7 @@ import {
   descendantsByLocalName,
   parseXml,
 } from '../../shared/ooxml/xml';
+import { markPresentationElementsPreviewable } from '../presentation/imagePreviewPolicy';
 import {
   parsePptxVisualTree,
   readPptxPlaceholder,
@@ -47,12 +48,29 @@ export function buildPptxPackageState(
   const media = mediaSources
     ? { byName: mediaSources.mediaByName, byPath: mediaSources.mediaByPath }
     : collectMedia(entries, 'ppt/media/');
+  const mediaUseCounts: Record<string, number> = {};
+  Object.entries(relationships).forEach(([relsPath, rels]) => {
+    if (!/^ppt\/slides\/_rels\/slide\d+\.xml\.rels$/iu.test(relsPath)) {
+      return;
+    }
+    Object.values(rels).forEach((relationship) => {
+      if (
+        relationship.targetMode?.toLowerCase() === 'external' ||
+        !/^ppt\/media\//iu.test(relationship.target)
+      ) {
+        return;
+      }
+      mediaUseCounts[relationship.target] =
+        (mediaUseCounts[relationship.target] ?? 0) + 1;
+    });
+  });
 
   return {
     entries,
     relationships,
     mediaByName: media.byName,
     mediaByPath: media.byPath,
+    mediaUseCounts,
   };
 }
 
@@ -211,14 +229,17 @@ function readMaster(
     childByLocalName(doc.documentElement, 'txStyles'),
     theme,
   );
-  const elements = parsePptxVisualTree(
-    childByLocalName(cSld, 'spTree'),
-    theme,
-    packageState,
-    rels,
-    `master-${relPath}`,
-    undefined,
-    tableStyles,
+  const elements = markPresentationElementsPreviewable(
+    parsePptxVisualTree(
+      childByLocalName(cSld, 'spTree'),
+      theme,
+      packageState,
+      rels,
+      `master-${relPath}`,
+      undefined,
+      tableStyles,
+      false,
+    ),
     false,
   );
   return { path: relPath, placeholders, textPresets, background, elements };
@@ -249,14 +270,17 @@ function readLayout(
     childByLocalName(doc.documentElement, 'txStyles'),
     theme,
   );
-  const elements = parsePptxVisualTree(
-    childByLocalName(cSld, 'spTree'),
-    theme,
-    packageState,
-    rels,
-    `layout-${relPath}`,
-    undefined,
-    tableStyles,
+  const elements = markPresentationElementsPreviewable(
+    parsePptxVisualTree(
+      childByLocalName(cSld, 'spTree'),
+      theme,
+      packageState,
+      rels,
+      `layout-${relPath}`,
+      undefined,
+      tableStyles,
+      false,
+    ),
     false,
   );
   return {

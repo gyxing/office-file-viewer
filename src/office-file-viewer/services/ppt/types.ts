@@ -5,6 +5,7 @@ import type { PresentationMediaSource } from '../presentation/mediaTypes';
 import type { PresentationTransition } from '../presentation/transitionTypes';
 import type {
   PresentationAnnotation,
+  PresentationImagePreviewMetadata,
   PresentationWarning,
   SlideBackground,
   SlideElement,
@@ -55,6 +56,8 @@ export type PptParseContext = {
   resourceSequence: number;
   /** 按图片对象编号索引的资源地址。 */
   blipUrls: Map<number, string>;
+  /** 按图片对象编号索引的预览识别辅助信息。 */
+  blipPreviewMetadata: Map<number, PresentationImagePreviewMetadata>;
   /** 按图表对象编号索引的标准图表模型。 */
   charts: Map<
     number,
@@ -191,6 +194,7 @@ export function createPptParseContext(
     resources: [],
     resourceSequence: 0,
     blipUrls: new Map<number, string>(),
+    blipPreviewMetadata: new Map<number, PresentationImagePreviewMetadata>(),
     charts: new Map<
       number,
       {

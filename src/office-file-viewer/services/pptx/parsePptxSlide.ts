@@ -22,6 +22,11 @@ import {
   resolveOfficeThemeFontFamily,
 } from '../fonts/OfficeFontResolver';
 import {
+  annotatePresentationImageReuse,
+  detectPresentationImageSourceKind,
+} from '../presentation/imagePreviewPolicy';
+import { getPresentationMediaMimeType } from '../presentation/mediaTypes';
+import {
   alphaToOpacity,
   alphaToRatio,
   resolveThemeColor,
@@ -55,6 +60,7 @@ import type {
   GradientFill,
   ImageCrop,
   ImageElement,
+  PresentationImagePreviewMetadata,
   ReflectionStyle,
   ShadowStyle,
   ShapeElement,
@@ -1266,7 +1272,13 @@ export function parsePptxVisualTree(
       return;
     }
     if (imageFill) {
-      const image = parseImageElement(node, elementIndex, packageState, rels);
+      const image = parseImageElement(
+        node,
+        elementIndex,
+        packageState,
+        rels,
+        false,
+      );
       image.hyperlink = parsePptxObjectHyperlink(node, rels, slideTargets);
       image.id = `${sourcePrefix}-image-fill-${elementIndex}`;
       image.sourceObjectId = sourceObjectId;
@@ -1627,6 +1639,7 @@ function parseImageElement(
   index: number,
   packageState: PackageState,
   slideRels: Record<string, OfficeRelationship>,
+  previewable = true,
 ): ImageElement {
   const xfrm = childByLocalName(childByLocalName(node, 'spPr') ?? node, 'xfrm');
   const blip = descendantByLocalName(node, 'blip');
@@ -1640,6 +1653,40 @@ function parseImageElement(
     attr(blip, 'embed');
   const target = embed ? slideRels[embed]?.target : undefined;
   const resolved = resolveMediaRef(target, packageState);
+  const objectProperties = descendantByLocalName(node, 'cNvPr');
+  const sourceEntry = target ? packageState.entries.get(target) : undefined;
+  const resourceSize =
+    resolved && typeof resolved !== 'string' && resolved.kind === 'lazy'
+      ? resolved.size
+      : sourceEntry instanceof Uint8Array
+      ? sourceEntry.byteLength
+      : undefined;
+  const previewMetadata: PresentationImagePreviewMetadata = {
+    sourceKind: detectPresentationImageSourceKind(
+      target,
+      Boolean(svgBlip),
+      resolved && typeof resolved !== 'string' && resolved.kind === 'lazy'
+        ? resolved.mimeType
+        : undefined,
+    ),
+    mimeType:
+      resolved && typeof resolved !== 'string' && resolved.kind === 'lazy'
+        ? resolved.mimeType
+        : target
+        ? getPresentationMediaMimeType(target)
+        : undefined,
+    objectName: attr(objectProperties, 'name') ?? undefined,
+    objectDescription:
+      attr(objectProperties, 'descr') ??
+      attr(objectProperties, 'title') ??
+      target?.split('/').pop() ??
+      undefined,
+    resourceKey: target,
+    resourceReuseCount: target
+      ? packageState.mediaUseCounts?.[target]
+      : undefined,
+    resourceSize,
+  };
   const crop: ImageCrop | undefined = srcRect
     ? {
         left: attr(srcRect, 'l')
@@ -1660,6 +1707,8 @@ function parseImageElement(
   return {
     id: `image-${index}`,
     type: 'image',
+    previewable,
+    previewMetadata,
     x: emuValue(childByLocalName(xfrm, 'off'), 'x') ?? 0,
     y: emuValue(childByLocalName(xfrm, 'off'), 'y') ?? 0,
     width: emuValue(childByLocalName(xfrm, 'ext'), 'cx') ?? 0,
@@ -2129,6 +2178,7 @@ export function parseSlideXml(
       defaultTextStyle,
     ),
   );
+  const elementsWithPreviewMetadata = annotatePresentationImageReuse(elements);
 
   const commentResult = parsePptxComments(
     packageState,
@@ -2137,7 +2187,7 @@ export function parseSlideXml(
     index - 1,
     width,
     height,
-    elements,
+    elementsWithPreviewMetadata,
   );
   const transitionResult = parsePptxTransition(
     childByLocalName(slide, 'transition'),
@@ -2162,6 +2212,6 @@ export function parseSlideXml(
     annotations: commentResult.annotations,
     transition: transitionResult.transition,
     warnings: warnings.length ? warnings : undefined,
-    elements,
+    elements: elementsWithPreviewMetadata,
   };
 }
