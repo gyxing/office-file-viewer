@@ -1,3 +1,7 @@
+import {
+  annotatePresentationImageReuse,
+  markPresentationElementsPreviewable,
+} from '../presentation/imagePreviewPolicy';
 import type {
   PresentationDocument,
   SlideElement,
@@ -26,9 +30,19 @@ export function adaptPptSlide(
     masters.get(slide.masterId ?? Number.NaN)?.elements ?? []
   ).filter((element) => element.type !== 'text' || !element.placeholderType);
   // 母版标题/正文占位符只提供编辑提示和默认样式，不能作为放映正文继承到每一页。
-  const inherited = masterElements.map((element, index) =>
-    cloneMasterElement(element, slide.id, index),
+  const inherited = markPresentationElementsPreviewable(
+    masterElements.map((element, index) =>
+      cloneMasterElement(element, slide.id, index),
+    ),
+    false,
   );
+  const elements = annotatePresentationImageReuse([
+    ...inherited,
+    ...slide.elements.map((element, index) => ({
+      ...element,
+      zIndex: inherited.length + index,
+    })),
+  ]);
   return {
     id: slide.id,
     index: slide.index,
@@ -40,13 +54,7 @@ export function adaptPptSlide(
     annotations: slide.annotations,
     transition: slide.transition,
     warnings: slide.warnings,
-    elements: [
-      ...inherited,
-      ...slide.elements.map((element, index) => ({
-        ...element,
-        zIndex: inherited.length + index,
-      })),
-    ],
+    elements,
   };
 }
 

@@ -3,6 +3,10 @@ import {
   parseOfficeArtRecords,
   type OfficeArtRecord,
 } from '../../../shared/officeart';
+import type {
+  PresentationImagePreviewMetadata,
+  PresentationImageSourceKind,
+} from '../../presentation/types';
 import {
   createPptResourceId,
   registerPptResource,
@@ -52,6 +56,34 @@ function readRaster(record: OfficeArtRecord): RasterInfo | undefined {
   };
 }
 
+/** 判断 OfficeArt 图片记录是否属于矢量或元文件资源。 */
+function isVectorBlip(record: OfficeArtRecord) {
+  return (
+    record.type === OFFICE_ART_RECORD.BLIP_WMF ||
+    record.type === OFFICE_ART_RECORD.BLIP_EMF ||
+    record.type === OFFICE_ART_RECORD.BLIP_PICT
+  );
+}
+
+/** 为二进制 PPT 图片建立不影响渲染的预览识别元数据。 */
+function createPreviewMetadata(
+  record: OfficeArtRecord,
+  raster: RasterInfo | undefined,
+  resourceKey: string,
+): PresentationImagePreviewMetadata {
+  const sourceKind: PresentationImageSourceKind = raster
+    ? 'raster'
+    : isVectorBlip(record)
+    ? 'vector'
+    : 'unknown';
+  return {
+    sourceKind,
+    mimeType: raster?.mimeType,
+    resourceKey,
+    resourceSize: raster?.bytes.byteLength ?? record.data.byteLength,
+  };
+}
+
 function fallbackLabel(type: number) {
   if (type === OFFICE_ART_RECORD.BLIP_WMF)
     return ['WMF 图像', '矢量图静态预览'];
@@ -76,6 +108,8 @@ export async function registerPptPictureRecords(
   for (let index = 0; index < records.length; index += 1) {
     const record = records[index];
     const raster = readRaster(record);
+    const blipIndex = startIndex + index + 1;
+    const resourceKey = `ppt-blip:${blipIndex}`;
     let reference: string;
     if (raster) {
       reference = registerPptResource(context, {
@@ -88,7 +122,11 @@ export async function registerPptPictureRecords(
       const [title, detail] = fallbackLabel(record.type);
       reference = createPptStaticPreviewCard(title, detail, context);
     }
-    context.blipUrls.set(startIndex + index + 1, reference);
+    context.blipUrls.set(blipIndex, reference);
+    context.blipPreviewMetadata.set(
+      blipIndex,
+      createPreviewMetadata(record, raster, resourceKey),
+    );
     await context.yieldIfNeeded();
   }
   return context.blipUrls;

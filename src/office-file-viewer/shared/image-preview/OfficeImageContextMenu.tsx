@@ -42,7 +42,14 @@ export function OfficeImageContextMenu({
 
   useEffect(() => {
     const menu = menuRef.current;
-    menu?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
+    const firstItem =
+      menu?.querySelector<HTMLButtonElement>('[role="menuitem"]');
+    try {
+      // 菜单首次聚焦不能触发预览视口滚动，否则滚动监听会立即把菜单关闭。
+      firstItem?.focus({ preventScroll: true });
+    } catch {
+      firstItem?.focus();
+    }
     const view = ownerDocument.defaultView;
     if (!view) return undefined;
     view.addEventListener('resize', onClose);

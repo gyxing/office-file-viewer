@@ -21,7 +21,7 @@ The package provides a unified viewer for Word documents, Excel spreadsheets, an
 - **Progressive preview**: Supported formats can render completed content while parsing continues.
 - **Full-document search**: Every supported extension provides cancellable incremental search, result navigation, case matching, and whole-word matching.
 - **Controlled view state**: Hosts can control percentage/fit zoom, active pages, worksheets, sidebars, and display modes per field.
-- **Content-image actions**: All Word and Excel formats support double-click preview plus preview and download actions from a custom context menu.
+- **Content-image actions**: Standalone content images in Word, Excel, and PowerPoint support double-click preview plus preview and download actions from a custom context menu; PowerPoint combines resource type, object metadata, and display size to identify small icons, which expose neither image preview nor the custom preview menu, while master, layout, and background images remain static.
 - **Source hyperlinks**: Text, cell, image, shape, and action-button links use safe `Ctrl`/`Command` modifier activation and can be intercepted by the host.
 - **Read-only review**: Word comments and revisions use a native-style page-side markup rail with dashed leaders connected directly to the body, without a fixed review list. DOCX supports final, markup, and original views, while DOC/WPS restores recoverable review semantics. Excel and PowerPoint comments continue to use the shared review panel.
 - **Word notes**: All Word formats support footnotes, endnotes, reference navigation, and continuation pages for long footnotes.
