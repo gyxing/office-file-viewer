@@ -2,6 +2,8 @@
 
 English | [简体中文](./README.zh-CN.md) | <a href="https://gyxing.github.io/office-file-viewer/" target="_blank" rel="noopener noreferrer">Live Demo</a> | [Documentation](https://gyxing.github.io/office-file-viewer/docs)
 
+[![npm version](https://img.shields.io/npm/v/office-file-viewer.svg)](https://www.npmjs.com/package/office-file-viewer) [![npm downloads](https://img.shields.io/npm/dm/office-file-viewer.svg)](https://www.npmjs.com/package/office-file-viewer) [![CI](https://github.com/gyxing/office-file-viewer/actions/workflows/validate.yml/badge.svg)](https://github.com/gyxing/office-file-viewer/actions/workflows/validate.yml) [![license](https://img.shields.io/npm/l/office-file-viewer.svg)](./LICENSE)
+
 > A browser-based React component for offline preview of DOC/DOCX/DOCM/DOTX/WPS, XLS/XLSX/XLSM/XLTX, and PPT/PPTX/PPTM/POTX files.
 
 `office-file-viewer` downloads, parses, and renders Office files entirely in the browser. It requires no companion document-conversion service and does not actively upload local files.
@@ -9,6 +11,12 @@ English | [简体中文](./README.zh-CN.md) | <a href="https://gyxing.github.io/
 The package provides a unified viewer for Word documents, Excel spreadsheets, and PowerPoint presentations, including full-document search, read-only review, footnotes/endnotes, spreadsheet business semantics, secure media playback, slide transitions, zoom, fullscreen mode, and speaker notes.
 
 > This is an independent parsing and rendering implementation, not the native Microsoft Office or WPS Office layout engine. Complex documents can render differently from desktop applications. Review the [complete limitations](https://gyxing.github.io/office-file-viewer/docs#limitations) before use.
+
+## Why this project
+
+Office preview is a common requirement in enterprise collaboration, knowledge-base, and file-management applications. Traditional solutions often depend on server-side conversion or third-party services, which can increase deployment cost and create additional privacy and compliance concerns.
+
+`office-file-viewer` takes a browser-first approach: local files can be parsed and rendered without deploying a document-conversion service or actively uploading the file. It is designed as a reusable open-source building block, with explicit boundaries around macros, external media, remote resources, large files, and complex layouts.
 
 ## Features
 
@@ -96,6 +104,12 @@ Macro-enabled files expose only visible document content. Macros are never loade
 - Review, filtering, media, and transition support is read-only. The viewer does not write comments, execute filters, macros, ActiveX, OLE, or object-level animations.
 
 Read the [full performance, security, and rendering boundaries](https://gyxing.github.io/office-file-viewer/docs#limitations).
+
+## Community and security
+
+- Please read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening a pull request.
+- Community participation follows the [Code of Conduct](./CODE_OF_CONDUCT.md).
+- Please report security concerns according to [SECURITY.md](./SECURITY.md).
 
 ## Local development
 

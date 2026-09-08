@@ -2,6 +2,8 @@
 
 [English](./README.md) | 简体中文 | <a href="https://gyxing.github.io/office-file-viewer/zh-CN/" target="_blank" rel="noopener noreferrer">在线示例</a> | [完整文档](https://gyxing.github.io/office-file-viewer/zh-CN/docs)
 
+[![npm 版本](https://img.shields.io/npm/v/office-file-viewer.svg)](https://www.npmjs.com/package/office-file-viewer) [![npm 下载量](https://img.shields.io/npm/dm/office-file-viewer.svg)](https://www.npmjs.com/package/office-file-viewer) [![CI](https://github.com/gyxing/office-file-viewer/actions/workflows/validate.yml/badge.svg)](https://github.com/gyxing/office-file-viewer/actions/workflows/validate.yml) [![许可证](https://img.shields.io/npm/l/office-file-viewer.svg)](./LICENSE)
+
 > 一个面向 React 的纯浏览器 Office 文件预览组件，支持 DOC/DOCX/DOCM/DOTX/WPS、XLS/XLSX/XLSM/XLTX 和 PPT/PPTX/PPTM/POTX。
 
 `office-file-viewer` 在浏览器内完成 Office 文件下载、解析和渲染，不需要配套的文档转换服务，也不会主动上传本地文件。
@@ -9,6 +11,12 @@
 组件使用统一界面预览 Word 文档、Excel 表格和 PowerPoint 演示文稿，包含全文查找、只读审阅、脚注/尾注、电子表格业务语义、安全媒体播放、页级切换、缩放、全屏和演讲者备注。
 
 > 这是独立实现的解析与渲染引擎，并非 Microsoft Office 或 WPS Office 的原生排版引擎。复杂文档可能与桌面应用存在差异，使用前请阅读[完整限制说明](https://gyxing.github.io/office-file-viewer/zh-CN/docs#limitations)。
+
+## 项目背景与价值
+
+企业协作、知识库和文件管理系统经常需要预览 Office 文档。传统方案通常依赖服务端转码或第三方服务，会增加部署成本，也可能带来额外的文件隐私和数据合规问题。
+
+`office-file-viewer` 采用浏览器优先的方案：本地文件可以在浏览器内完成解析和渲染，不需要部署额外的文档转换服务，也不会主动上传文件。项目希望成为可复用的开源基础组件，并明确说明宏、外部媒体、远程资源、大文件和复杂布局等安全与渲染边界。
 
 ## 主要特性
 
@@ -96,6 +104,12 @@ export default function OfficePreview() {
 - 审阅、筛选、媒体和切换均为只读还原；不写回批注，不执行筛选、宏、ActiveX、OLE 或对象级动画。
 
 请阅读完整的[性能、安全与渲染边界](https://gyxing.github.io/office-file-viewer/zh-CN/docs#limitations)。
+
+## 社区与安全
+
+- 提交 Pull Request 前，请阅读 [CONTRIBUTING.md](./CONTRIBUTING.md)。
+- 社区参与请遵守 [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md)。
+- 安全问题请按照 [SECURITY.md](./SECURITY.md) 中的说明反馈。
 
 ## 本地开发
 
