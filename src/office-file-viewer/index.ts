@@ -2,6 +2,66 @@
 import { normalizeOfficeFileViewerError } from './services/errors/OfficeFileViewerError';
 import type { PresentationDocument } from './services/presentation/types';
 
+export type {
+  OfficeFormatPlugin,
+  OfficeParser,
+  OfficeParserInput,
+  OfficeParserPlugin,
+  OfficePluginResolver,
+  OfficeSourceFactory,
+  OfficeWorkerParser,
+  OfficeWorkerParserInput,
+} from './core/parsingContracts';
+export { createOfficeDocumentParseSession } from './core/parsingSession';
+export type { OfficeDocumentParseSession } from './core/parsingSession';
+export type {
+  OfficeCapabilities,
+  OfficeChangeOperation,
+  OfficeChangeSet,
+  OfficeDocumentMetadata,
+  OfficeDocumentModel,
+  OfficeDocumentRuntime,
+  OfficeDocumentSnapshot,
+  OfficeDocumentSource,
+  OfficeFormatId,
+  OfficeJsonValue,
+  OfficeNodeId,
+  OfficeResourceLocator,
+  OfficeResourceRef,
+  OfficeSourceLocation,
+  OfficeSourceMap,
+  OfficeWarning,
+} from './core/types';
+export type { OfficeViewerHandle } from './shell/controller/OfficeViewerHandle';
+export type { OfficeViewerSlots } from './OfficeFileViewer';
+export {
+  OfficeViewerProvider,
+  createOfficePluginRegistry,
+} from './plugins';
+export type {
+  OfficeCorePlugin,
+  OfficePluginRegistry,
+  OfficePluginRegistryOptions,
+  OfficePluginWorkerSupport,
+  OfficeViewerDocumentProps,
+  OfficeViewerPluginAdapter,
+  OfficeViewerProviderProps,
+} from './plugins';
+export {
+  OfficeExportService,
+  createOfficeExportService,
+  createOfficeExporterRegistry,
+  exportOriginalOfficeFile,
+} from './export';
+export type {
+  OfficeExportError,
+  OfficeExportErrorCode,
+  OfficeExportRequest,
+  OfficeExportResult,
+  OfficeExporter,
+  OfficeExporterRegistry,
+  OfficeOriginalSource,
+} from './export';
 export type { OfficeFileViewerLocale } from './locale';
 export { OfficeFileViewer } from './OfficeFileViewer';
 export type {
@@ -59,7 +119,11 @@ export type {
   OfficeFileViewerImagePreviewConfig,
   OfficeFileViewerImagePreviewOptions,
 } from './shared/image-preview';
-export { OfficeViewerLayout, useOfficeViewerLayout } from './shell/layout';
+export {
+  OfficeViewerLayout,
+  OfficeViewerShell,
+  useOfficeViewerLayout,
+} from './shell/layout';
 export type {
   OfficeViewerLayoutActions,
   OfficeViewerLayoutContentScaling,
@@ -67,6 +131,9 @@ export type {
   OfficeViewerLayoutMeta,
   OfficeViewerLayoutProps,
   OfficeViewerLayoutState,
+  OfficeViewerShellComponent,
+  OfficeViewerShellContextValue,
+  OfficeViewerShellProviderProps,
 } from './shell/layout';
 /** 按需加载 PPT 二进制解析器，避免仅使用预览组件时进入主包。 */
 export async function parsePpt(file: File): Promise<PresentationDocument> {

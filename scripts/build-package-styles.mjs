@@ -17,6 +17,8 @@ const LESS_SPECIFIER_PATTERN = /(['"])(\.{1,2}\/[^'"\r\n]+)\.less\1/g;
 
 /** 用于确认改写后的每个相对 CSS 引用都有对应产物。 */
 const CSS_SPECIFIER_PATTERN = /(['"])(\.{1,2}\/[^'"\r\n]+\.css)\1/g;
+/** Father ESM 输出的无扩展相对导入需要补齐发布文件后缀。 */
+const RELATIVE_JS_SPECIFIER_PATTERN = /(['"])(\.{1,2}\/[^'"\r\n]+)\1/g;
 
 /** 递归收集目录内的文件，供编译、改写和最终复检共用。 */
 async function collectFiles(directory) {
@@ -91,6 +93,49 @@ async function validatePackageStyles(distRoot) {
   );
 }
 
+/** 仅补全实际存在的相对 JS 文件或目录入口，避免改写包名与 CSS。 */
+async function replaceRelativeJsSpecifiers(file, source) {
+  const matches = Array.from(source.matchAll(RELATIVE_JS_SPECIFIER_PATTERN));
+  let output = source;
+  for (const match of matches) {
+    const specifier = match[2];
+    if (specifier.endsWith('.js') || specifier.endsWith('.css')) continue;
+    const absoluteFile = resolve(dirname(file), specifier);
+    const fileCandidate = `${absoluteFile}.js`;
+    const indexCandidate = resolve(absoluteFile, 'index.js');
+    let replacement;
+    try {
+      await access(fileCandidate);
+      replacement = `${specifier}.js`;
+    } catch {
+      try {
+        await access(indexCandidate);
+        replacement = `${specifier}/index.js`;
+      } catch {
+        continue;
+      }
+    }
+    output = output.replace(`${match[1]}${specifier}${match[1]}`, `${match[1]}${replacement}${match[1]}`);
+  }
+  return output;
+}
+
+/** 汇总所有逐文件 CSS，提供稳定的显式样式入口并避免重复内容。 */
+async function writeAggregateStyles(distRoot) {
+  const cssFiles = (await collectFiles(distRoot))
+    .filter((file) => file.endsWith('.css') && file !== resolve(distRoot, 'styles.css'))
+    .sort();
+  const chunks = [];
+  const seen = new Set();
+  for (const cssFile of cssFiles) {
+    const source = await readFile(cssFile, 'utf8');
+    if (seen.has(source)) continue;
+    seen.add(source);
+    chunks.push(source);
+  }
+  await writeFile(resolve(distRoot, 'styles.css'), chunks.join('\n'), 'utf8');
+}
+
 /** 编译并校验 Father 输出的包样式。 */
 async function compilePackageStyles(distRoot) {
   const distStats = await stat(distRoot).catch(() => null);
@@ -107,10 +152,12 @@ async function compilePackageStyles(distRoot) {
   const jsFiles = files.filter((file) => file.endsWith('.js'));
   for (const jsFile of jsFiles) {
     const source = await readFile(jsFile, 'utf8');
-    const nextSource = replaceLessSpecifiers(source);
+    const lessReplaced = replaceLessSpecifiers(source);
+    const nextSource = await replaceRelativeJsSpecifiers(jsFile, lessReplaced);
     if (nextSource !== source) await writeFile(jsFile, nextSource, 'utf8');
   }
 
+  await writeAggregateStyles(distRoot);
   await validatePackageStyles(distRoot);
   console.log(`已生成并校验 ${lessFiles.length} 个发布 CSS 文件。`);
 }

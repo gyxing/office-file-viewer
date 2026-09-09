@@ -90,13 +90,17 @@ export class XlsDocumentAssembler {
   }
 
   private createWorkbook(objectUrls: string[] = []): SpreadsheetWorkbook {
+    const resourceRefs = this.resources.getResourceRefs();
     return {
       ...this.metadata,
       sheets: [...this.sheets.entries()]
         .sort(([left], [right]) => left - right)
         .map(([, value]) => value.sheet),
       warnings: this.warnings.length ? [...this.warnings] : undefined,
-      resources: objectUrls.length ? { objectUrls } : undefined,
+      resources:
+        objectUrls.length || resourceRefs.length
+          ? { objectUrls, resourceRefs }
+          : undefined,
     };
   }
 
@@ -197,12 +201,16 @@ export class PptDocumentAssembler {
 
   private createDocument(objectUrls: string[] = []): PresentationDocument {
     if (!this.metadata) throw new Error('PPT 组装缺少演示文稿元数据');
+    const resourceRefs = this.resources.getResourceRefs();
     return {
       ...this.metadata,
       slides: [...this.slides.entries()]
         .sort(([left], [right]) => left - right)
         .map(([, slide]) => slide),
-      resources: objectUrls.length ? { objectUrls } : undefined,
+      resources:
+        objectUrls.length || resourceRefs.length
+          ? { objectUrls, resourceRefs }
+          : undefined,
     };
   }
 
@@ -321,6 +329,7 @@ export class DocDocumentAssembler {
 
   private createDocument(objectUrls: string[] = []): DocDocument {
     if (!this.metadata) throw new Error('DOC 组装缺少文档元数据');
+    const resourceRefs = this.resources.getResourceRefs();
     const blocks = [...this.blocks.entries()]
       .sort(([left], [right]) => left - right)
       .map(([, block]) => block);
@@ -328,7 +337,10 @@ export class DocDocumentAssembler {
       ...this.metadata,
       blocks,
       paragraphs: paragraphsFromDocBlocks(blocks),
-      resources: objectUrls.length ? { objectUrls } : undefined,
+      resources:
+        objectUrls.length || resourceRefs.length
+          ? { objectUrls, resourceRefs }
+          : undefined,
     };
   }
 

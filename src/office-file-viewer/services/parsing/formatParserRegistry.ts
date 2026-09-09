@@ -1,3 +1,12 @@
+import {
+  collectOfficeResourceRefs,
+  createOfficeSourceRuntime,
+  createOfficeSourceSnapshot,
+  getOfficeCapabilities,
+  normalizeOfficeWarnings,
+} from '../../core/model';
+import type { OfficeParserPlugin } from '../../core/parsingContracts';
+import type { OfficeDocumentSource } from '../../core/types';
 import type { OfficeParseResourcePolicy } from '../../shared/resource/OfficeResourcePolicy';
 import type { OfficeDocumentSession } from '../session';
 import {
@@ -11,7 +20,9 @@ import type {
   OfficeFileViewerPreviewState,
 } from './internalTypes';
 import type { WorkerSourceClient } from './runtime/source/WorkerSourceClient';
+import { WorkerSourceClient as WorkerSourceClientImpl } from './runtime/source/WorkerSourceClient';
 import type { RuntimeContext, RuntimeSink } from './runtime/types';
+import { isWorkerStartupError } from './runtime/WorkerRuntime';
 import type { OfficeFormatSessionAdapterFactory } from './sessionAdapters/types';
 import type { ParseProgress } from './types';
 
@@ -151,4 +162,97 @@ export async function loadOfficeSessionAdapterFactory(
 ): Promise<OfficeFormatSessionAdapterFactory> {
   const family = getOfficeFormatDefinition(kind).family;
   return OFFICE_SESSION_ADAPTER_LOADERS[family]();
+}
+
+/** 将内置格式定义转换为 Core 解析插件，解析实现仍延迟到真正调用时加载。 */
+export function createOfficeBuiltInParserPlugin(
+  kind: PreviewKind,
+): OfficeParserPlugin {
+  const definition = getOfficeFormatDefinition(kind);
+  return {
+    id: `builtin:${kind}`,
+    capabilities: getOfficeCapabilities(kind),
+    parse: async (input) => {
+      const { createOfficeDocumentParseSession } = await import(
+        '../../core/parsingSession'
+      );
+      const session = createOfficeDocumentParseSession(input.file, {
+        ...input.options,
+        pluginRegistry: undefined,
+      });
+      try {
+        const runtime = await session.result;
+        input.documentSession.register({
+          dispose: () => session.dispose(),
+        });
+        return runtime;
+      } catch (error) {
+        session.dispose();
+        throw error;
+      }
+    },
+    createSource: async (input) => {
+      const sourceFactory = await definition.loadSourcePreviewFactory?.();
+      if (!sourceFactory) return undefined;
+      const isOoxml = kind === 'docx' || kind === 'xlsx' || kind === 'pptx';
+      let workerSourceClient: WorkerSourceClient | undefined;
+      if (isOoxml && input.options.worker !== 'never') {
+        workerSourceClient = new WorkerSourceClientImpl(
+          input.sessionId,
+          input.options.workerFactory,
+        );
+        input.documentSession.register({
+          dispose: () => workerSourceClient?.dispose(),
+        });
+      }
+      const sourceContext = {
+        documentSession: input.documentSession,
+        emitProgress: () => undefined,
+        emitPartial: () => undefined,
+        resourcePolicy: input.options.resourcePolicy,
+        workerSourceClient,
+      };
+      let handle;
+      try {
+        handle = await sourceFactory(input.file, sourceContext);
+      } catch (error) {
+        if (
+          input.options.worker !== 'auto' ||
+          !workerSourceClient ||
+          !isWorkerStartupError(error)
+        ) {
+          throw error;
+        }
+        await workerSourceClient.dispose();
+        workerSourceClient = undefined;
+        handle = await sourceFactory(input.file, {
+          ...sourceContext,
+          workerSourceClient: undefined,
+        });
+      }
+      if (!handle || handle.mode !== 'source') {
+        if (handle) await handle.dispose();
+        if (workerSourceClient) await workerSourceClient.dispose();
+        return undefined;
+      }
+      input.documentSession.register({ dispose: () => handle.dispose() });
+      const capabilities = getOfficeCapabilities(kind);
+      const snapshot = createOfficeSourceSnapshot({
+        sessionId: input.sessionId,
+        fileName: input.file.name,
+        fileSize: input.file.size,
+        format: kind,
+        family: capabilities.family,
+        capabilities,
+        resources: collectOfficeResourceRefs(handle.summary),
+        warnings: normalizeOfficeWarnings(
+          (handle.summary as { warnings?: unknown }).warnings,
+        ),
+      });
+      return createOfficeSourceRuntime(
+        snapshot,
+        handle.source as OfficeDocumentSource,
+      );
+    },
+  };
 }

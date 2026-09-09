@@ -1,1 +1,1 @@
-export * from './office-file-viewer';
+export * from './office-file-viewer/index';

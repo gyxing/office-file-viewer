@@ -179,6 +179,9 @@ export function VirtualWordPageList<TPage>({
         }
         throw new Error('目标页面未能及时挂载');
       },
+      getPageCount() {
+        return heightIndex.length;
+      },
       getMountedRange: () => ({
         start: rangeRef.current.start,
         end: rangeRef.current.end,

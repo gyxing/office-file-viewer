@@ -12,6 +12,7 @@ import {
   throwIfAborted,
   yieldToMainThread,
 } from '../performance/mainThreadScheduler';
+import type { OfficeResourceDescriptor } from '../resource-store/types';
 import { WordPerformanceStatsCollector } from '../word/collectWordPerformanceStats';
 import { createProgressiveWordOutlineProvider } from '../word/createMemoryWordOutlineProvider';
 import { createWordPerformanceProfile } from '../word/performance';
@@ -37,7 +38,10 @@ import type { DocBlock, DocDocument } from './types';
 export type DocWordPreviewSummary = Omit<
   DocDocument,
   'blocks' | 'paragraphs' | 'resources'
->;
+> & {
+  /** 当前已发现的可序列化资源元数据。 */
+  resourceRefs?: readonly OfficeResourceDescriptor[];
+};
 
 /** 创建 DOC 页面数据源时使用的选项。 */
 type DocWordPageSourceOptions = {
@@ -93,7 +97,15 @@ export class DocWordPageSource
   }
 
   addResource(resource: PortableResource) {
-    return this.resources.register(resource);
+    return this.resources.register(resource).then((url) => {
+      this.snapshot = {
+        ...this.snapshot,
+        revision: this.snapshot.revision + 1,
+        resourceRefs: this.resources.getResourceRefs(),
+      };
+      this.emitChange();
+      return url;
+    });
   }
 
   setMetadata(metadata: PortableDocMetadata) {
@@ -182,7 +194,10 @@ export class DocWordPageSource
 
   getSummary() {
     if (!this.summary) throw new Error('DOC PageSource 尚无文档摘要');
-    return this.summary;
+    return {
+      ...this.summary,
+      resourceRefs: this.resources.getResourceRefs(),
+    };
   }
 
   getOutlineItems() {
@@ -294,6 +309,7 @@ export class DocWordPageSource
     this.snapshot = {
       revision: this.snapshot.revision + 1,
       pages: [...this.snapshot.pages, ...metas],
+      resourceRefs: this.resources.getResourceRefs(),
     };
     this.emitChange();
   }

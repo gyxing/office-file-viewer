@@ -1,4 +1,5 @@
 import type { OfficeHyperlink } from '../../shared/hyperlink';
+import type { OfficeResourceDescriptor } from '../resource-store/types';
 import type {
   WordInlineReview,
   WordReviewDocument,
@@ -39,6 +40,8 @@ export type DocDocument = {
 export type DocResources = {
   /** 浏览器创建的对象 URL 集合，文档释放时必须逐一撤销。 */
   objectUrls: string[];
+  /** 解析阶段收集的可序列化资源元数据。 */
+  resourceRefs?: readonly OfficeResourceDescriptor[];
 };
 
 /** 释放 DOC/WPS 文档创建的 Blob URL；重复调用保持幂等。 */

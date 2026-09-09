@@ -1,5 +1,7 @@
+import type { OfficePluginResolver } from '../../core/parsingContracts';
 import type { OfficeParseResourcePolicy } from '../../shared/resource/OfficeResourcePolicy';
 import type { PreviewKind } from './formatDefinitions';
+import type { OfficeCapabilities, OfficeFormatId } from '../../core/types';
 
 export type { OfficeParseResourcePolicy } from '../../shared/resource/OfficeResourcePolicy';
 
@@ -32,9 +34,11 @@ export type ParseProgress = {
 /** 描述预览首屏已经可以使用时的数据形态。 */
 export type OfficePreviewReadyInfo = {
   /** 当前文件对应的预览格式类别。 */
-  previewKind: PreviewKind;
+  previewKind: OfficeFormatId;
   /** 当前预览使用完整模型或按需数据源。 */
   mode: 'materialized' | 'source';
+  /** 当前首屏可用的完整能力描述。 */
+  capabilities: OfficeCapabilities;
 };
 
 /** 定义解析会话的可选配置。 */
@@ -45,6 +49,8 @@ export type OfficeParseOptions = {
   workerFactory?: () => Worker;
   /** 宿主可选配置的资源上限；未提供时不限制文件大小或解析时长。 */
   resourcePolicy?: OfficeParseResourcePolicy;
+  /** 当前线程使用的格式插件解析器查询入口。 */
+  pluginRegistry?: OfficePluginResolver;
 };
 
 /** 枚举解析会话从启动到完成、取消或失败的生命周期状态。 */

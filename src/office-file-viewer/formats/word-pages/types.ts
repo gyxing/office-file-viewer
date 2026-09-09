@@ -39,6 +39,8 @@ export interface WordPageNavigationController {
   scrollToPage(index: number, offset?: number): void;
   /** 确保指定页面已经挂载到可滚动容器。 */
   ensurePageMounted(index: number, signal?: AbortSignal): Promise<HTMLElement>;
+  /** 返回当前数据源中的页面总数。 */
+  getPageCount(): number;
   /** 返回当前已经挂载的页面索引范围。 */
   getMountedRange(): {
     /** 当前范围的起始位置。 */

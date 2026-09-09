@@ -1,4 +1,5 @@
 import type { WordRevisionMode } from '../../services/annotations/types';
+import type { OfficeDocumentRuntime } from '../../core/types';
 import type { ParseProgress } from '../../services/parsing';
 import type { OfficeFileViewerPreviewState } from '../../services/parsing/internalTypes';
 import type { PreviewKind } from '../../services/preview';
@@ -33,6 +34,15 @@ export type OfficeViewerDocumentState =
       fileName: string;
       /** 已完成交付的预览快照。 */
       preview: OfficeFileViewerPreviewState;
+    }
+  | {
+      phase: 'plugin-ready';
+      /** 外部插件交付的文件名称。 */
+      fileName: string;
+      /** 匹配到的外部插件标识。 */
+      pluginId: string;
+      /** 外部插件交付的运行时内容。 */
+      runtime: OfficeDocumentRuntime;
     }
   | {
       phase: 'degraded';
@@ -111,6 +121,15 @@ export type OfficeViewerAction =
       fileName: string;
       /** 最终交付的预览快照。 */
       preview: OfficeFileViewerPreviewState;
+    }
+  | {
+      type: 'plugin-completed';
+      /** 外部插件交付的文件名称。 */
+      fileName: string;
+      /** 匹配到的外部插件标识。 */
+      pluginId: string;
+      /** 外部插件交付的运行时内容。 */
+      runtime: OfficeDocumentRuntime;
     }
   | {
       type: 'partial-retained';
@@ -322,6 +341,24 @@ export function officeViewerReducer(
           preview: action.preview,
         },
         view: reconcileViewWithPreview(state.view, action.preview),
+      };
+    case 'plugin-completed':
+      return {
+        document: {
+          phase: 'plugin-ready',
+          fileName: action.fileName,
+          pluginId: action.pluginId,
+          runtime: action.runtime,
+        },
+        view: {
+          ...state.view,
+          activeSlideIndex: 0,
+          activeSheetId: undefined,
+          showWordOutline: false,
+          showSearch: false,
+          showReviewPanel: false,
+          spreadsheetViewMode: DEFAULT_SPREADSHEET_VIEW_MODE,
+        },
       };
     case 'partial-retained':
       return {

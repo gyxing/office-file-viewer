@@ -32,6 +32,14 @@ import type {
   ParseProgress,
 } from './types';
 
+/** 解析前通过可选的实例级注册表选择外部插件；未配置时返回 undefined。 */
+export async function resolveOfficePlugin(
+  file: File,
+  options: OfficeParseOptions,
+  signal?: AbortSignal,
+) {
+  return options.pluginRegistry?.resolve(file, signal);
+}
 /** 加密 OOXML 使用 CFB 外层封装，而普通 OOXML 必须以 ZIP 签名开头。 */
 const CFB_FILE_SIGNATURE = [
   0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1,

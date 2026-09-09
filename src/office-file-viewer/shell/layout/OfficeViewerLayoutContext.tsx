@@ -31,7 +31,7 @@ export function useOfficeViewerLayout(): OfficeViewerLayoutContextValue {
   const context = useContext(OfficeViewerLayoutContext);
   if (!context) {
     throw new Error(
-      'useOfficeViewerLayout 必须在 OfficeViewerLayout 内部使用。',
+      'useOfficeViewerLayout 必须在 OfficeViewerShell.Provider 或 OfficeViewerLayout 内部使用。',
     );
   }
   return context;

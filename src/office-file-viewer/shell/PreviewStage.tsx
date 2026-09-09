@@ -1,7 +1,10 @@
 // OfficePreviewStage 根据显式舞台状态切换预览组件，并统一处理加载和错误态。
-import type { ReactElement } from 'react';
+import type { MutableRefObject, ReactElement, ReactNode } from 'react';
 import React, { lazy, memo, Suspense } from 'react';
+import type { OfficeDocumentRuntime } from '../core/types';
 import { OfficePreviewEmpty } from '../formats/common/OfficePreviewEmpty';
+import type { WordPageNavigationController } from '../formats/word-pages/types';
+import type { OfficeViewerPluginAdapter } from '../plugins/viewerTypes';
 import type { WordRevisionMode } from '../services/annotations/types';
 import type { OfficeFileViewerPreviewState } from '../services/parsing/internalTypes';
 import type { OfficeFileViewerPresentationMediaOptions } from '../services/presentation/mediaTypes';
@@ -71,6 +74,17 @@ export type OfficePreviewStageState =
       retry?: () => void;
     }
   | {
+      kind: 'plugin';
+      /** 外部插件标识。 */
+      pluginId: string;
+      /** 外部插件交付的运行时内容。 */
+      runtime: OfficeDocumentRuntime;
+      /** 当前文件名称。 */
+      fileName: string;
+      /** 与插件 ID 对应的 React Renderer。 */
+      adapter?: OfficeViewerPluginAdapter;
+    }
+  | {
       kind: 'presentation';
       /** 当前演示文稿预览。 */
       preview: PresentationPreview;
@@ -133,6 +147,16 @@ type OfficePreviewStageProps = {
   onSelectSlide: (index: number) => void;
   /** 选择指定工作表。 */
   onSelectSheet: (sheetId: string) => void;
+  slots?: {
+    loading?: ReactNode;
+    empty?: ReactNode;
+    error?: ReactNode;
+  };
+  pageNavigationControllerRef?: MutableRefObject<
+    WordPageNavigationController | undefined
+  >;
+  /** 插件 Renderer 自身失败时交回宿主的诊断回调。 */
+  onPluginError?: (error: unknown) => void;
 };
 
 /** 根据显式分支选择具体预览器，并保留各格式的懒加载边界。 */
@@ -142,11 +166,51 @@ function OfficePreviewStageComponent({
   onOpenSearch,
   onSelectSlide,
   onSelectSheet,
+  slots,
+  pageNavigationControllerRef,
+  onPluginError,
 }: OfficePreviewStageProps) {
-  if (state.kind === 'empty') return <OfficePreviewEmpty />;
-  if (state.kind === 'loading') return <OfficeLoading tip={state.tip} />;
+  if (state.kind === 'empty')
+    return <>{slots?.empty ?? <OfficePreviewEmpty />}</>;
+  if (state.kind === 'loading')
+    return <>{slots?.loading ?? <OfficeLoading tip={state.tip} />}</>;
   if (state.kind === 'error') {
-    return <OfficeError message={state.message} onRetry={state.retry} />;
+    return (
+      <>
+        {slots?.error ?? (
+          <OfficeError message={state.message} onRetry={state.retry} />
+        )}
+      </>
+    );
+  }
+  if (state.kind === 'plugin') {
+    if (!state.adapter) {
+      return (
+        <>
+          {slots?.error ?? (
+            <OfficeError
+              message={`插件缺少 Viewer Renderer：${state.pluginId}`}
+            />
+          )}
+        </>
+      );
+    }
+    if (!state.adapter.renderDocument) {
+      const Unsupported = state.adapter.renderUnsupported;
+      return Unsupported ? (
+        <Unsupported fileName={state.fileName} />
+      ) : (
+        slots?.empty ?? <OfficePreviewEmpty />
+      );
+    }
+    const Renderer = state.adapter.renderDocument;
+    return (
+      <Renderer
+        runtime={state.runtime}
+        fileName={state.fileName}
+        onError={onPluginError}
+      />
+    );
   }
 
   let content: ReactElement;
@@ -188,6 +252,7 @@ function OfficePreviewStageComponent({
           wordRevisionMode={state.wordRevisionMode}
           onCloseOutline={onCloseWordOutline}
           onOpenSearch={onOpenSearch}
+          pageNavigationControllerRef={pageNavigationControllerRef}
         />
       );
       break;
@@ -201,12 +266,17 @@ function OfficePreviewStageComponent({
           wordRevisionMode={state.wordRevisionMode}
           onCloseOutline={onCloseWordOutline}
           onOpenSearch={onOpenSearch}
+          pageNavigationControllerRef={pageNavigationControllerRef}
         />
       );
       break;
   }
 
-  return <Suspense fallback={<OfficeLoading />}>{content}</Suspense>;
+  return (
+    <Suspense fallback={slots?.loading ?? <OfficeLoading />}>
+      {content}
+    </Suspense>
+  );
 }
 
 export const OfficePreviewStage = memo(OfficePreviewStageComponent);

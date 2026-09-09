@@ -1,5 +1,12 @@
 import type { MutableRefObject, RefObject } from 'react';
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
+import { getOfficeCapabilities } from '../../core/model';
+import type { OfficePluginResolver } from '../../core/parsingContracts';
+import {
+  createOfficeDocumentParseSession,
+  type OfficeDocumentParseSession,
+} from '../../core/parsingSession';
+import type { OfficeDocumentRuntime } from '../../core/types';
 import type { OfficeFileViewerMessages } from '../../locale';
 import type { WordRevisionMode } from '../../services/annotations/types';
 import {
@@ -122,6 +129,8 @@ export type UseOfficeViewerControllerOptions = {
   onWarning?: (warning: OfficeFileViewerWarning, file: File) => void;
   /** 底层解析会话配置。 */
   parseOptions?: OfficeParseOptions;
+  /** Provider 注入的作用域插件查询入口。 */
+  pluginRegistry?: OfficePluginResolver;
   /** 解析进度变化回调。 */
   onParseProgress?: (progress: ParseProgress) => void;
   /** 当前语言环境对应的界面文案。 */
@@ -233,6 +242,10 @@ export type OfficeViewerControllerResult = {
   viewerRef: RefObject<HTMLDivElement>;
   /** 当前查看器实例独占的资源存储。 */
   resourceStore: OfficeResourceStore;
+  /** 外部插件交付的运行时内容。 */
+  customRuntime?: OfficeDocumentRuntime;
+  /** 当前外部插件标识。 */
+  customPluginId?: string;
 };
 
 /** 保存最新值，同时让异步生命周期函数保持稳定引用。 */
@@ -532,11 +545,21 @@ export function useOfficeViewerController(
   const sourceUrlRef = useRef<string>();
   const requestControllerRef = useRef<AbortController>();
   const parseSessionRef = useRef<OfficeFileViewerParseSession>();
+  const customParseSessionRef = useRef<OfficeDocumentParseSession>();
+  const customRuntimeRef = useRef<OfficeDocumentRuntime>();
   const previewRef = useRef<OfficeFileViewerPreviewState>();
   const pendingPartialRef = useRef<PendingPartialResult>();
   const partialFrameRef = useRef<number>();
   const preview = getDocumentPreview(state.document);
   const previewKind = getDocumentPreviewKind(state.document);
+  const customRuntime =
+    state.document.phase === 'plugin-ready'
+      ? state.document.runtime
+      : customRuntimeRef.current;
+  const customPluginId =
+    state.document.phase === 'plugin-ready'
+      ? state.document.pluginId
+      : undefined;
   const currentFile = currentFileRef.current;
   const sourceUrl = sourceUrlRef.current;
   const previewFamily = previewKind ? getPreviewFamily(previewKind) : undefined;
@@ -562,11 +585,14 @@ export function useOfficeViewerController(
     preview,
     sourcePresentationSlideCount,
   );
-  const hasRenderableContent = getHasRenderableContent(
+  const hasParsedRenderableContent = getHasRenderableContent(
     preview,
     sourcePresentationSlideCount,
     sourceSpreadsheetSheetCount,
   );
+  const hasCustomRenderableContent = Boolean(customRuntime);
+  const hasRenderableContent =
+    hasParsedRenderableContent || hasCustomRenderableContent;
   const hasWordOutline =
     (sourceWordOutlineCount || getMaterializedWordOutlineCount(preview)) > 0;
   const spreadsheetSheetIds = getSpreadsheetSheetIds(preview);
@@ -656,6 +682,10 @@ export function useOfficeViewerController(
     parseSessionRef.current?.cancel();
     parseSessionRef.current?.dispose();
     parseSessionRef.current = undefined;
+    customParseSessionRef.current?.cancel();
+    customParseSessionRef.current?.dispose();
+    customParseSessionRef.current = undefined;
+    customRuntimeRef.current = undefined;
     documentSessionIdRef.current = undefined;
     currentFileRef.current = undefined;
     sourceUrlRef.current = undefined;
@@ -706,7 +736,12 @@ export function useOfficeViewerController(
   );
 
   const loadFile = useCallback(
-    async (file: File, loadGeneration: number, nextSourceUrl?: string) => {
+    async (
+      file: File,
+      loadGeneration: number,
+      nextSourceUrl?: string,
+      signal?: AbortSignal,
+    ) => {
       resetActiveSession();
       currentFileRef.current = file;
       sourceUrlRef.current = nextSourceUrl;
@@ -715,13 +750,79 @@ export function useOfficeViewerController(
       let documentSession: OfficeDocumentSession | undefined;
       let parsedModel: ParsedOfficeFile | undefined;
       let previewReadyInfo: OfficePreviewReadyInfo | undefined;
+      let pluginLoadAttempted = false;
 
       try {
-        ensureSupportedOfficeFile(file, optionsRef.current.messages);
-        if (loadGeneration !== loadGenerationRef.current) return;
+        const currentOptions = optionsRef.current;
+        const pluginResolver =
+          currentOptions.pluginRegistry ??
+          currentOptions.parseOptions?.pluginRegistry;
+        const resolvedPlugin = await pluginResolver?.resolve(file, signal);
+        const externalPlugin =
+          resolvedPlugin && !resolvedPlugin.id.startsWith('builtin:')
+            ? resolvedPlugin
+            : undefined;
+        if (!externalPlugin) {
+          ensureSupportedOfficeFile(file, currentOptions.messages);
+        }
+        if (loadGeneration !== loadGenerationRef.current || signal?.aborted) {
+          return;
+        }
+
+        if (externalPlugin && pluginResolver) {
+          pluginLoadAttempted = true;
+          // 解析选择已经在当前加载代次完成；把命中的插件封装成一次性
+          // Resolver，避免插件 detect() 因二次解析产生副作用或前后结果漂移。
+          const resolvedPluginResolver: OfficePluginResolver = {
+            resolve: async (_candidateFile, resolveSignal) =>
+              resolveSignal?.aborted ? undefined : externalPlugin,
+          };
+          const pluginParseOptions: OfficeParseOptions = {
+            ...currentOptions.parseOptions,
+            pluginRegistry: resolvedPluginResolver,
+          };
+          const pluginSession = createOfficeDocumentParseSession(
+            file,
+            pluginParseOptions,
+          );
+          customParseSessionRef.current = pluginSession;
+          const abortPluginSession = () => pluginSession.cancel();
+          signal?.addEventListener('abort', abortPluginSession, { once: true });
+          const unsubscribeProgress = pluginSession.subscribe((progress) => {
+            if (loadGeneration !== loadGenerationRef.current) return;
+            optionsRef.current.onParseProgress?.(progress);
+          });
+          try {
+            const runtime = await pluginSession.result;
+            if (loadGeneration !== loadGenerationRef.current) {
+              pluginSession.dispose();
+              return;
+            }
+            customRuntimeRef.current = runtime;
+            dispatch({
+              type: 'plugin-completed',
+              fileName: file.name,
+              pluginId: externalPlugin.id,
+              runtime,
+            });
+            notifyObserver(
+              optionsRef.current.onPreviewReady,
+              {
+                previewKind: runtime.snapshot.capabilities
+                  .previewKind as PreviewKind,
+                mode: runtime.mode,
+                capabilities: runtime.snapshot.capabilities,
+              },
+              file,
+            );
+          } finally {
+            signal?.removeEventListener('abort', abortPluginSession);
+            unsubscribeProgress();
+          }
+          return;
+        }
 
         const fileKind = detectPreviewKind(file.name);
-        const currentOptions = optionsRef.current;
         dispatch({
           type: 'parse-started',
           fileName: file.name,
@@ -731,6 +832,10 @@ export function useOfficeViewerController(
 
         documentSession = createOfficeDocumentSession();
         documentSessionIdRef.current = documentSession.id;
+        const abortDocumentSession = () =>
+          documentSession?.abort(signal?.reason);
+        signal?.addEventListener('abort', abortDocumentSession, { once: true });
+        if (signal?.aborted) abortDocumentSession();
         const isCurrentSession = () =>
           loadGeneration === loadGenerationRef.current &&
           documentSession?.id === documentSessionIdRef.current;
@@ -791,6 +896,7 @@ export function useOfficeViewerController(
           }
           throw nextError;
         } finally {
+          signal?.removeEventListener('abort', abortDocumentSession);
           unsubscribeProgress();
           unsubscribePartial();
           if (parseSessionRef.current === parseSession) {
@@ -817,6 +923,7 @@ export function useOfficeViewerController(
         previewReadyInfo = {
           previewKind: finalPreview.previewKind,
           mode: finalPreview.mode,
+          capabilities: getOfficeCapabilities(finalPreview.previewKind),
         };
         [
           ...collectOfficeFileWarnings(file.name, finalPreview.previewKind),
@@ -830,6 +937,7 @@ export function useOfficeViewerController(
       } catch (nextError) {
         if (
           loadGeneration !== loadGenerationRef.current ||
+          signal?.aborted ||
           (documentSession &&
             documentSession.id !== documentSessionIdRef.current)
         ) {
@@ -838,19 +946,24 @@ export function useOfficeViewerController(
 
         // 界面只展示可本地化的概述，原始错误仍交给调用方诊断。
         const normalizedError = normalizeOfficeFileViewerError(nextError, {
-          stage: 'parsing',
+          stage: pluginLoadAttempted ? 'plugin' : 'parsing',
           fileName: file.name,
           previewKind: documentSession
             ? detectPreviewKind(file.name)
             : undefined,
         });
+        if (pluginLoadAttempted) {
+          customParseSessionRef.current?.dispose();
+          customParseSessionRef.current = undefined;
+          customRuntimeRef.current = undefined;
+        }
         if (!retainedPartial) {
           if (documentSessionIdRef.current === documentSession?.id) {
             documentSessionIdRef.current = undefined;
           }
           dispatch({
             type: 'failed',
-            fileName: documentSession ? file.name : undefined,
+            fileName: file.name,
             message:
               normalizedError.code !== 'PARSE_FAILED'
                 ? normalizedError.message
@@ -879,9 +992,24 @@ export function useOfficeViewerController(
     async (file: File) => {
       lastLoadSourceRef.current = { kind: 'file', file };
       requestControllerRef.current?.abort();
-      requestControllerRef.current = undefined;
+      const requestController =
+        typeof AbortController === 'undefined'
+          ? undefined
+          : new AbortController();
+      requestControllerRef.current = requestController;
       const loadGeneration = ++loadGenerationRef.current;
-      await loadFile(file, loadGeneration);
+      try {
+        await loadFile(
+          file,
+          loadGeneration,
+          undefined,
+          requestController?.signal,
+        );
+      } finally {
+        if (requestControllerRef.current === requestController) {
+          requestControllerRef.current = undefined;
+        }
+      }
     },
     [loadFile],
   );
@@ -908,7 +1036,12 @@ export function useOfficeViewerController(
           );
           file = normalized.file;
           if (loadGeneration !== loadGenerationRef.current) return;
-          await loadFile(file, loadGeneration, normalized.sourceUrl);
+          await loadFile(
+            file,
+            loadGeneration,
+            normalized.sourceUrl,
+            requestController?.signal,
+          );
         } catch (nextError) {
           if (
             loadGeneration !== loadGenerationRef.current ||
@@ -1427,5 +1560,7 @@ export function useOfficeViewerController(
     meta,
     viewerRef,
     resourceStore,
+    customRuntime,
+    customPluginId,
   };
 }

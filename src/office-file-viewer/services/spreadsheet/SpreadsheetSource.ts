@@ -1,3 +1,4 @@
+import type { OfficeResourceDescriptor } from '../resource-store/types';
 import type { OfficeSearchProvider } from '../search/types';
 import type { SpreadsheetAnnotation, SpreadsheetPane } from './semantics/types';
 import type { SpreadsheetPerformanceProfile } from './spreadsheetPerformance';
@@ -39,6 +40,8 @@ export type SpreadsheetSourceSnapshot = {
   sheets: readonly SpreadsheetSheetDescriptor[];
   /** 工作簿级定义名称到静态目标地址的映射。 */
   definedNames?: Readonly<Record<string, string>>;
+  /** 当前已发现的可序列化资源元数据。 */
+  resourceRefs?: readonly OfficeResourceDescriptor[];
 };
 
 /** 虚拟网格计算全局坐标所需的轻量 Sheet 布局。 */

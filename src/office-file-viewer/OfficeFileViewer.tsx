@@ -1,6 +1,7 @@
 // OfficeFileViewer 是组件库对外主入口，负责组合本地化、控制器、工具栏和格式预览舞台。
 import type { CSSProperties, ReactElement, ReactNode } from 'react';
 import React, {
+  forwardRef,
   memo,
   useCallback,
   useEffect,
@@ -11,14 +12,23 @@ import React, {
 import { OfficeSearchRuntimeBoundary } from './formats/search/OfficeSearchContext';
 import { OfficeSearchSidebar } from './formats/search/OfficeSearchSidebar';
 import { useOfficeSearchController } from './formats/search/useOfficeSearchController';
+import type { WordPageNavigationController } from './formats/word-pages/types';
 import './index.less';
 import {
   OfficeFileViewerLocaleProvider,
   useOfficeFileViewerMessages,
   type OfficeFileViewerLocale,
 } from './locale';
+import {
+  getDefaultOfficeViewerPluginResolver,
+  useOfficeViewerPluginContext,
+} from './plugins/OfficeViewerPluginContext';
 import type { OfficeFileViewerReviewOptions } from './services/annotations/types';
-import type { OfficeFileViewerError } from './services/errors/OfficeFileViewerError';
+import {
+  OfficeFileViewerError,
+  normalizeOfficeFileViewerError,
+  type OfficeFileViewerError as OfficeFileViewerErrorType,
+} from './services/errors/OfficeFileViewerError';
 import type { OfficeFileViewerFontOptions } from './services/fonts/types';
 import type { OfficeFileViewerUri } from './services/input/normalizeOfficeFileUri';
 import type {
@@ -56,6 +66,10 @@ import {
 import type { OfficeViewerThemeOptions } from './shared/theme';
 import type { OfficeViewerWatermark } from './shared/watermark';
 import { OFFICE_DEFAULT_ZOOM } from './shell/constants';
+import {
+  createOfficeViewerHandle,
+  type OfficeViewerHandle,
+} from './shell/controller/OfficeViewerHandle';
 import { useOfficeViewerController } from './shell/controller/useOfficeViewerController';
 import { OfficeViewerFrame } from './shell/frame';
 import { OfficeOverflowNotice } from './shell/OverflowNotice';
@@ -151,7 +165,7 @@ export type OfficeFileViewerProps = {
   /** 首屏预览就绪后触发一次，完整模型和按需数据源都会触发。 */
   onPreviewReady?: (info: OfficePreviewReadyInfo, file: File) => void;
   /** 文件加载或解析失败时触发的回调。 */
-  onError?: (error: OfficeFileViewerError, file?: File) => void;
+  onError?: (error: OfficeFileViewerErrorType, file?: File) => void;
   /** 解析降级、格式兼容或运行时诊断警告产生时触发。 */
   onWarning?: (warning: OfficeFileViewerWarning, file: File) => void;
   /** 传递给底层解析会话的运行配置。 */
@@ -174,6 +188,16 @@ export type OfficeFileViewerProps = {
   onHyperlinkActivate?: (event: OfficeHyperlinkActivateEvent) => void;
   /** 解析阶段或完成度变化时触发的进度回调。 */
   onParseProgress?: (progress: ParseProgress) => void;
+  /** 可替换的加载、空状态、错误和状态栏内容。 */
+  slots?: OfficeViewerSlots;
+};
+
+/** OfficeFileViewer 可由宿主替换的有限状态内容。 */
+export type OfficeViewerSlots = {
+  loading?: ReactNode;
+  empty?: ReactNode;
+  error?: ReactNode;
+  statusBar?: ReactNode;
 };
 
 /** 组合控制器状态与现有工具栏、预览舞台，保持公共渲染结构稳定。 */
@@ -209,8 +233,15 @@ function OfficeFileViewerContent({
   fontOptions,
   onHyperlinkActivate,
   onParseProgress,
-}: Omit<OfficeFileViewerProps, 'locale'>) {
+  slots,
+  viewerHandleRef,
+}: Omit<OfficeFileViewerProps, 'locale'> & {
+  viewerHandleRef?: React.ForwardedRef<OfficeViewerHandle>;
+}) {
   const messages = useOfficeFileViewerMessages();
+  const pluginContext = useOfficeViewerPluginContext();
+  const activePluginRegistry =
+    pluginContext?.registry ?? getDefaultOfficeViewerPluginResolver();
   const toolbarOptions =
     toolbar === false ? undefined : resolveToolbarOptions(toolbar);
   const searchEnabled = search !== false;
@@ -220,30 +251,112 @@ function OfficeFileViewerContent({
   const reviewEnabled = review !== false;
   const reviewOptions =
     reviewEnabled && review ? review : DEFAULT_REVIEW_OPTIONS;
-  const { state, actions, meta, viewerRef, resourceStore } =
-    useOfficeViewerController({
-      uri,
-      defaultZoom,
-      searchEnabled,
-      defaultSearchVisible: Boolean(searchOptions.defaultVisible),
-      reviewEnabled,
-      defaultReviewPanelVisible: Boolean(reviewOptions.defaultPanelVisible),
-      defaultWordRevisionMode: reviewOptions.defaultRevisionMode ?? 'final',
-      defaultViewState,
-      viewState,
-      onViewStateChange,
-      defaultShowSpeakerNotes,
-      showSpeakerNotes,
-      onSpeakerNotesVisibilityChange,
-      onFileParsed,
-      onPreviewReady,
-      onError,
-      onWarning,
-      parseOptions,
-      onParseProgress,
-      messages,
-    });
+  const controller = useOfficeViewerController({
+    uri,
+    defaultZoom,
+    searchEnabled,
+    defaultSearchVisible: Boolean(searchOptions.defaultVisible),
+    reviewEnabled,
+    defaultReviewPanelVisible: Boolean(reviewOptions.defaultPanelVisible),
+    defaultWordRevisionMode: reviewOptions.defaultRevisionMode ?? 'final',
+    defaultViewState,
+    viewState,
+    onViewStateChange,
+    defaultShowSpeakerNotes,
+    showSpeakerNotes,
+    onSpeakerNotesVisibilityChange,
+    onFileParsed,
+    onPreviewReady,
+    onError,
+    onWarning,
+    parseOptions,
+    pluginRegistry: activePluginRegistry,
+    onParseProgress,
+    messages,
+  });
+  const { state, actions, meta, viewerRef, resourceStore } = controller;
+  const customRuntime = controller.customRuntime;
+  const customPluginId = controller.customPluginId;
+  const customAdapter =
+    customPluginId && pluginContext
+      ? pluginContext.getAdapter(customPluginId)
+      : undefined;
+  const handlePluginError = useCallback(
+    (error: unknown) => {
+      const normalized = normalizeOfficeFileViewerError(error, {
+        stage: 'plugin',
+        fileName: meta.currentFile?.name,
+        format: customRuntime?.snapshot.format,
+      });
+      if (!onError) return;
+      try {
+        onError(normalized, meta.currentFile);
+      } catch (observerError) {
+        setTimeout(() => {
+          throw observerError;
+        }, 0);
+      }
+    },
+    [customRuntime?.snapshot.format, meta.currentFile, onError],
+  );
+  const pageNavigationControllerRef = useRef<WordPageNavigationController>();
+  const actionsRef = useRef(actions);
+  const metaRef = useRef(meta);
+  const stateRef = useRef(state);
+  const customRuntimeRef = useRef(customRuntime);
+  const handleActiveRef = useRef(true);
+  const onNavigationErrorRef = useRef<(error: OfficeFileViewerError) => void>();
+  actionsRef.current = actions;
+  metaRef.current = meta;
+  stateRef.current = state;
+  customRuntimeRef.current = customRuntime;
+  onNavigationErrorRef.current = (error) => onError?.(error, meta.currentFile);
+  const viewerHandle = useMemo(
+    () =>
+      createOfficeViewerHandle({
+        actions: actionsRef,
+        meta: metaRef,
+        state: stateRef,
+        customRuntime: customRuntimeRef,
+        viewerRef,
+        active: handleActiveRef,
+        pageNavigationController: pageNavigationControllerRef,
+        onNavigationError: onNavigationErrorRef,
+      }),
+    [],
+  );
+  useEffect(() => {
+    handleActiveRef.current = true;
+    return () => {
+      handleActiveRef.current = false;
+    };
+  }, []);
+  React.useImperativeHandle(viewerHandleRef, () => viewerHandle, [
+    viewerHandle,
+  ]);
   const { document: documentState, view } = state;
+  const missingRendererReportedRef = useRef<string>();
+  useEffect(() => {
+    if (!customRuntime || !customPluginId || customAdapter) {
+      missingRendererReportedRef.current = undefined;
+      return;
+    }
+    if (missingRendererReportedRef.current === customPluginId) return;
+    if (!onError) return;
+    missingRendererReportedRef.current = customPluginId;
+    onError?.(
+      new OfficeFileViewerError(
+        'PLUGIN_RENDERER_MISSING',
+        `插件缺少 Viewer Renderer：${customPluginId}`,
+        {
+          stage: 'plugin',
+          format: customRuntime.snapshot.format,
+          recoverable: false,
+        },
+      ),
+      meta.currentFile,
+    );
+  }, [customAdapter, customPluginId, customRuntime, meta.currentFile, onError]);
   const preview = meta.preview;
   // Word 使用正文内的页侧标记区，固定审阅面板只服务 Excel 和 PowerPoint。
   const isWordFormat = meta.format.kind === 'word';
@@ -271,6 +384,7 @@ function OfficeFileViewerContent({
   const loadedFileName =
     documentState.phase === 'parsing' ||
     documentState.phase === 'ready' ||
+    documentState.phase === 'plugin-ready' ||
     documentState.phase === 'degraded' ||
     documentState.phase === 'failed'
       ? documentState.fileName
@@ -504,6 +618,14 @@ function OfficeFileViewerContent({
     };
   } else if (loading && !meta.hasRenderableContent) {
     previewStageState = { kind: 'loading', tip: meta.loadingTip };
+  } else if (customRuntime && customPluginId) {
+    previewStageState = {
+      kind: 'plugin',
+      pluginId: customPluginId,
+      runtime: customRuntime,
+      fileName: displayedFileName,
+      adapter: customAdapter,
+    };
   } else if (!preview) {
     previewStageState = { kind: 'empty' };
   } else if (isPresentationPreviewKind(preview.previewKind)) {
@@ -640,6 +762,11 @@ function OfficeFileViewerContent({
                             }
                             onSelectSlide={actions.selectSlide}
                             onSelectSheet={actions.selectSheet}
+                            slots={slots}
+                            onPluginError={handlePluginError}
+                            pageNavigationControllerRef={
+                              pageNavigationControllerRef
+                            }
                           />
                         </div>
                         {reviewEnabled && !isWordFormat ? (
@@ -654,14 +781,16 @@ function OfficeFileViewerContent({
                         ) : null}
                       </div>
                       <OfficeOverflowNotice axis={overflowAxis} />
-                      <OfficeParseStatus
-                        progress={
-                          loading && meta.hasRenderableContent
-                            ? parseProgress
-                            : undefined
-                        }
-                        warning={partialWarning}
-                      />
+                      {slots?.statusBar ?? (
+                        <OfficeParseStatus
+                          progress={
+                            loading && meta.hasRenderableContent
+                              ? parseProgress
+                              : undefined
+                          }
+                          warning={partialWarning}
+                        />
+                      )}
                     </div>
                   </div>
                 </OfficeAnnotationRuntimeBoundary>
@@ -675,15 +804,18 @@ function OfficeFileViewerContent({
 }
 
 /** 渲染 Office 文件预览器，并为当前实例提供独立的界面语言。 */
-function OfficeFileViewerComponent({
-  locale = 'zh-CN',
-  ...props
-}: OfficeFileViewerProps): ReactElement {
+const OfficeFileViewerComponent = forwardRef<
+  OfficeViewerHandle,
+  OfficeFileViewerProps
+>(function OfficeFileViewerComponent(
+  { locale = 'zh-CN', ...props },
+  ref,
+): ReactElement {
   return (
     <OfficeFileViewerLocaleProvider locale={locale}>
-      <OfficeFileViewerContent {...props} />
+      <OfficeFileViewerContent {...props} viewerHandleRef={ref} />
     </OfficeFileViewerLocaleProvider>
   );
-}
+});
 
 export const OfficeFileViewer = memo(OfficeFileViewerComponent);

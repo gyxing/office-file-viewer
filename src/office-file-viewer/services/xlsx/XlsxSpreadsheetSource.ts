@@ -1,6 +1,7 @@
 import type { OfficeArchiveResourcePolicy } from '../../shared/resource/OfficeResourcePolicy';
 import type { OfficeSourcePreviewFactory } from '../parsing/formatParserRegistry';
 import { WorkerSpreadsheetSource } from '../parsing/runtime/source/WorkerSpreadsheetSource';
+import type { OfficeResourceDescriptor } from '../resource-store/types';
 import { disposeDocumentSession } from '../session';
 import {
   createSpreadsheetPerformanceProfile,
@@ -76,6 +77,42 @@ function createSnapshotDescriptor(
   return snapshotDescriptor;
 }
 
+function collectLazyResourceDescriptors(
+  value: unknown,
+  refs: Map<string, OfficeResourceDescriptor>,
+  seen = new Set<object>(),
+) {
+  if (!value || typeof value !== 'object' || seen.has(value)) return;
+  const candidate = value as Record<string, unknown>;
+  if (
+    candidate.kind === 'lazy' &&
+    typeof candidate.id === 'string' &&
+    typeof candidate.mimeType === 'string' &&
+    typeof candidate.size === 'number'
+  ) {
+    refs.set(candidate.id, {
+      id: candidate.id,
+      kind: candidate.mimeType.startsWith('image/') ? 'image' : 'other',
+      mimeType: candidate.mimeType,
+      size: candidate.size,
+    });
+    return;
+  }
+  if (
+    value instanceof ArrayBuffer ||
+    ArrayBuffer.isView(value) ||
+    (typeof Blob !== 'undefined' && value instanceof Blob)
+  ) {
+    return;
+  }
+  seen.add(value);
+  Object.entries(candidate).forEach(([key, child]) => {
+    if (key === 'load' || key === 'buffer') return;
+    collectLazyResourceDescriptors(child, refs, seen);
+  });
+  seen.delete(value);
+}
+
 /** 提供 XLSX 按 Sheet 解析、稀疏范围读取和可重试状态。 */
 export class XlsxSpreadsheetSource implements SpreadsheetSource {
   readonly searchProvider: SpreadsheetSearchProvider;
@@ -86,6 +123,7 @@ export class XlsxSpreadsheetSource implements SpreadsheetSource {
   private readonly profiles = new Map<string, SpreadsheetPerformanceProfile>();
   private readonly stores = new Map<string, SpreadsheetSheetStore>();
   private readonly requests = new Map<string, Promise<void>>();
+  private readonly resourceRefs = new Map<string, OfficeResourceDescriptor>();
   // Sheet 切换只取消调用方等待；底层解析由 Source 生命周期统一管理并继续预热缓存。
   private readonly lifecycleController = new AbortController();
   private revision = 1;
@@ -125,6 +163,7 @@ export class XlsxSpreadsheetSource implements SpreadsheetSource {
       revision: this.revision,
       sheets: this.snapshotDescriptors,
       definedNames: this.context.definedNames,
+      resourceRefs: Object.freeze([...this.resourceRefs.values()]),
     };
   }
 
@@ -239,6 +278,9 @@ export class XlsxSpreadsheetSource implements SpreadsheetSource {
             taskSignal,
           ),
         ]);
+        collectLazyResourceDescriptors(objects, this.resourceRefs);
+        collectLazyResourceDescriptors(oleImages, this.resourceRefs);
+        collectLazyResourceDescriptors(cellImages, this.resourceRefs);
         const previewImages = mergeXlsxPreviewImages(objects.images, oleImages);
         const rowCount = Math.max(
           parsed.layout.rowCount,
@@ -417,6 +459,8 @@ export class XlsxSpreadsheetSource implements SpreadsheetSource {
         ? [...range.conditionalFormatting]
         : undefined,
     };
+    collectLazyResourceDescriptors(sheet.images, this.resourceRefs);
+    collectLazyResourceDescriptors(sheet.charts, this.resourceRefs);
     return sheet;
   }
 
@@ -475,6 +519,7 @@ export class XlsxSpreadsheetSource implements SpreadsheetSource {
     this.disposed = true;
     this.lifecycleController.abort();
     this.listeners.clear();
+    this.resourceRefs.clear();
     this.disposePromise = Promise.allSettled([...this.requests.values()])
       .then(() =>
         Promise.allSettled([

@@ -1,5 +1,6 @@
 import type { OfficeArchiveReader } from '../../shared/ooxml/OfficeArchiveReader';
 import { OFFICE_LARGE_FILE_THRESHOLDS } from '../performance/officePerformanceThresholds';
+import type { OfficeResourceDescriptor } from '../resource-store/types';
 import { WordPerformanceStatsCollector } from '../word/collectWordPerformanceStats';
 import { createProgressiveWordOutlineProvider } from '../word/createMemoryWordOutlineProvider';
 import { createWordPerformanceProfile } from '../word/performance';
@@ -25,7 +26,10 @@ import {
 import type { DocxDocument, DocxPage, DocxPageContent } from './types';
 
 /** DOCX 页面数据源的预览摘要。 */
-export type DocxWordPreviewSummary = Omit<DocxDocument, 'blocks' | 'pages'>;
+export type DocxWordPreviewSummary = Omit<DocxDocument, 'blocks' | 'pages'> & {
+  /** 当前已发现的可序列化资源元数据。 */
+  resourceRefs?: readonly OfficeResourceDescriptor[];
+};
 
 /** 创建 DOCX 页面数据源时使用的选项。 */
 type DocxWordPageSourceOptions = {
@@ -48,6 +52,46 @@ type PendingSourcePage = {
   /** 当前源页面已经完成的内容块测量结果。 */
   measurements: DocxMeasuredBlock[];
 };
+
+function collectLazyResourceDescriptors(
+  value: unknown,
+  refs: Map<string, OfficeResourceDescriptor>,
+  seen = new Set<object>(),
+) {
+  if (!value || typeof value !== 'object' || seen.has(value)) return;
+  const candidate = value as Record<string, unknown>;
+  if (
+    candidate.kind === 'lazy' &&
+    typeof candidate.id === 'string' &&
+    typeof candidate.mimeType === 'string' &&
+    typeof candidate.size === 'number'
+  ) {
+    const mimeType = candidate.mimeType.toLowerCase();
+    refs.set(
+      candidate.id,
+      Object.freeze({
+        id: candidate.id,
+        kind: mimeType.startsWith('image/') ? 'image' : 'other',
+        mimeType: candidate.mimeType,
+        size: candidate.size,
+      }),
+    );
+    return;
+  }
+  if (
+    value instanceof ArrayBuffer ||
+    ArrayBuffer.isView(value) ||
+    (typeof Blob !== 'undefined' && value instanceof Blob)
+  ) {
+    return;
+  }
+  seen.add(value);
+  Object.entries(candidate).forEach(([key, child]) => {
+    if (key === 'load' || key === 'buffer') return;
+    collectLazyResourceDescriptors(child, refs, seen);
+  });
+  seen.delete(value);
+}
 
 /** DOCX Viewer 可同时消费主线程 Source 与 Worker 代理的稳定接口。 */
 export interface DocxPagePreviewSource
@@ -95,6 +139,7 @@ export class DocxWordPageSource implements DocxPagePreviewSource {
     resolvePageIndex: (blockId) => this.blockPageIndex.get(blockId),
   });
   private readonly batchById = new Map<string, DocxMeasurementBatch>();
+  private readonly resourceRefs = new Map<string, OfficeResourceDescriptor>();
   private readonly pendingPages = new Map<string, PendingSourcePage>();
   private readonly measurementQueue: DocxMeasurementBatch[] = [];
   private snapshot: WordPageSourceSnapshot = { revision: 0, pages: [] };
@@ -132,11 +177,16 @@ export class DocxWordPageSource implements DocxPagePreviewSource {
       preserveSectionPagination: metadata.preserveSectionPagination,
       characterSpacingControl: metadata.characterSpacingControl,
     };
+    this.snapshot = {
+      ...this.snapshot,
+      resourceRefs: Object.freeze([...this.resourceRefs.values()]),
+    };
     this.emitChange();
   }
 
   async addSourcePage(page: DocxPageContent) {
     this.throwIfUnavailable();
+    collectLazyResourceDescriptors(page, this.resourceRefs);
     this.collectPageMetadata(page);
     this.searchProvider.append(collectDocxSearchBlocks(page.blocks));
     // 每个 sourcePage 仍独立分页，因此测量不会跨越显式节边界。
@@ -161,6 +211,7 @@ export class DocxWordPageSource implements DocxPagePreviewSource {
           ...this.snapshot.pages,
           this.createBatchMeta(batch, 'estimated'),
         ],
+        resourceRefs: Object.freeze([...this.resourceRefs.values()]),
       };
       this.emitChange();
     }
@@ -182,6 +233,12 @@ export class DocxWordPageSource implements DocxPagePreviewSource {
       bookmarks: result.bookmarks,
       review: result.review,
       notes: result.notes,
+    };
+    collectLazyResourceDescriptors(result, this.resourceRefs);
+    this.snapshot = {
+      ...this.snapshot,
+      revision: this.snapshot.revision + 1,
+      resourceRefs: Object.freeze([...this.resourceRefs.values()]),
     };
     this.parsingCompleted = true;
     this.searchProvider.complete();
@@ -244,6 +301,7 @@ export class DocxWordPageSource implements DocxPagePreviewSource {
             }
           : meta,
       ),
+      resourceRefs: Object.freeze([...this.resourceRefs.values()]),
     };
     this.emitChange();
   }
@@ -254,7 +312,10 @@ export class DocxWordPageSource implements DocxPagePreviewSource {
 
   getSummary() {
     if (!this.summary) throw new Error('DOCX Source 尚无文档摘要');
-    return this.summary;
+    return {
+      ...this.summary,
+      resourceRefs: Object.freeze([...this.resourceRefs.values()]),
+    };
   }
 
   getOutlineItems() {
@@ -319,6 +380,7 @@ export class DocxWordPageSource implements DocxPagePreviewSource {
             }
           : item,
       ),
+      resourceRefs: Object.freeze([...this.resourceRefs.values()]),
     };
     this.emitChange();
   }
@@ -338,6 +400,7 @@ export class DocxWordPageSource implements DocxPagePreviewSource {
     this.measurementQueue.length = 0;
     this.batchById.clear();
     this.pendingPages.clear();
+    this.resourceRefs.clear();
     this.blockPageIndex.clear();
     this.outlineItemsById.clear();
     this.disposePromise = Promise.all([
@@ -398,6 +461,7 @@ export class DocxWordPageSource implements DocxPagePreviewSource {
     this.snapshot = {
       revision: this.snapshot.revision + 1,
       pages: [...this.snapshot.pages, ...metas],
+      resourceRefs: Object.freeze([...this.resourceRefs.values()]),
     };
     metas.forEach((meta) => {
       meta.sourceBlockIds.forEach((id) =>
@@ -436,6 +500,7 @@ export class DocxWordPageSource implements DocxPagePreviewSource {
     this.snapshot = {
       revision: this.snapshot.revision + 1,
       pages: nextPages,
+      resourceRefs: Object.freeze([...this.resourceRefs.values()]),
     };
     this.rebuildBlockIndex();
   }
@@ -481,6 +546,7 @@ export class DocxWordPageSource implements DocxPagePreviewSource {
       ...this.snapshot,
       revision: this.snapshot.revision + 1,
       pageCount: this.snapshot.pages.length,
+      resourceRefs: Object.freeze([...this.resourceRefs.values()]),
     };
   }
 

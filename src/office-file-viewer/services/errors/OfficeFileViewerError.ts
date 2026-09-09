@@ -10,7 +10,10 @@ export type OfficeFileViewerErrorStage =
   | 'parsing'
   | 'worker'
   | 'resource'
-  | 'fullscreen';
+  | 'fullscreen'
+  | 'plugin'
+  | 'export'
+  | 'navigation';
 
 /** OfficeFileViewer 对外稳定暴露的错误代码。 */
 export type OfficeFileViewerErrorCode =
@@ -24,6 +27,16 @@ export type OfficeFileViewerErrorCode =
   | 'WORKER_FAILED'
   | 'PARSE_FAILED'
   | 'FULLSCREEN_FAILED'
+  | 'PLUGIN_CONFLICT'
+  | 'PLUGIN_WORKER_UNSUPPORTED'
+  | 'PLUGIN_RENDERER_MISSING'
+  | 'EXPORT_UNSUPPORTED'
+  | 'EXPORT_CANCELLED'
+  | 'EXPORT_FILENAME_REQUIRED'
+  | 'EXPORT_RESOURCE_FAILED'
+  | 'EXPORT_WRITE_FAILED'
+  | 'NAVIGATION_UNSUPPORTED'
+  | 'NAVIGATION_OUT_OF_RANGE'
   | OfficeResourceLimitCode;
 
 /** 创建结构化错误时可以附加的安全上下文。 */
@@ -34,6 +47,8 @@ export type OfficeFileViewerErrorContext = {
   previewKind?: PreviewKind;
   /** 已知时记录源文件名，不包含本地路径。 */
   fileName?: string;
+  /** 已知时记录当前导出或插件格式。 */
+  format?: string;
   /** 底层解析器或运行时提供的原始错误码。 */
   originalCode?: string;
   /** 解析协议已知时记录当前解析阶段。 */
@@ -50,6 +65,7 @@ export class OfficeFileViewerError extends Error {
   readonly stage: OfficeFileViewerErrorStage;
   readonly previewKind?: PreviewKind;
   readonly fileName?: string;
+  readonly format?: string;
   readonly originalCode?: string;
   readonly parseStage?: ParseStage;
   readonly recoverable: boolean;
@@ -66,6 +82,7 @@ export class OfficeFileViewerError extends Error {
     this.stage = context.stage;
     this.previewKind = context.previewKind;
     this.fileName = context.fileName;
+    this.format = context.format;
     this.originalCode = context.originalCode;
     this.parseStage = context.parseStage;
     this.recoverable = context.recoverable ?? false;

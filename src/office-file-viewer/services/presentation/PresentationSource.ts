@@ -1,3 +1,4 @@
+import type { OfficeResourceDescriptor } from '../resource-store/types';
 import type { OfficeSearchProvider } from '../search/types';
 import type { PresentationPerformanceProfile } from './presentationPerformance';
 import type {
@@ -48,6 +49,8 @@ export type PresentationSourceSnapshot = {
   warnings?: readonly PresentationWarning[];
   /** 当前数据源选定的缩略图和幻灯片性能模式。 */
   performance: PresentationPerformanceProfile;
+  /** 当前已发现的可序列化资源元数据。 */
+  resourceRefs?: readonly OfficeResourceDescriptor[];
 };
 
 /** 为普通文稿和大型按需文稿提供统一的幻灯片读取协议。 */

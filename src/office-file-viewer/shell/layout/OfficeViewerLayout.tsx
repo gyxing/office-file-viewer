@@ -40,6 +40,7 @@ function OfficeViewerLayoutContent({
   onFullscreenChange,
   onFullscreenError,
   contentScaling = 'managed',
+  capabilities,
   children,
 }: Omit<OfficeViewerLayoutProps, 'locale'>): ReactElement {
   const controller = useOfficeViewerLayoutController({
@@ -49,6 +50,7 @@ function OfficeViewerLayoutContent({
     onFullscreenChange,
     onFullscreenError,
     contentScaling,
+    capabilities,
   });
   const { state, actions, meta } = controller;
   const configuredToolbar =
