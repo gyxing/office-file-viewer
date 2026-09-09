@@ -1,3 +1,4 @@
+import type { OfficeResourceDescriptor } from '../resource-store/types';
 import type { OfficeSearchProvider } from '../search/types';
 
 /** Word 页面常驻内存的轻量状态，不包含正文 blocks。 */
@@ -26,6 +27,8 @@ export type WordPageSourceSnapshot = {
   pageCount?: number;
   /** 按文档顺序排列的页面。 */
   pages: readonly WordPageMeta[];
+  /** 当前已发现的可序列化资源元数据。 */
+  resourceRefs?: readonly OfficeResourceDescriptor[];
 };
 
 /** 为普通数组和渐进分页统一提供按范围页面读取能力。 */

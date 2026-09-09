@@ -12,6 +12,7 @@ toc: content
   <a href="#quick-start">快速接入</a>
   <a href="#component-api">组件 API</a>
   <a href="#advanced-api">高级 API</a>
+  <a href="#extension-entries">扩展入口</a>
   <a href="#limitations">限制说明</a>
 </nav>
 
@@ -190,6 +191,7 @@ type OfficeFileViewerUri = File | string | OfficeFileViewerUriLoader;
 | `fontOptions`                    | `OfficeFileViewerFontOptions`                         | `{}`       | 字体别名、回退字体、字体资源和缺失字体诊断   |
 | `onHyperlinkActivate`            | `(event: OfficeHyperlinkActivateEvent) => void`       | -          | 链接有效激活时触发，可阻止默认导航           |
 | `onParseProgress`                | `(progress: ParseProgress) => void`                   | -          | 解析阶段或完成度变化时触发                   |
+| `slots`                          | `OfficeViewerSlots`                                   | -          | 替换加载、空状态、错误或状态栏内容           |
 
 ### 工具栏、主题与水印
 
@@ -222,6 +224,30 @@ type OfficeFileViewerUri = File | string | OfficeFileViewerUriLoader;
   }}
   toolbarExtra={<button type="button">下载原文件</button>}
   onFileSelect={(nextFile) => console.log(nextFile.name)}
+/>
+```
+
+`slots` 用于提供静态的宿主状态内容。`error` 插槽不会接收动作；需要重试时请通过 `OfficeViewerHandle` 的 `reload()` 或 Shell Context 保留宿主操作入口。Viewer 仍会通过 `onError` 报告结构化错误。
+
+```ts | pure
+type OfficeViewerSlots = {
+  loading?: ReactNode;
+  empty?: ReactNode;
+  error?: ReactNode;
+  statusBar?: ReactNode;
+};
+```
+
+```tsx | pure
+<OfficeFileViewer
+  uri={file}
+  slots={{
+    loading: <p>正在准备预览……</p>,
+    empty: <p>请选择 Office 文件。</p>,
+    error: <p>预览不可用，请使用宿主重试操作。</p>,
+    statusBar: <span>宿主状态</span>,
+  }}
+  onError={(error) => console.error(error.code)}
 />
 ```
 
@@ -305,6 +331,7 @@ export default function Preview() {
 | `contentScaling`          | `'managed' \| 'manual'`                   | `'managed'` | 外壳或宿主负责应用缩放                 |
 | `onFullscreenChange`      | `(fullscreen: boolean) => void`           | -           | 浏览器全屏状态改变时触发               |
 | `onFullscreenError`       | `(error: Error) => void`                  | -           | 请求全屏失败时触发                     |
+| `capabilities`            | `OfficeCapabilities`                      | -           | 可选的宿主能力快照，会放入共享 Context |
 | `children`                | `ReactNode`                               | -           | 宿主渲染的文档内容                     |
 
 ### 内容图片预览
@@ -529,8 +556,11 @@ type OfficeParseOptions = {
   worker?: WorkerMode;
   workerFactory?: () => Worker;
   resourcePolicy?: OfficeParseResourcePolicy;
+  pluginRegistry?: OfficePluginResolver;
 };
 ```
+
+`pluginRegistry` 只在宿主线程用于解析外部插件，不会进入 Worker 消息。
 
 | 模式       | 全部支持格式的行为                                                                                                                |
 | ---------- | --------------------------------------------------------------------------------------------------------------------------------- |
@@ -591,8 +621,9 @@ type ParseProgress = {
 };
 
 type OfficePreviewReadyInfo = {
-  previewKind: PreviewKind;
+  previewKind: OfficeFormatId;
   mode: 'materialized' | 'source';
+  capabilities: OfficeCapabilities;
 };
 ```
 
@@ -622,6 +653,30 @@ type OfficeParseSession<TParsed> = {
 ```
 
 `createOfficeParseSession(file, options)` 接收受支持的 `File`，返回 `OfficeParseSession<ParsedOfficeFile>`。取消操作会使 `result` 被拒绝；调用方等待该 Promise 时，应像处理其他解析失败一样处理取消错误。
+
+### Viewer 句柄与能力查询
+
+需要命令式操作时使用兼容 React 16.9 的 ref 句柄。文档尚未就绪前 `getCapabilities()` 返回 `undefined`；当前文档不具备对应能力时，导航和格式专属动作保持无副作用。
+
+```tsx | pure
+import type { OfficeViewerHandle } from 'office-file-viewer';
+import { OfficeFileViewer } from 'office-file-viewer';
+import React, { useRef } from 'react';
+
+export function ControlledPreview({ file }: { file: File }) {
+  const viewerRef = useRef<OfficeViewerHandle>(null);
+  return (
+    <>
+      <button type="button" onClick={() => viewerRef.current?.reload()}>
+        重新加载
+      </button>
+      <OfficeFileViewer ref={viewerRef} uri={file} />
+    </>
+  );
+}
+```
+
+`OfficeViewerHandle` 提供缩放、适应模式、页面/工作表/幻灯片导航、查找、审阅、全屏、`getViewState()` 和 `getCapabilities()`。页面和幻灯片使用从 0 开始的数字索引；工作表使用工作表 ID 字符串。受控模式下动作会通知 `onViewStateChange`，最终状态仍由宿主维护。
 
 ### `.ppt` 兼容解析接口
 
@@ -685,6 +740,120 @@ try {
 `OfficeFileViewer` 会自动管理自身会话和解析资源。使用底层 API 时，这两个生命周期都由调用方负责。专用集成也可以使用 `disposeDocDocument`、`disposePresentationDocument` 和 `disposeSpreadsheetWorkbook`，但优先使用 `disposeParsedOfficeFile`，因为它还会释放完整结果附带的文档会话。
 
 ## 支持格式与交互
+<a id="extension-entries"></a>
+
+## 稳定扩展入口
+
+当前包保持单一可安装的 `office-file-viewer`，并提供根 Viewer、`core`、`layout`、`plugins` 和 `export` 五个公开 ESM 入口。请使用这些入口，不要导入 `services/*`、`formats/*`、`shared/*` 或 `dist/*` 深层路径；这些深层路径不属于兼容性承诺。
+
+本版本的 `plugins`、`export` 协议和 Editor 边界类型仍标记为实验性。入口路径已文档化，宿主可以在明确了解风险后接入，但暂不承诺这些协议的长期兼容性。
+
+### Core 解析与运行时模型
+
+`office-file-viewer/core` 提供与浏览器界面无关的解析、模型、资源、生命周期和 Editor 边界契约。宿主可以在不引入 Viewer UI 的情况下订阅解析会话并在结束后释放资源：
+
+```tsx | pure
+import { createOfficeDocumentParseSession } from 'office-file-viewer/core';
+
+export async function parseForHost(file: File) {
+  const session = createOfficeDocumentParseSession(file, { worker: 'auto' });
+  try {
+    const runtime = await session.result;
+    return runtime.snapshot;
+  } finally {
+    session.dispose();
+  }
+}
+```
+
+旧版 `createOfficeParseSession` 契约仍可从根入口和 `core` 入口使用，返回内置格式的 `OfficeParseSession<ParsedOfficeFile>`。取消会拒绝 `result`，调用方应像处理其他解析失败一样处理。返回可扩展 `OfficeDocumentRuntime` 的外部插件应改用 `createOfficeDocumentParseSession(file, { pluginRegistry })`；旧版解析结果联合无法表达自定义模型。Core API 返回结构化快照和能力信息，不渲染 React 节点，也不承诺完整 Office 编辑器。
+
+`createOfficeResourceSession()` 在现有资源 Store 上提供取消、MIME/大小校验、引用计数和幂等释放。可见资源使用 `acquire()`/`release()` 配对，文档作用域结束时调用 `dispose()`；宿主 resolver 只能替换惰性来源的读取方式。`createOfficeDocumentSession()` 提供解析资源共用的取消和所有权边界。
+
+### Layout 组合式外壳与插件
+
+宿主只需要可复用的界面外壳时，可从 `office-file-viewer/layout` 导入，不必引入默认文件解析器。`OfficeViewerShell` 提供共享上下文和最小组合组件：
+
+```tsx | pure
+import type { ReactNode } from 'react';
+import { OfficeViewerShell } from 'office-file-viewer/layout';
+
+export function CustomViewer({ children }: { children: ReactNode }) {
+  return (
+    <OfficeViewerShell.Provider defaultZoom={100}>
+      <OfficeViewerShell.Root>
+        <OfficeViewerShell.Toolbar>
+          <OfficeViewerShell.FileInfo>自定义文档</OfficeViewerShell.FileInfo>
+          <OfficeViewerShell.Zoom />
+          <OfficeViewerShell.Fullscreen />
+        </OfficeViewerShell.Toolbar>
+        <OfficeViewerShell.Sidebar>大纲</OfficeViewerShell.Sidebar>
+        <OfficeViewerShell.Viewport>{children}</OfficeViewerShell.Viewport>
+        <OfficeViewerShell.StatusBar>就绪</OfficeViewerShell.StatusBar>
+      </OfficeViewerShell.Root>
+    </OfficeViewerShell.Provider>
+  );
+}
+```
+
+`Root` 会填满父容器，因此宿主必须为父容器设置可计算的高度。`Sidebar` 与 `Viewport` 会进入响应式网格的独立区域；Provider 的 `watermark` 只覆盖 Viewport 内容。
+
+`office-file-viewer/plugins` 提供作用域级注册表。默认会装配内置格式；插件通过 `workerSupport: 'none'`、`'main-thread'` 或 `'worker'` 声明执行位置。不实现 Worker 协议的插件不能用于 `worker: 'always'`。
+
+外部插件若要接管已有扩展名或 MIME 类型，必须显式设置与内置优先级不同的值；相同或未声明的优先级会被拒绝，以保证解析结果确定。
+
+```tsx | pure
+import { OfficeFileViewer } from 'office-file-viewer';
+import {
+  OfficeViewerProvider,
+  createOfficePluginRegistry,
+} from 'office-file-viewer/plugins';
+
+// 在应用作用域内复用同一个注册表，并在应用销毁时调用 registry.dispose()。
+const registry = createOfficePluginRegistry({ includeBuiltIns: true });
+
+export function PluginViewer({ file }: { file: File }) {
+  return (
+    <OfficeViewerProvider registry={registry}>
+      <OfficeFileViewer uri={file} />
+    </OfficeViewerProvider>
+  );
+}
+```
+
+宿主创建的注册表应在应用作用域结束时调用 `dispose`。注册表是实例级对象，不会释放解析会话所拥有的文档资源。
+
+### 原始文件导出与未来 Editor 边界
+
+`office-file-viewer/export` 当前支持对原始 `File`、`Blob`、`ArrayBuffer` 或 `Uint8Array` 做无损复制。编辑后的格式写回需要宿主在 `OfficeExporterRegistry` 上显式注册 `OfficeExporter`：
+
+```tsx | pure
+import { exportOriginalOfficeFile } from 'office-file-viewer/export';
+
+export async function copyOriginal(file: File) {
+  const result = await exportOriginalOfficeFile(file, { fileName: file.name });
+  const downloadUrl = URL.createObjectURL(result.blob);
+  return {
+    result,
+    downloadUrl,
+    revoke: () => URL.revokeObjectURL(downloadUrl),
+  };
+}
+```
+
+Core 的 `OfficeChangeSet`、事务、历史和选区类型只定义未来 Editor 边界，供宿主或编辑器集成时序列化使用；当前 Viewer 仍是只读组件，不写回编辑后的 Office 文件，也不转换为 PDF/图片。
+
+### CSS 与迁移规则
+
+当宿主构建工具不会保留根入口的 CSS 副作用时，显式导入 `office-file-viewer/styles.css`：
+
+```ts | pure
+import 'office-file-viewer/styles.css';
+```
+
+如果宿主已经处理根入口的 CSS 副作用，请不要再次导入聚合样式，以免重复规则。代码只应使用文档化的根入口、`core`、`layout`、`plugins` 和 `export`；未文档化的深层导入可能随时变化。
+
+
 
 | 文档类型           | 扩展名                    | 主要解析范围                                                                        |
 | ------------------ | ------------------------- | ----------------------------------------------------------------------------------- |

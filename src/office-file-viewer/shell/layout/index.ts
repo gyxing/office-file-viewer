@@ -1,5 +1,10 @@
 export { OfficeViewerLayout } from './OfficeViewerLayout';
 export { useOfficeViewerLayout } from './OfficeViewerLayoutContext';
+export { OfficeViewerShell } from './OfficeViewerShell';
+export type {
+  OfficeViewerShellComponent,
+  OfficeViewerShellProviderProps,
+} from './OfficeViewerShell';
 export type {
   OfficeViewerLayoutActions,
   OfficeViewerLayoutContentScaling,
@@ -7,4 +12,5 @@ export type {
   OfficeViewerLayoutMeta,
   OfficeViewerLayoutProps,
   OfficeViewerLayoutState,
+  OfficeViewerShellContextValue,
 } from './types';

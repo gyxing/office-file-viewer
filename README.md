@@ -18,6 +18,34 @@ Office preview is a common requirement in enterprise collaboration, knowledge-ba
 
 `office-file-viewer` takes a browser-first approach: local files can be parsed and rendered without deploying a document-conversion service or actively uploading the file. It is designed as a reusable open-source building block, with explicit boundaries around macros, external media, remote resources, large files, and complex layouts.
 
+## Stable public entry points
+
+The package keeps the default `OfficeFileViewer` entry and adds stable ESM subpaths:
+
+```ts
+import { OfficeFileViewer } from 'office-file-viewer';
+import { OfficeViewerShell } from 'office-file-viewer/layout';
+import { createOfficeParseSession } from 'office-file-viewer/core';
+import { createOfficePluginRegistry } from 'office-file-viewer/plugins';
+import { OfficeViewerProvider } from 'office-file-viewer/plugins';
+import { exportOriginalOfficeFile } from 'office-file-viewer/export';
+import 'office-file-viewer/styles.css';
+
+const registry = createOfficePluginRegistry({ includeBuiltIns: true });
+```
+
+`core` exposes parsing, snapshots, resources, lifecycle, and capabilities. `plugins` provides instance-scoped registration and the optional `OfficeViewerProvider`; `export` provides original-file export and exporter contracts; `layout` provides the reusable Shell. The first `plugins`, `export`, and Editor contracts are experimental. Do not import undocumented `services`, `formats`, `shared`, or `dist` paths.
+
+```tsx
+<OfficeViewerProvider registry={registry}>
+  <OfficeFileViewer uri={file} />
+</OfficeViewerProvider>
+```
+
+Reuse `registry` for the application scope and call `registry.dispose()` when that scope ends.
+
+If the host bundler already processes the root entry's CSS side effect, do not also import `styles.css` to avoid duplicate rules. CSS variables supplied through `style` take precedence over theme options.
+
 ## Features
 
 - **Browser-only parsing**: Suitable for intranets, offline environments, and privacy-sensitive workflows.
@@ -97,7 +125,7 @@ Macro-enabled files expose only visible document content. Macros are never loade
 
 ## Limitations
 
-- The viewer is read-only and does not edit, save, convert, print-layout, or export Office files.
+- The viewer UI is read-only and does not edit, save, convert, print-layout, or export Office files to PDF/images. Original-file copying is available through the experimental `office-file-viewer/export` entry.
 - Remote files remain subject to browser CORS, authentication, and Content Security Policy rules.
 - Internal optimization thresholds never reject large files. Very large or complex files automatically use on-demand reads and virtual rendering, but can still consume significant memory or briefly reduce responsiveness.
 - The package does not bundle Office fonts; final layout depends on fonts available to the browser or fallback/host font resources configured by the host. URL resources still follow browser CORS/CSP rules.

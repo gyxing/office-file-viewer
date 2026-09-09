@@ -3,15 +3,16 @@ export type {
   OfficeViewerThemeMode,
   OfficeViewerThemeOptions,
   OfficeViewerThemeTokens,
-} from './office-file-viewer/shared/theme';
+} from './office-file-viewer/shared/theme/index';
 export type {
   OfficeViewerWatermark,
   OfficeViewerWatermarkOptions,
-} from './office-file-viewer/shared/watermark';
+} from './office-file-viewer/shared/watermark/index';
 export {
   OfficeViewerLayout,
+  OfficeViewerShell,
   useOfficeViewerLayout,
-} from './office-file-viewer/shell/layout';
+} from './office-file-viewer/shell/layout/index';
 export type {
   OfficeViewerLayoutActions,
   OfficeViewerLayoutContentScaling,
@@ -19,4 +20,7 @@ export type {
   OfficeViewerLayoutMeta,
   OfficeViewerLayoutProps,
   OfficeViewerLayoutState,
-} from './office-file-viewer/shell/layout';
+  OfficeViewerShellComponent,
+  OfficeViewerShellContextValue,
+  OfficeViewerShellProviderProps,
+} from './office-file-viewer/shell/layout/index';

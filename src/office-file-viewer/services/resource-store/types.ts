@@ -19,6 +19,18 @@ export type OfficeResourceSource =
       load(signal?: AbortSignal): Promise<Blob>;
     };
 
+/** 解析模型为 Core 快照保留的资源元数据，不携带 Blob、加载函数或临时 URL。 */
+export type OfficeResourceDescriptor = {
+  /** 资源在当前文档中的稳定标识。 */
+  id: string;
+  /** 资源用途类别。 */
+  kind: 'image' | 'media' | 'font' | 'other';
+  /** 资源 MIME 类型。 */
+  mimeType?: string;
+  /** 资源二进制大小。 */
+  size?: number;
+};
+
 /** 管理资源并发去重、Object URL 引用和统一释放。 */
 export interface OfficeResourceStore {
   /** 获取资源并增加其引用计数。 */

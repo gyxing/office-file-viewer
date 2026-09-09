@@ -83,12 +83,13 @@ export async function parseDoc(file: File): Promise<DocDocument> {
       fileName: file.name,
       checkpoint: yieldIfNeeded,
     });
+    // 图片正文使用 `office-resource:*` 引用，必须先登记资源再解析元数据和块。
+    for (const resource of result.resources) {
+      await assembler.addResource(resource);
+    }
     assembler.setMetadata(documentMetadataFromDoc(result.document));
     for (const chunk of chunkDocBlocks(result.document.blocks)) {
       assembler.addBlocks(chunk.startIndex, chunk.blocks);
-    }
-    for (const resource of result.resources) {
-      await assembler.addResource(resource);
     }
     return assembler.complete();
   } catch (error) {

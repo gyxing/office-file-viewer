@@ -9,6 +9,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import type { MutableRefObject } from 'react';
 import { useOfficeFileViewerMessages } from '../../locale';
 import {
   createMemoryOfficeAnnotationSource,
@@ -99,6 +100,8 @@ type DocxViewerProps = {
   onCloseOutline: () => void;
   /** 搜索能力启用时切换到查找侧栏。 */
   onOpenSearch?: () => void;
+  /** 向外暴露虚拟分页导航控制器。 */
+  pageNavigationControllerRef?: MutableRefObject<WordPageNavigationController | undefined>;
 };
 
 /** 按物理页序号选择首页、偶数页或默认页眉页脚。 */
@@ -231,6 +234,7 @@ function DocxViewerComponent({
   wordRevisionMode,
   onCloseOutline,
   onOpenSearch,
+  pageNavigationControllerRef: externalPageNavigationControllerRef,
 }: DocxViewerProps) {
   const messages = useOfficeFileViewerMessages();
   const fontsReady = useOfficeFontsReady();
@@ -368,7 +372,9 @@ function DocxViewerComponent({
     pageSnapshot.pages.forEach((meta) => index.replacePage(meta));
     return index;
   }, [pageSnapshot.pages, pageSnapshot.revision]);
-  const pageNavigationControllerRef = useRef<WordPageNavigationController>();
+  const internalPageNavigationControllerRef = useRef<WordPageNavigationController>();
+  const pageNavigationControllerRef =
+    externalPageNavigationControllerRef ?? internalPageNavigationControllerRef;
   useWordTargetNavigation({
     bookmarks: source ? summary?.bookmarks : document?.bookmarks,
     scrollContainerRef,

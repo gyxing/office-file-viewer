@@ -1,6 +1,9 @@
 import type { OfficeHyperlink } from '../../shared/hyperlink';
 import type { OfficeAnnotation } from '../annotations/types';
-import type { OfficeResourceSource } from '../resource-store';
+import type {
+  OfficeResourceDescriptor,
+  OfficeResourceSource,
+} from '../resource-store';
 import type { PresentationMediaSource } from './mediaTypes';
 import type { PresentationTransition } from './transitionTypes';
 
@@ -22,6 +25,8 @@ export type PresentationWarning = {
 export type PresentationResources = {
   /** 浏览器创建的对象 URL 集合，文档释放时必须逐一撤销。 */
   objectUrls: string[];
+  /** 解析阶段收集的可序列化资源元数据。 */
+  resourceRefs?: readonly OfficeResourceDescriptor[];
 };
 
 /** 描述演示文稿标准模型生成的标准化文档模型。 */

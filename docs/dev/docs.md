@@ -12,6 +12,7 @@ toc: content
   <a href="#quick-start">Quick start</a>
   <a href="#component-api">Component API</a>
   <a href="#advanced-api">Advanced API</a>
+  <a href="#extension-entries">Extension entries</a>
   <a href="#limitations">Limitations</a>
 </nav>
 
@@ -190,6 +191,7 @@ Remote source rules:
 | `fontOptions`                    | `OfficeFileViewerFontOptions`                         | `{}`              | Font aliases, fallback families, font sources, and diagnostics        |
 | `onHyperlinkActivate`            | `(event: OfficeHyperlinkActivateEvent) => void`       | -                 | Called on valid activation and can prevent default navigation         |
 | `onParseProgress`                | `(progress: ParseProgress) => void`                   | -                 | Called when the current parse stage or progress changes               |
+| `slots`                          | `OfficeViewerSlots`                                   | -                 | Replace loading, empty, error, or status-bar content                  |
 
 ### Toolbar, theme, and watermark
 
@@ -222,6 +224,30 @@ Pass `toolbar={false}` to hide the built-in toolbar. Object values independently
   }}
   toolbarExtra={<button type="button">Download original</button>}
   onFileSelect={(nextFile) => console.log(nextFile.name)}
+/>
+```
+
+Use `slots` for static host-owned state content. The `error` slot does not receive an action; keep retry behavior available through the `OfficeViewerHandle` (`reload()`) or the Shell Context. The viewer still reports the structured error through `onError`.
+
+```ts | pure
+type OfficeViewerSlots = {
+  loading?: ReactNode;
+  empty?: ReactNode;
+  error?: ReactNode;
+  statusBar?: ReactNode;
+};
+```
+
+```tsx | pure
+<OfficeFileViewer
+  uri={file}
+  slots={{
+    loading: <p>Preparing preview…</p>,
+    empty: <p>Select an Office file.</p>,
+    error: <p>Preview unavailable. Use the host retry action.</p>,
+    statusBar: <span>Host status</span>,
+  }}
+  onError={(error) => console.error(error.code)}
 />
 ```
 
@@ -305,6 +331,7 @@ export default function Preview() {
 | `contentScaling`          | `'managed' \| 'manual'`                   | `'managed'` | Whether the shell or host applies zoom                    |
 | `onFullscreenChange`      | `(fullscreen: boolean) => void`           | -           | Called when browser fullscreen state changes              |
 | `onFullscreenError`       | `(error: Error) => void`                  | -           | Called when a fullscreen request fails                    |
+| `capabilities`            | `OfficeCapabilities`                      | -           | Optional host capability snapshot for the shared context  |
 | `children`                | `ReactNode`                               | -           | Host-rendered document content                            |
 
 ### Content-image preview
@@ -529,8 +556,11 @@ type OfficeParseOptions = {
   worker?: WorkerMode;
   workerFactory?: () => Worker;
   resourcePolicy?: OfficeParseResourcePolicy;
+  pluginRegistry?: OfficePluginResolver;
 };
 ```
+
+`pluginRegistry` is used only on the host thread to resolve external plugins; it is not transferred into Worker messages.
 
 | Mode       | Behavior for every supported format                                                                                                                                                             |
 | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -591,8 +621,9 @@ type ParseProgress = {
 };
 
 type OfficePreviewReadyInfo = {
-  previewKind: PreviewKind;
+  previewKind: OfficeFormatId;
   mode: 'materialized' | 'source';
+  capabilities: OfficeCapabilities;
 };
 ```
 
@@ -621,7 +652,31 @@ type OfficeParseSession<TParsed> = {
 };
 ```
 
-`createOfficeParseSession(file, options)` accepts a supported `File` and returns `OfficeParseSession<ParsedOfficeFile>`. Cancellation rejects `result`; callers should handle it in the same way as other parse failures when they await the promise.
+`createOfficeParseSession(file, options)` accepts a supported `File` and returns the legacy `OfficeParseSession<ParsedOfficeFile>` for built-in formats. Cancellation rejects `result`; callers should handle it in the same way as other parse failures when they await the promise. External plugins that return the extensible `OfficeDocumentRuntime` should use `createOfficeDocumentParseSession(file, { pluginRegistry })` instead; the legacy parsed-file union cannot represent a custom model.
+
+### Viewer handle and capabilities
+
+Use the React 16.9-compatible ref handle for imperative actions. `getCapabilities()` is `undefined` before a document is ready, and navigation or format-specific actions are no-ops when the current document does not expose that capability.
+
+```tsx | pure
+import type { OfficeViewerHandle } from 'office-file-viewer';
+import { OfficeFileViewer } from 'office-file-viewer';
+import React, { useRef } from 'react';
+
+export function ControlledPreview({ file }: { file: File }) {
+  const viewerRef = useRef<OfficeViewerHandle>(null);
+  return (
+    <>
+      <button type="button" onClick={() => viewerRef.current?.reload()}>
+        Reload
+      </button>
+      <OfficeFileViewer ref={viewerRef} uri={file} />
+    </>
+  );
+}
+```
+
+`OfficeViewerHandle` exposes zoom, fit modes, page/sheet/slide navigation, search, review, fullscreen, `getViewState()`, and `getCapabilities()`. Page and slide navigation use zero-based numeric indices; sheet navigation uses a sheet ID string. In controlled mode, actions notify `onViewStateChange`; the host remains the source of truth.
 
 ### `.ppt` compatibility parser
 
@@ -685,6 +740,122 @@ try {
 `OfficeFileViewer` handles its own sessions and parsed resources automatically. Low-level consumers own both lifecycles. `disposeDocDocument`, `disposePresentationDocument`, and `disposeSpreadsheetWorkbook` are available for specialized integrations, but `disposeParsedOfficeFile` is preferred because it also releases the document session attached to a complete result.
 
 ## Supported formats and interactions
+<a id="extension-entries"></a>
+
+## Stable extension entries
+
+The package keeps one installable `office-file-viewer` package and exposes five public ESM entry points: the root viewer, `core`, `layout`, `plugins`, and `export`. Use these entry points instead of importing `services/*`, `formats/*`, `shared/*`, or `dist/*` paths; those deep paths are not compatibility contracts.
+
+The `plugins` and `export` protocols, together with the Editor boundary types, are experimental in this release. The entry paths are documented so hosts can integrate deliberately, but their long-term protocol compatibility is not yet promised.
+
+### Core parsing and runtime model
+
+`office-file-viewer/core` contains Viewer-independent parsing, model, resource, lifecycle, and editor-boundary contracts. A parse session can be observed and disposed without importing the Viewer UI:
+
+```tsx | pure
+import { createOfficeDocumentParseSession } from 'office-file-viewer/core';
+
+export async function parseForHost(file: File) {
+  const session = createOfficeDocumentParseSession(file, { worker: 'auto' });
+  try {
+    const runtime = await session.result;
+    return runtime.snapshot;
+  } finally {
+    session.dispose();
+  }
+}
+```
+
+The legacy `createOfficeParseSession` contract remains available from the root and `core` entries. Core APIs return structured snapshots and capabilities; they do not render React nodes and do not promise a complete Office editor.
+
+`createOfficeResourceSession()` wraps the package resource store with cancellation, MIME/size validation, reference counting, and idempotent disposal. Call `acquire()`/`release()` around a visible resource and `dispose()` when the document scope ends; a custom resolver may replace only lazy-source loading. `createOfficeDocumentSession()` provides the matching abort and ownership boundary for parser-owned resources.
+
+### Layout composition and plugins
+
+Use `office-file-viewer/layout` when a host needs the reusable chrome without importing the default file parser. `OfficeViewerShell` provides a shared context and small compound components:
+
+```tsx | pure
+import type { ReactNode } from 'react';
+import { OfficeViewerShell } from 'office-file-viewer/layout';
+
+export function CustomViewer({ children }: { children: ReactNode }) {
+  return (
+    <OfficeViewerShell.Provider defaultZoom={100}>
+      <OfficeViewerShell.Root>
+        <OfficeViewerShell.Toolbar>
+          <OfficeViewerShell.FileInfo>
+            Custom document
+          </OfficeViewerShell.FileInfo>
+          <OfficeViewerShell.Zoom />
+          <OfficeViewerShell.Fullscreen />
+        </OfficeViewerShell.Toolbar>
+        <OfficeViewerShell.Sidebar>Outline</OfficeViewerShell.Sidebar>
+        <OfficeViewerShell.Viewport>{children}</OfficeViewerShell.Viewport>
+        <OfficeViewerShell.StatusBar>Ready</OfficeViewerShell.StatusBar>
+      </OfficeViewerShell.Root>
+    </OfficeViewerShell.Provider>
+  );
+}
+```
+
+`Root` fills its parent, so the host must give the parent a calculable height. `Sidebar` and `Viewport` are placed in separate responsive grid areas; the Provider's `watermark` is applied to the Viewport content only.
+
+`office-file-viewer/plugins` provides instance-scoped registration. Built-in formats are included by default; a plugin may declare `workerSupport: 'none'`, `'main-thread'`, or `'worker'`. A plugin that does not implement the Worker protocol cannot be used with `worker: 'always'`.
+
+When an external plugin targets an existing extension or MIME type, give it an explicit priority different from the built-in priority; equal or implicit priorities are rejected to keep resolution deterministic.
+
+```tsx | pure
+import { OfficeFileViewer } from 'office-file-viewer';
+import {
+  OfficeViewerProvider,
+  createOfficePluginRegistry,
+} from 'office-file-viewer/plugins';
+
+// Reuse this registry for the application scope and call registry.dispose() on teardown.
+const registry = createOfficePluginRegistry({ includeBuiltIns: true });
+
+export function PluginViewer({ file }: { file: File }) {
+  return (
+    <OfficeViewerProvider registry={registry}>
+      <OfficeFileViewer uri={file} />
+    </OfficeViewerProvider>
+  );
+}
+```
+
+Dispose registries created by the host when their application scope ends. A registry is not global and does not dispose document resources owned by a parse session.
+
+### Original-file export and future Editor boundary
+
+`office-file-viewer/export` currently supports lossless copying of an original `File`, `Blob`, `ArrayBuffer`, or `Uint8Array`. Format-aware writing after edits is opt-in through an `OfficeExporter` registered on an `OfficeExporterRegistry`:
+
+```tsx | pure
+import { exportOriginalOfficeFile } from 'office-file-viewer/export';
+
+export async function copyOriginal(file: File) {
+  const result = await exportOriginalOfficeFile(file, { fileName: file.name });
+  const downloadUrl = URL.createObjectURL(result.blob);
+  return {
+    result,
+    downloadUrl,
+    revoke: () => URL.revokeObjectURL(downloadUrl),
+  };
+}
+```
+
+The Core `OfficeChangeSet`, transaction, history, and selection types define a future Editor boundary only. They are serializable contracts for host/editor integration; the current Viewer remains read-only and does not write edited Office files or convert them to PDF/images.
+
+### CSS and migration rule
+
+Import `office-file-viewer/styles.css` explicitly when the host build does not retain the root entry's CSS side effect:
+
+```ts | pure
+import 'office-file-viewer/styles.css';
+```
+
+If the host already processes the root entry's CSS side effect, do not import the aggregate stylesheet a second time. Keep imports on the documented root, `core`, `layout`, `plugins`, and `export` entries; undocumented deep imports may change without notice.
+
+
 
 | Document type      | Extension                 | Main parser coverage                                                                                                   |
 | ------------------ | ------------------------- | ---------------------------------------------------------------------------------------------------------------------- |

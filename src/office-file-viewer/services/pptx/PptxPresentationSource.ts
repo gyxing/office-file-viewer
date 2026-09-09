@@ -19,6 +19,7 @@ import type {
   SlideModel,
   SpeakerNotesModel,
 } from '../presentation/types';
+import type { OfficeResourceDescriptor } from '../resource-store/types';
 import { disposeDocumentSession } from '../session';
 import { loadPptxSlide } from './loadPptxSlide';
 import { parsePptxSpeakerNotes } from './parseSpeakerNotes';
@@ -37,6 +38,22 @@ type SlideStoreMeta = {
   /** 在所属集合中的零基索引。 */
   index: number;
 };
+
+function getPackageResourceRefs(
+  context: PptxPackageContext,
+): readonly OfficeResourceDescriptor[] {
+  const refs = new Map<string, OfficeResourceDescriptor>();
+  Object.values(context.packageState.mediaByPath).forEach((source) => {
+    if (!source || typeof source !== 'object' || source.kind !== 'lazy') return;
+    refs.set(source.id, {
+      id: source.id,
+      kind: source.mimeType.startsWith('image/') ? 'image' : 'media',
+      mimeType: source.mimeType,
+      size: source.size,
+    });
+  });
+  return Object.freeze([...refs.values()]);
+}
 
 function waitForSharedResult<T>(
   promise: Promise<T>,
@@ -126,6 +143,7 @@ export class PptxPresentationSource implements PresentationSource {
       slides: this.descriptors,
       warnings: this.warnings,
       performance: { ...this.performance },
+      resourceRefs: getPackageResourceRefs(this.context),
     };
   }
 

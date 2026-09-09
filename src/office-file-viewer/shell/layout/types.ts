@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode, RefObject } from 'react';
+import type { OfficeCapabilities } from '../../core/types';
 import type { OfficeFileViewerLocale } from '../../locale';
 import type { OfficeViewerThemeOptions } from '../../shared/theme';
 import type { OfficeViewerWatermark } from '../../shared/watermark';
@@ -24,7 +25,7 @@ export type OfficeViewerLayoutActions = Readonly<{
   /** 按内置步长放大。 */
   zoomIn(): void;
   /** 进入或退出浏览器全屏。 */
-  toggleFullscreen(): void;
+  toggleFullscreen(): void | Promise<void>;
 }>;
 
 /** 外壳运行环境信息。 */
@@ -35,7 +36,12 @@ export type OfficeViewerLayoutMeta = Readonly<{
   fullscreenSupported: boolean;
   /** 当前由外壳还是宿主负责应用缩放。 */
   contentScaling: OfficeViewerLayoutContentScaling;
+  /** 当前宿主声明的文档能力。 */
+  capabilities?: OfficeCapabilities;
 }>;
+
+/** 组合式 Shell 与兼容 Layout 共用的上下文别名。 */
+export type OfficeViewerShellContextValue = OfficeViewerLayoutContextValue;
 
 /** `useOfficeViewerLayout` 返回的稳定上下文契约。 */
 export type OfficeViewerLayoutContextValue = Readonly<{
@@ -83,6 +89,8 @@ export type OfficeViewerLayoutProps = {
   onFullscreenError?: (error: Error) => void;
   /** 缩放由外壳自动应用还是交给宿主处理，默认 managed。 */
   contentScaling?: OfficeViewerLayoutContentScaling;
+  /** 宿主已知时提供当前文档能力快照。 */
+  capabilities?: OfficeCapabilities;
   /** 宿主提供的文档内容。 */
   children: ReactNode;
 };

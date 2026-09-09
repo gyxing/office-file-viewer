@@ -8,6 +8,7 @@ export {
 } from './OfficeResourceStore';
 export { portableResourceToBlob } from './portableResourceToBlob';
 export type {
+  OfficeResourceDescriptor,
   OfficeResourceSource,
   OfficeResourceStore,
   OfficeResourceStoreOptions,

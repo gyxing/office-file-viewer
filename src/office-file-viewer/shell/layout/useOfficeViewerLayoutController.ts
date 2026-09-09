@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { OfficeCapabilities } from '../../core/types';
 import {
   OFFICE_DEFAULT_ZOOM,
   OFFICE_MAX_ZOOM,
@@ -25,6 +26,7 @@ type UseOfficeViewerLayoutControllerOptions = {
   onFullscreenError?: (error: Error) => void;
   /** 当前内容缩放职责。 */
   contentScaling: OfficeViewerLayoutContentScaling;
+  capabilities?: OfficeCapabilities;
 };
 
 /** 将未知异常转换成宿主可稳定处理的 Error。 */
@@ -40,6 +42,7 @@ export function useOfficeViewerLayoutController({
   onFullscreenChange,
   onFullscreenError,
   contentScaling,
+  capabilities,
 }: UseOfficeViewerLayoutControllerOptions): OfficeViewerLayoutContextValue {
   const viewerRef = useRef<HTMLDivElement>(null);
   const [internalZoom, setInternalZoom] = useState(() =>
@@ -112,8 +115,8 @@ export function useOfficeViewerLayoutController({
     [changeZoom, toggleFullscreen, zoomIn, zoomOut],
   );
   const meta = useMemo(
-    () => ({ viewerRef, fullscreenSupported, contentScaling }),
-    [contentScaling, fullscreenSupported],
+    () => ({ viewerRef, fullscreenSupported, contentScaling, capabilities }),
+    [capabilities, contentScaling, fullscreenSupported],
   );
 
   return useMemo(() => ({ state, actions, meta }), [actions, meta, state]);

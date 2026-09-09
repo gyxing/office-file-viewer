@@ -34,6 +34,38 @@ async function measureDirectory(directory) {
   );
 }
 
+/** 输出稳定入口及 Worker 分组的文件数和字节数，便于定位体积变化。 */
+async function logEntryGroups() {
+  const groups = {
+    root: ['dist/index.js', 'dist/index.d.ts'],
+    core: ['dist/core.js', 'dist/core.d.ts'],
+    layout: ['dist/layout.js', 'dist/layout.d.ts'],
+    plugins: ['dist/plugins.js', 'dist/plugins.d.ts'],
+    export: ['dist/export.js', 'dist/export.d.ts'],
+    worker: [WORKER_FILE],
+  };
+  const entries = await Promise.all(
+    Object.entries(groups).map(async ([name, paths]) => {
+      const existing = await Promise.all(
+        paths.map(async (path) => {
+          const fileStat = await stat(resolve(path)).catch(() => null);
+          return fileStat ? { files: 1, bytes: fileStat.size } : { files: 0, bytes: 0 };
+        }),
+      );
+      return [
+        name,
+        existing.reduce(
+          (total, current) => ({ files: total.files + current.files, bytes: total.bytes + current.bytes }),
+          { files: 0, bytes: 0 },
+        ),
+      ];
+    }),
+  );
+  for (const [name, measurement] of entries) {
+    console.log(`  ${name}: ${measurement.files} 个文件，${measurement.bytes} B`);
+  }
+}
+
 /** 超出预算时终止构建，并提供实际值和上限供定位。 */
 function assertBudget(name, actual, limit, unit = '') {
   if (actual <= limit) return;
@@ -52,6 +84,7 @@ async function checkPackageBudget() {
   console.log(
     `发布预算通过：${dist.files} 个文件，${dist.bytes} B，Worker ${worker.size} B。`,
   );
+  await logEntryGroups();
 }
 
 await checkPackageBudget();

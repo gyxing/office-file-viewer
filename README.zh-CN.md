@@ -18,6 +18,34 @@
 
 `office-file-viewer` 采用浏览器优先的方案：本地文件可以在浏览器内完成解析和渲染，不需要部署额外的文档转换服务，也不会主动上传文件。项目希望成为可复用的开源基础组件，并明确说明宏、外部媒体、远程资源、大文件和复杂布局等安全与渲染边界。
 
+## 稳定公共入口
+
+包继续保留默认 `OfficeFileViewer` 入口，并增加稳定的 ESM 子路径：
+
+```ts
+import { OfficeFileViewer } from 'office-file-viewer';
+import { OfficeViewerShell } from 'office-file-viewer/layout';
+import { createOfficeParseSession } from 'office-file-viewer/core';
+import { createOfficePluginRegistry } from 'office-file-viewer/plugins';
+import { OfficeViewerProvider } from 'office-file-viewer/plugins';
+import { exportOriginalOfficeFile } from 'office-file-viewer/export';
+import 'office-file-viewer/styles.css';
+
+const registry = createOfficePluginRegistry({ includeBuiltIns: true });
+```
+
+`core` 提供解析、快照、资源、生命周期和能力描述；`plugins` 提供实例级注册表及可选的 `OfficeViewerProvider`；`export` 提供原始文件导出和导出器契约；`layout` 提供可复用组合式 Shell。首版 `plugins`、`export` 和 Editor 预留契约标记为实验性。不要导入未文档化的 `services`、`formats`、`shared` 或 `dist` 深层路径。
+
+```tsx
+<OfficeViewerProvider registry={registry}>
+  <OfficeFileViewer uri={file} />
+</OfficeViewerProvider>
+```
+
+`registry` 应在应用作用域内复用，并在应用销毁时调用 `registry.dispose()`。
+
+如果宿主构建器已经处理根入口的 CSS 副作用，不要再次导入 `styles.css`，避免重复规则。通过 `style` 传入的 CSS 变量优先于主题选项。
+
 ## 主要特性
 
 - **纯浏览器解析**：适用于内网、离线环境和隐私敏感场景。
@@ -97,7 +125,7 @@ export default function OfficePreview() {
 
 ## 限制说明
 
-- 预览器为只读组件，不提供编辑、保存、格式转换、打印排版或文件导出。
+- Viewer 界面为只读组件，不提供编辑、保存、格式转换、打印排版或导出为 PDF/图片；原始文件复制通过实验性的 `office-file-viewer/export` 入口提供。
 - 远程文件仍受浏览器 CORS、身份认证和内容安全策略约束。
 - 组件不会因内部优化阈值拒绝大文件；超大或复杂文件会自动采用按需读取与虚拟渲染，但仍可能占用较多内存或短暂降低响应速度。
 - 组件不捆绑 Office 字体；最终排版效果取决于当前浏览器可用字体或宿主配置的回退/宿主字体资源，URL 字体仍受浏览器 CORS/CSP 规则约束。

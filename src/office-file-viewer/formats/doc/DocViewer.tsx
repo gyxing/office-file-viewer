@@ -6,6 +6,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import type { MutableRefObject } from 'react';
 import {
   createMemoryOfficeAnnotationSource,
   type WordRevisionMode,
@@ -64,6 +65,8 @@ type DocViewerProps = {
   onCloseOutline: () => void;
   /** 搜索能力启用时切换到查找侧栏。 */
   onOpenSearch?: () => void;
+  /** 向外暴露虚拟分页导航控制器。 */
+  pageNavigationControllerRef?: MutableRefObject<WordPageNavigationController | undefined>;
 };
 /** 浏览器真实排版与静态估算不一致时记录的 DOC 块高度。 */
 type DocLayoutCalibration = {
@@ -124,6 +127,7 @@ function DocViewerComponent({
   wordRevisionMode,
   onCloseOutline,
   onOpenSearch,
+  pageNavigationControllerRef: externalPageNavigationControllerRef,
 }: DocViewerProps) {
   const rawDocument =
     preview.mode === 'materialized' ? preview.model.document : undefined;
@@ -237,7 +241,9 @@ function DocViewerComponent({
     pageSnapshot.pages.forEach((meta) => index.replacePage(meta));
     return index;
   }, [pageSnapshot]);
-  const pageNavigationControllerRef = useRef<WordPageNavigationController>();
+  const internalPageNavigationControllerRef = useRef<WordPageNavigationController>();
+  const pageNavigationControllerRef =
+    externalPageNavigationControllerRef ?? internalPageNavigationControllerRef;
   const outlineItems = useMemo(
     () =>
       shouldRenderOutline

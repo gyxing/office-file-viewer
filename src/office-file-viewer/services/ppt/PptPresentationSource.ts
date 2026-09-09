@@ -127,6 +127,7 @@ export class PptPresentationSource implements PresentationSource {
       slides: this.descriptors,
       warnings: this.structure.warnings,
       performance: { ...this.performance },
+      resourceRefs: this.structure.resources.getResourceRefs(),
     };
   }
 

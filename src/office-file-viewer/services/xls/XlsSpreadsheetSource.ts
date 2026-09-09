@@ -368,6 +368,7 @@ export class XlsSpreadsheetSource implements SpreadsheetSource {
       revision: this.revision,
       sheets: this.snapshotDescriptors,
       definedNames: adaptBiff8DefinedNames(this.structure.globals),
+      resourceRefs: this.resources.getResourceRefs(),
     };
   }
 
